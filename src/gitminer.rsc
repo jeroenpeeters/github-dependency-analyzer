@@ -14,12 +14,21 @@ public void minegit(){
 	
 	println(githubRepos);
 	println(size(githubRepos));
-	
-	set[str] artifacts = {};
-	
-	int counter = 0;
-	for(str repoUrl <- githubRepos){
-		artifacts += process(repoUrl);
+}
+
+private void searchJavaReposOnGithub(){
+	set[str] githubRepos = {};
+	for(int i <- [1 .. 11]){ // max result size = 1000
+		content = searchGithubJavaRepo(i, 100);
+		githubRepos += getGithubRepoUrls(content);
+	}
+	return githubRepos;
+}
+
+private void processRepos(set[str] repos){
+	counter = 0;
+	for(str repoUrl <- repos) {
+		process(repoUrl);
 		counter += 1;
 		if(counter%10 == 0) println("Processed Repo\'s: <counter>, Unique dependencies: <size(artifacts)>");
 	}
@@ -67,4 +76,4 @@ private str joinStrings(list[str] l){
 	return result;
 }
 
-private str readFromUrl(str url) = readEntireStream(createProcess("curl", ["-u", "jeroen@peetersweb.nl:qwXFlJcGS2UAnD39Y2uf", url]));
+private str readFromUrl(str url) = readEntireStream(createProcess("curl", ["-u", "user:pasw", url]));
