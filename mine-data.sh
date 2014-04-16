@@ -1,8 +1,9 @@
 #!/bin/bash
 
 DATE_RANGE=$1
+AUTH=$2
 
-CURL_CMD="curl --silent -A \"MasterThesisMiner\" -u jeroen@peetersweb.nl:FUffjTD7WstuBtPkxh5k"
+CURL_CMD="curl --silent -A \"MasterThesisMiner\" -u $AUTH"
 
 function find_shas_by_filetype {
   local __data=$1
