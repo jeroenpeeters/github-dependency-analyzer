@@ -1,0 +1,143 @@
+// Top-level build file where you can 
+// add configuration options common 
+// to all sub-projects/modules.
+
+buildscript
+{
+    repositories
+    {
+        mavenLocal()
+        mavenCentral()
+		maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+    }
+
+    dependencies
+    {
+        classpath 'com.android.tools.build:gradle:0.7.+'
+    }
+}
+
+configure(allprojects) {
+    ext.androidCompileSdkVersion 	= 19
+    ext.androidMinSdkVersion 		= 8
+    ext.androidTargetSdkVersion		= 19
+    ext.androidBuildToolsVersion 	= "19.0.1"
+    ext.androidSupportVersion    	= "19.0.1"
+}
+
+configure(subprojects) { subproject ->
+    repositories {
+        mavenCentral()
+        mavenLocal()
+    }
+}
+// Project properties
+project.group = 'com.sage42.android.view'
+project.version = '1.0.1'
+
+apply plugin: 'android-library'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+dependencies
+{
+    compile "com.android.support:support-v4:$androidSupportVersion"
+}
+
+android
+{
+    buildToolsVersion "$androidBuildToolsVersion"
+    compileSdkVersion androidCompileSdkVersion
+    
+    defaultConfig
+    {
+        minSdkVersion androidMinSdkVersion
+        targetSdkVersion androidTargetSdkVersion
+    }
+
+    sourceSets
+    {
+        main
+        {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src/main/java']
+            resources.srcDirs = ['src/main/resources']
+            aidl.srcDirs = ['src/main/aidl']
+            renderscript.srcDirs = ['src/main/rs']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+        }
+    }
+}
+
+apply plugin: 'maven'
+configurations
+{
+    archives
+    { extendsFrom configurations.default }
+}
+
+signing
+{
+    required
+    {
+        has("release") && gradle.taskGraph.hasTask("uploadArchives")
+    }
+    sign configurations.archives
+}
+
+def localRepoPath = "file://" +  new File(System.getProperty("user.home"), ".m2/repository").absolutePath
+
+uploadArchives 
+{
+    configuration = configurations.archives
+    repositories.mavenDeployer 
+    {
+        beforeDeployment 
+        { 
+            MavenDeployment deployment -> signing.signPom(deployment) 
+        }
+
+        repository(url: localRepoPath) 
+
+        pom.project 
+        {
+            packaging 'aar'
+
+            licenses 
+            {
+                license 
+                {
+                    name 'The Apache Software License, Version 2.0'
+                    url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                    distribution 'repo'
+                }
+            }
+        }
+    }
+}
+
+// Simple Local Sonar Config
+// To use: gradle sonarRunner
+apply plugin: 'sonar-runner'
+sonarRunner 
+{
+    sonarProperties 
+    {
+        properties["sonar.sources"] = android.sourceSets.main.java.srcDirs
+        properties["sonar.tests"] = android.sourceSets.instrumentTest.java.srcDirs
+        properties["sonar.binaries"] = file("build/classes/debug")
+
+        property "sonar.projectKey", "AndroidViewUtils"
+        property "sonar.projectName", "Sage 42 - AndroidViewUtils"
+        property "sonar.projectVersion", "1.0"
+        property "sonar.java.target", "1.6"
+        property "sonar.host.url", "http://localhost:9000"
+        property "sonar.jdbc.url", "jdbc:mysql://localhost:3306/sonar?useUnicode=true&characterEncoding=utf8&rewriteBatchedStatements=true"
+        property "sonar.jdbc.driverClassName", "com.mysql.jdbc.Driver"
+        property "sonar.jdbc.username", "sonar"
+        property "sonar.jdbc.password", "sonar"
+        property "sonar.dynamicAnalysis", "reuseReports"
+        property "sonar.surefire.reportsPath", "build/instrumentTest-results/connected/"
+    }
+}

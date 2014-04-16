@@ -1,0 +1,382 @@
+apply from: 'libraries.gradle'
+
+allprojects {
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+    apply plugin: 'maven'
+
+    group = 'org.jpos.ee'
+    version = '2.0.5-SNAPSHOT'
+}
+
+subprojects {
+    apply plugin: 'java'
+    sourceCompatibility = 1.6
+    targetCompatibility = 1.6
+    [ compileJava, compileTestJava, javadoc ]*.options*.encoding = 'UTF-8'
+
+    tasks.withType(Compile) {
+        options.warnings = false
+    }
+
+    project.archivesBaseName="jposee-${project.name}"
+
+    def pomConfig = {
+        name 'jPOS-EE Project'
+        description """
+    jPOS Extended Edition
+  """
+        url 'http://jpos.org'
+        inceptionYear '1998'
+        organization {
+            name 'jPOS.org'
+            url 'http://jpos.org'
+        }
+        issueManagement {
+            system 'YouTrack'
+            url 'https://jpos.org/issues'
+        }
+        scm {
+            url "http://github.com/jpos/jPOS"
+            connection "scm:git:https://github.com/jpos/jPOS-EE.git"
+            developerConnection "scm:git:git@github.com:jpos/jPOS-EE.git"
+        }
+        licenses {
+            license {
+                name 'GNU AFFERO GENERAL PUBLIC LICENSE'
+                url 'http://www.gnu.org/licenses/agpl-v3.html'
+                comments 'See http://jpos.org/license for more details.'
+                distribution 'repo'
+            }
+        }
+        developers {
+            developer {
+                id 'jpos-team'
+                name 'jPOS Development Team'
+                email 'info@jpos.org'
+            }
+        }
+    }
+
+    uploadArchives {
+        repositories {
+            mavenDeployer {
+                pom.project pomConfig
+                repository(url: 'file:///opt/local/maven')
+            }
+        }
+    }
+    task sourceJar(type: Jar) {
+        from sourceSets.main.allSource
+        classifier = 'sources'
+    }
+
+    artifacts {
+        archives sourceJar
+    }
+
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url 'http://jpos.org/maven' }
+        maven { url 'http://download.oracle.com/maven' }
+        maven { url 'http://jline.sourceforge.net/m2repo' }
+        maven { url 'https://repository.jboss.org/nexus/content/repositories/releases' }
+        maven { url 'http://repository.atlassian.com/maven2' }
+    }
+
+    dependencies {
+        testCompile libraries.junit
+    }
+}
+task allSources(type: Jar,dependsOn: subprojects.assemble) {
+    baseName = 'jposee-sources'
+    from subprojects.collect { project ->
+        project.sourceSets.main.allSource
+    }
+}
+
+task wrapper( type: Wrapper ) {
+    gradleVersion = '1.9'
+}
+
+// Configure IDEA to use Git
+idea.project.ipr {
+  withXml { provider ->
+    provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping.@vcs = 'Git'
+  }
+}
+
+apply plugin: 'groovy'
+apply plugin: 'idea'
+
+import org.jpos.buildtools.docs.DocbookPdf
+import org.jpos.buildtools.docs.DocbookHtml
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+task copySources(type: Sync) {
+    from "${projectDir}/src/asciidoc"
+    into "${buildDir}/docbook/source/"
+}
+
+task copyWebResources(type: Sync) {
+    from "${projectDir}/src/asciidoc"
+    include "images/**"
+    include "css/**"
+    into "${buildDir}/docbook/html/"
+}
+
+task a2x(dependsOn: copySources) << {
+    def inFile = "${buildDir}/docbook/source/book.asc"
+    def outFile = "${buildDir}/docbook/source/book.xml"
+    def cmd = "asciidoc -a docinfo -a lang=en -d book -b docbook -o ${outFile} ${inFile}"
+    def proc = cmd.execute(null, file(inFile).parentFile)
+    proc.in.eachLine { line -> println line }
+    proc.err.eachLine {line -> println 'ERROR: '+line }
+    proc.waitFor()
+}
+
+task createPdf(type: DocbookPdf) {
+    setDescription('Generates PDF docbook output.')
+    extension = 'fo'
+    dependsOn a2x
+    sourceFileName 'book.xml'
+    sourceDirectory "${buildDir}/docbook/source/" as File
+    docsDir "${buildDir}/docbook/pdf/" as File
+    stylesheet "${projectDir}/src/xslt/fo.xsl" as File
+}
+
+task createHtml(type: DocbookHtml) {
+    setDescription('Generates HTML docbook output.')
+    dependsOn a2x,copyWebResources
+    sourceFileName "book.xml"
+    sourceDirectory "${buildDir}/docbook/source/" as File
+    docsDir "${buildDir}/docbook/html/" as File
+    stylesheet "${projectDir}/src/xslt/html.xsl" as File
+}
+
+task viewHtml (dependsOn: createHtml, description: 'Open HTML docbook outout in default browser') << {
+    Class.forName("java.awt.Desktop").newInstance().browse(
+        new File("${buildDir}/docbook/html", 'book.html').toURI())
+}
+
+task viewPdf (dependsOn: createPdf , description: 'Open PDF docbook outout in default viewer') << {
+    Class.forName("java.awt.Desktop").newInstance().browse(
+        new File("${buildDir}/docbook/pdf", this.project.rootProject.name + '.pdf').toURI())
+}
+
+task wrapper( type: Wrapper ) {
+    gradleVersion = '1.3'
+}
+apply plugin: 'groovy'
+apply plugin: 'idea'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+dependencies {
+    //noinspection GroovyAssignabilityCheck
+    def fopDeps = ['org.apache.xmlgraphics:fop:1.0@jar',
+            'org.apache.xmlgraphics:xmlgraphics-commons:1.4',
+            'org.apache.xmlgraphics:batik-bridge:1.7@jar',
+            'org.apache.xmlgraphics:batik-util:1.7@jar',
+            'org.apache.xmlgraphics:batik-css:1.7@jar',
+            'org.apache.xmlgraphics:batik-dom:1.7',
+            'org.apache.xmlgraphics:batik-parser:1.7',
+            'org.apache.xmlgraphics:batik-anim:1.7',
+            'org.apache.xmlgraphics:batik-script:1.7',
+            'org.apache.xmlgraphics:batik-svg-dom:1.7@jar',
+            'org.apache.avalon.framework:avalon-framework-api:4.3.1']
+
+    groovy localGroovy()
+    compile 'xerces:xercesImpl:2.10.0',
+            'xml-resolver:xml-resolver:1.2',
+            'saxon:saxon:6.5.3',
+            fopDeps,
+            'docbook:docbook-xml:4.5',
+            'net.sf.xslthl:xslthl:2.1.0',
+            'net.sf.docbook:docbook-xsl:1.76.1:ns-resources@zip',
+            'net.sf.docbook:docbook-xsl-saxon:1.0.0',
+            gradleApi()
+}
+
+idea.module {
+	jdkName = '1.6'
+}
+install {
+	actions=[]
+}
+description = 'jPOS-EE :: Client Simulator'
+
+dependencies {
+    compile project(':modules:core')
+}
+description = 'jPOS-EE :: Core Module'
+
+configurations {
+    all*.exclude module: 'commons-logging'
+}
+
+dependencies {
+    compile libraries.jpos
+    compile libraries.commons_lang
+    compile libraries.commons_beanutils
+    compile libraries.joda_time
+}
+
+description = 'jPOS-EE :: H2 DB support'
+
+dependencies {
+    compile project(':modules:dbsupport')
+    compile libraries.jdbcH2
+}
+description = 'jPOS-EE :: MySql support'
+
+dependencies {
+    compile project(':modules:dbsupport')
+    compile libraries.jdbcMysql
+}
+description = 'jPOS-EE :: PostgreSQL support'
+
+dependencies {
+    compile project(':modules:dbsupport')
+    compile libraries.jdbcPostgresql
+}
+description = 'jPOS-EE :: Database Support Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile libraries.hibernate_core
+    compile libraries.hibernate_envers
+    compile libraries.hibernate_c3p0
+    compile libraries.hibernate_ehcache
+}
+description = 'jPOS-EE :: User Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}
+description = 'jPOS-EE :: Freemarker Decorator Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile libraries.freemarker
+}
+description = 'jPOS-EE :: Jetty Web Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile jettyLibs
+}
+description = 'jPOS-EE :: Logback Support Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile libraries.slf4j_api
+    compile libraries.jcl_over_slf4j
+    compile libraries.log4j_over_slf4j
+    compile libraries.logback
+}
+description = 'jPOS-EE :: Mail support module'
+
+dependencies {
+    compile project(':modules:core')
+    compile libraries.javax_mail
+}
+description = 'jPOS-EE :: MiniGL Module'
+
+dependencies {
+    compile project(':modules:logback')
+    compile project(':modules:dbsupport')
+    testCompile project(':modules:db-h2')
+}
+
+ext {
+    testRuntimeDir = "$buildDir/runtime" as File
+    testImportResourcesDir = new File(testRuntimeDir.parent,'test-classes')
+}
+
+task jposeeSetup(dependsOn: 'classes', type: JavaExec) {
+    classpath = sourceSets.test.runtimeClasspath
+    main = 'org.jpos.q2.install.Install'
+    args = ["--outputDir=" + testRuntimeDir]
+}
+
+task copyTestResources(dependsOn: 'jposeeSetup', type: Copy) {
+    from 'src/test/resources'
+    into testImportResourcesDir
+}
+
+test {
+    dependsOn 'copyTestResources'
+    include '**/AllTests.*'
+    include '**/StressTests.*'
+    scanForTestClasses false
+    workingDir testRuntimeDir
+}
+description = 'jPOS-EE :: Quartz integration'
+
+dependencies { 
+    compile libraries.jpos
+    compile (libraries.quartz) {
+        exclude(module: 'c3p0')    
+    }
+}
+
+description = 'jPOS-EE :: Resultcode Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}
+description = 'jPOS-EE :: Store and Forward (SAF) Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile project(':modules:status')
+}
+description = 'jPOS-EE :: Server Simulator'
+
+dependencies {
+    compile project(':modules:core')
+}
+description = 'jPOS-EE :: SSHD Module'
+
+dependencies {
+    compile project(':modules:core')
+    compile libraries.sshd
+    compile libraries.slf4j_api
+}
+description = 'jPOS-EE :: Status Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+    compile project(':modules:syslog')
+    compile project(':modules:eeuser')
+}
+description = 'jPOS-EE :: Sysconfig Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}
+description = 'jPOS-EE :: Syslog Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}
+description = 'jPOS-EE :: Things Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}
+description = 'jPOS-EE :: Txn Module'
+
+dependencies {
+    compile project(':modules:dbsupport')
+}

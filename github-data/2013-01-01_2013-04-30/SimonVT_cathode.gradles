@@ -1,0 +1,193 @@
+buildscript {
+  repositories {
+    mavenCentral()
+    maven { url 'http://download.crashlytics.com/maven' }
+  }
+
+  dependencies {
+    classpath 'com.android.tools.build:gradle:0.9.+'
+    classpath 'com.crashlytics.tools.gradle:crashlytics-gradle:1.+'
+  }
+}
+
+allprojects {
+  repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url 'http://download.crashlytics.com/maven' }
+  }
+
+  tasks.withType(Compile) {
+    options.encoding = "UTF-8"
+  }
+}
+
+
+ext {
+  versionMajor = 1
+  versionMinor = 3
+  versionPatch = 1
+  versionBuild = 1
+
+  versionCode = versionMajor * 10000 + versionMinor * 1000 + versionPatch * 100 + versionBuild
+  versionName = versionMajor + "." + versionMinor + "." + versionPatch
+
+  minSdkVersion = 16
+  targetSdkVersion = 19
+
+  compileSdkVersion = 19
+  buildToolsVersion = '19.0.3'
+}
+
+ext.libraries = [
+    menudrawer: 'net.simonvt.menudrawer:menudrawer:3.0.6',
+    messagebar: 'net.simonvt.messagebar:messagebar:1.0.2',
+
+    gson: 'com.google.code.gson:gson:2.2.4',
+
+    supportv4: 'com.android.support:support-v4:19.1.+',
+
+    dagger: ['com.squareup.dagger:dagger:1.2.1',
+        'com.squareup.dagger:dagger-compiler:1.2.1'],
+    okhttp: 'com.squareup.okhttp:okhttp:1.5.3',
+    otto: 'com.squareup:otto:1.3.4',
+    picasso: 'com.squareup.picasso:picasso:2.2.0',
+    retrofit: 'com.squareup.retrofit:retrofit:1.5.0',
+    tape: 'com.squareup:tape:1.2.2',
+
+    butterknife: 'com.jakewharton:butterknife:4.0.1',
+    timber: 'com.jakewharton.timber:timber:2.2.2',
+
+    dashclockApi: 'com.google.android.apps.dashclock:dashclock-api:2.0.0',
+
+    crashlytics: 'com.crashlytics.android:crashlytics:1.+'
+]
+apply plugin: 'android'
+apply plugin: 'crashlytics'
+apply plugin: 'checkstyle'
+
+dependencies {
+  compile project(':trakt-api')
+  compile parent.ext.libraries.menudrawer
+  compile parent.ext.libraries.messagebar
+
+  compile parent.ext.libraries.gson
+
+  compile parent.ext.libraries.supportv4
+
+  compile parent.ext.libraries.otto
+  compile parent.ext.libraries.dagger
+  compile parent.ext.libraries.okhttp
+  compile parent.ext.libraries.picasso
+  compile parent.ext.libraries.retrofit
+  compile parent.ext.libraries.tape
+
+  compile parent.ext.libraries.butterknife
+  compile parent.ext.libraries.timber
+
+  compile parent.ext.libraries.dashclockApi
+
+  compile parent.ext.libraries.crashlytics
+}
+
+android {
+  compileSdkVersion parent.ext.compileSdkVersion
+  buildToolsVersion parent.ext.buildToolsVersion
+
+  defaultConfig {
+    minSdkVersion = parent.ext.minSdkVersion
+    targetSdkVersion = parent.ext.targetSdkVersion
+
+    versionCode = parent.ext.versionCode;
+    versionName = parent.ext.versionName
+  }
+
+  signingConfigs {
+    release
+  }
+
+  buildTypes {
+    debug {
+      buildConfigField "String", "PROVIDER_AUTHORITY", "\"net.simonvt.cathode.debug.provider.CathodeProvider\""
+      packageNameSuffix ".debug"
+    }
+    release {
+      buildConfigField "String", "PROVIDER_AUTHORITY", "\"net.simonvt.cathode.provider.CathodeProvider\""
+      signingConfig signingConfigs.release
+    }
+  }
+
+  packagingOptions {
+    exclude 'META-INF/services/javax.annotation.processing.Processor'
+  }
+}
+
+checkstyle {
+  configFile project.file('../config/checkstyle/checkstyle.xml')
+  showViolations true
+}
+
+android.applicationVariants.all { variant ->
+  def name = variant.buildType.name
+
+  def checkstyle = project.tasks.create "checkstyle${name.capitalize()}", Checkstyle
+  checkstyle.dependsOn variant.javaCompile
+  checkstyle.source variant.javaCompile.source
+  checkstyle.classpath = project.fileTree(variant.javaCompile.destinationDir)
+  checkstyle.exclude('**/BuildConfig.java')
+  checkstyle.exclude('**/R.java')
+  project.tasks.getByName("check").dependsOn checkstyle
+}
+
+if (project.hasProperty('cathodeStoreFile')) {
+  android.signingConfigs.release.storeFile = file(cathodeStoreFile)
+}
+if (project.hasProperty('cathodeStorePassword')) {
+  android.signingConfigs.release.storePassword = cathodeStorePassword
+}
+if (project.hasProperty('cathodeKeyPassword')) {
+  android.signingConfigs.release.keyPassword = cathodeKeyPassword
+}
+if (project.hasProperty('cathodeKeyAlias')) {
+  android.signingConfigs.release.keyAlias = cathodeKeyAlias
+}
+apply plugin: 'android-library'
+apply plugin: 'checkstyle'
+
+dependencies {
+  compile parent.ext.libraries.gson
+
+  compile parent.ext.libraries.dagger
+  compile parent.ext.libraries.okhttp
+  compile parent.ext.libraries.retrofit
+}
+
+android {
+  compileSdkVersion parent.ext.compileSdkVersion
+  buildToolsVersion parent.ext.buildToolsVersion
+
+  defaultConfig {
+    minSdkVersion = parent.ext.minSdkVersion
+    targetSdkVersion = parent.ext.targetSdkVersion
+
+    versionCode = parent.ext.versionCode;
+    versionName = parent.ext.versionName
+  }
+}
+
+checkstyle {
+  configFile project.file('../config/checkstyle/checkstyle.xml')
+  showViolations true
+}
+
+android.libraryVariants.all { variant ->
+  def name = variant.buildType.name
+
+  def checkstyle = project.tasks.create "checkstyle${name.capitalize()}", Checkstyle
+  checkstyle.dependsOn variant.javaCompile
+  checkstyle.source variant.javaCompile.source
+  checkstyle.classpath = project.fileTree(variant.javaCompile.destinationDir)
+  checkstyle.exclude('**/BuildConfig.java')
+  checkstyle.exclude('**/R.java')
+  project.tasks.getByName("check").dependsOn checkstyle
+}

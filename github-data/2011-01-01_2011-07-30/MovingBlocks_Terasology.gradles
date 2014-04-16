@@ -1,0 +1,997 @@
+/*
+ * This is a Gradle build file:
+ * - Gradle Homepage: http://gradle.org/
+ * - Gradle Documentation: http://gradle.org/documentation
+ * - View tasks for this project: $ gradlew tasks
+ */
+
+// Separate build file for structure heavy stuff like using Git to fetch other repos to embed within the project
+apply from: 'utility.gradle'
+apply from: 'ide.gradle'
+
+// Needed for extending the "clean" task to also delete custom stuff defined here like natives
+apply plugin: 'base'
+
+// For generating IntelliJ project files
+apply plugin: 'idea'
+
+// The root project should not be an eclipse project. It keeps eclipse (4.2) from finding the sub-projects.
+//apply plugin: 'eclipse'
+
+/*
+ * To Update Gradle Wrapper:
+ * 1. Uncomment 'wrapper' task
+ * 2. Change 'gradleVersion'
+ * 3. Run "gradlew wrapper" TWICE (first upgrades the prop file, second the jar if needed)
+ * 4. Comment 'wrapper' task
+ */
+//task wrapper(type: Wrapper) {
+//    gradleVersion = '1.8'
+//}
+
+import org.apache.tools.ant.filters.FixCrLfFilter;
+
+// Test for right version of Java in use for running this script
+assert org.gradle.api.JavaVersion.current().isJava7Compatible()
+
+// Declare "extra properties" (variables) for the project (and subs) - a Gradle thing that makes them special.
+ext {
+    dirNatives = 'natives'
+    templatesDir = 'templates'
+
+    // Lib dir for use in manifest entries etc (like in :engine). A separate "libsDir" exists, auto-created by Gradle
+    subDirLibs = 'libs'
+
+    LwjglVersion = '2.9.1'
+}
+
+// Declare remote repositories we're interested in - library files will be fetched from here
+repositories {
+    // Main Maven repo
+    mavenCentral()
+    // MovingBlocks Artifactory instance for libs not readily available elsewhere plus our own libs
+    maven {
+        url "http://www.movingblocks.net:8081/artifactory/repo"
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Natives - Handles pulling in and extracting native libraries for LWJGL                                            //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Define a custom configuration named "natives"
+configurations {
+    natives
+}
+
+// For the "natives" configuration make it depend on the native files from LWJGL
+dependencies {
+    natives group: 'org.lwjgl.lwjgl', name: 'lwjgl', version: LwjglVersion
+}
+
+task extractWindowsNatives(type:Sync) {
+    description = "Extracts the Windows natives from the downloaded zip"
+    from {
+        configurations.natives.collect { it.getName().contains('-natives-window') ? zipTree(it) : [] }
+    }
+    into ("$dirNatives/windows")
+    exclude ('META-INF/**')
+}
+
+task extractMacOSXNatives(type:Sync) {
+    description = "Extracts the OSX natives from the downloaded zip"
+    from {
+        configurations.natives.collect { it.getName().contains('-natives-osx') ? zipTree(it) : [] }
+    }
+    into ("$dirNatives/macosx")
+    exclude ('META-INF/**')
+}
+
+task extractLinuxNatives(type:Sync) {
+    description = "Extracts the Linux natives from the downloaded zip"
+    from {
+        configurations.natives.collect { it.getName().contains('-natives-linux') ? zipTree(it) : [] }
+    }
+    into ("$dirNatives/linux")
+    exclude ('META-INF/**')
+}
+
+task extractNatives {
+    description = "Extracts all the native lwjgl libraries from the downloaded zip"
+    dependsOn extractWindowsNatives
+    dependsOn extractLinuxNatives
+    dependsOn extractMacOSXNatives
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Section for project modules (equally set up as modules in IntelliJ)                                               //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Move this to the generated subproject gradle files? Or use project.childProjects even here?
+// TODO: This pretty much has been made obsolete by changes elsewhere. Do a last check (especially of libs) then remove
+subprojects {
+    // MODULES - most "exposed" project component type, users will supply these so need to be careful
+    if (project.getParent().name == "modules" ) {
+        // TODO: Verify a user-provided build.gradle cannot override the one we create
+        // Maybe Jenkins module builds should delete if exists then re-copy in from main project ?
+        println "Iterating over subprojects - Found a module: $project.name"
+    } else if (project.getParent().name == "facades" ) {
+        // FACADES - front-ends to the engine, fully under our control
+        println "Iterating over subprojects - Found a facade: " + project.name
+    } else if (project.getParent().name == "libs" ) {
+        println "Iterating over subprojects - Found a lib: " + project.name
+
+        apply plugin: 'java'
+        apply plugin: 'eclipse'
+        apply plugin: 'idea'
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Helper tasks                                                                                                      //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Helper that returns a list of all local Terasology module projects
+def terasologyModules() {
+    subprojects.findAll {it.parent.name == 'modules'}
+}
+
+// Helper that replaces the build.gradle under every module with a fresh copy from the Core module
+task refreshModuleGradle << {
+    File replacementGradle = new File(rootDir, 'modules/Core/build.gradle')
+    terasologyModules().each {
+        if (it.name != 'Core') {
+            File targetFile = new File(rootDir, "modules/" + it.name + "/build.gradle")
+            targetFile.delete()
+            targetFile << replacementGradle.text
+        }
+    }
+}
+
+// Helpers that do magic things after having dependencies attached below
+task moduleClasses
+task moduleJars
+
+// This magically makes everything work - without this the desired module projects returned have no tasks :-(
+gradle.projectsEvaluated {
+    // Note how "classes" may indirectly trigger "jar" for module dependencies of modules (module compile dependency)
+    moduleClasses.dependsOn(terasologyModules().classes)
+
+    // This makes it work for a full jar task
+    moduleJars.dependsOn(terasologyModules().jar)
+}
+
+// This is a TEMPORARY tweak to make "changing" dependencies always ('0') check for newer snapshots available
+// TODO: Remove this when versioning and promotion works fully, then we shouldn't care about snapshots normally anyway
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+}
+
+// Include deletion of extracted natives in the global clean task. Without the doLast it runs on *every* execution ...
+clean.doLast {
+    new File(dirNatives).deleteDir()
+    println "Cleaned root - don't forget to re-extract the natives! 'gradlew extractNatives' or a dependent task"
+}
+
+task runProtobufWindows(type:Exec) {
+    description = "Run 'Protobuf Compiler' (Windows)"
+    commandLine 'protobuf\\compiler\\protoc.exe', '--proto_path=engine\\src\\main\\protobuf', '--java_out', 'engine\\src\\main\\java', 'engine\\src\\main\\protobuf\\*'
+}
+
+// TODO: add linux protobuf compiler
+//task runProtobufLinux(type:Exec) {
+//    description = "Run 'Protobuf Compiler' (Linux)"
+//    commandLine 'protobuf/compiler/protoc', '--proto_path=engine/src/main/protobuf', '--java_out', 'engine/src/main/java engine/src/main/protobuf/*'
+//}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// General IDE customization                                                                                         //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Make sure the IDE prep includes extraction of natives
+ideaModule.dependsOn extractNatives
+
+// For IntelliJ add a bunch of excluded directories
+idea {
+
+    // Exclude Eclipse dirs
+    // TODO: Update this as Eclipse bin dirs now generate in several deeper spots rather than at top-level
+    module.excludeDirs += file('bin')
+    module.excludeDirs += file('.settings')
+    // TODO: Add a single file exclude for facades/PC/Terasology.launch ?
+
+    // Exclude special dirs
+    module.excludeDirs += file('natives')
+    module.excludeDirs += file('protobuf')
+
+    // Exclude output dirs
+    module.excludeDirs += file('logs')
+    module.excludeDirs += file('saves')
+    module.excludeDirs += file('screenshots')
+    module.excludeDirs += file('terasology-server')
+
+    project {
+        // Set JDK
+        jdkName = '1.7'
+		wildcards -= '!?*.groovy'
+
+        ipr {
+            withXml { xmlProvider ->
+                // Apply a bunch of tweaks to IntelliJ config - all defined in ide.gradle
+                // Part reason for separate file was in case a module needs to define something it cannot do so in a project block
+                def iprNode = xmlProvider.asNode()
+                ideaActivateCheckstyle(iprNode)
+                ideaActivateCopyright(iprNode)
+                ideaActivateAnnotations(iprNode)
+                ideaActivateGit(iprNode)
+                ideaActivateGradle(iprNode)
+            }
+
+            // Sets sourceCompatibility within IntelliJ (without this root build having the Java plugin applied)
+            whenMerged {project ->
+                project.jdk.languageLevel = 'JDK_1_7'
+            }
+        }
+    }
+
+    // Tweaks to the .iws
+    workspace.iws.withXml { xmlProvider ->
+        def iwsNode = xmlProvider.asNode()
+        ideaMakeAutomatically(iwsNode)
+        ideaRunConfig(iwsNode)
+    }
+}
+
+cleanIdea.doLast {
+    new File('Terasology.iws').delete()
+}// Engine tests are split out due to otherwise quirky project dependency issues with module tests extending engine tests
+
+// Grab all the common stuff like plugins to use, artifact repositories, code analysis config
+apply from: "$rootDir/config/gradle/common.gradle"
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Java Section                                                                                                      //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// This module/project is solely for engine tests - no normal java dir
+sourceSets {
+    test {
+        java {
+            output.classesDir 'build/testClasses'
+            output.resourcesDir 'build/testClasses'
+        }
+    }
+}
+
+// Primary dependencies definition
+dependencies {
+
+    // Dependency on the engine itself
+    compile project(':engine')
+
+    // Test lib dependencies
+    testCompile group: 'junit', name: 'junit', version: '4.10'
+    testCompile group: 'org.mockito', name: 'mockito-all', version: '1.9.0'
+    testCompile group: 'org.jboss.shrinkwrap', name: 'shrinkwrap-depchain-java7', version: '1.1.3'
+
+    // For reading logback.groovy when running unit tests. Excessive just for a config file?
+    testRuntime group: 'org.codehaus.groovy', name: 'groovy', version: '2.1.7'
+}
+
+// Instructions for packaging a jar file for the engine
+jar {
+    duplicatesStrategy = 'exclude'
+
+    // Just copying test stuff, which isn't included by default
+    from sourceSets.test.output
+}
+
+task distEngineTests (type: Sync) {
+    description = "Prepares the engine's tests for distribution (so later unit tests can extend utility classes)"
+    into ("$rootDir/engine/build/distributions/engine-tests")
+    from jar
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// General IDE customization                                                                                         //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+idea {
+    module {
+        // Change around the output a bit
+        inheritOutputDirs = false
+        outputDir = file('build/classes')
+        testOutputDir = file('build/testClasses')
+    }
+}// The engine build is the primary Java project and has the primary list of dependencies
+
+// Grab all the common stuff like plugins to use, artifact repositories, code analysis config
+apply from: "$rootDir/config/gradle/common.gradle"
+
+import groovy.json.JsonSlurper
+import org.apache.tools.ant.filters.FixCrLfFilter
+
+import java.text.SimpleDateFormat;
+
+def dateTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
+dateTimeFormat.timeZone = TimeZone.getTimeZone("UTC")
+
+// Declare "extra properties" (variables) for the project - a Gradle thing that makes them special.
+ext {
+    // Read environment variables, including variables passed by jenkins continuous integration server
+    env = System.getenv()
+
+    templatesDir = new File(rootDir, 'templates')
+
+    // Stuff for our automatic version file setup
+    startDateTimeString = dateTimeFormat.format(new Date())
+    versionInfoFileDir = new File(buildDir, 'classes/org/terasology/version')
+    versionInfoFile = new File(versionInfoFileDir, 'versionInfo.properties')
+    versionFileName = 'VERSION'
+    versionBase = new File(templatesDir, "version.txt").text.trim()
+    displayVersion = versionBase
+}
+
+def convertGitBranch = { gitBranch ->
+    if (gitBranch != null) {
+        // Remove "origin/" from "origin/develop"
+        gitBranch.substring(gitBranch.lastIndexOf("/") + 1)
+    } else {
+        ""
+    }
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Java Section                                                                                                      //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// Engine for now has two source sets
+sourceSets {
+
+    // Main is almost everything - the true engine
+    main {
+        java {
+            output.classesDir 'build/classes'
+        }
+        // This makes the resources (assets, 3d wizardry includes, etc) also go to build/classes
+        output.resourcesDir 'build/classes'
+    }
+
+    // Dev contains some utilities. Not really sure this needs to be included with the build? But hey. Dump it in
+    dev {
+        java {
+            output.classesDir 'build/classes'
+        }
+    }
+}
+
+// Customizations for the main compilation configuration
+configurations {
+
+    // Exclude a couple JWJGL modules that aren't needed during compilation (OS specific stuff in these two perhaps)
+    compile {
+        exclude module: 'lwjgl-platform'
+        exclude module: 'jinput-platform'
+    }
+
+    // Beyond the standard compile "configuration" we declare one called "devCompile" specific to the "dev" source set
+    devCompile.extendsFrom compile
+}
+
+// Primary dependencies definition
+dependencies {
+    // Main library files fetched online
+    compile group: 'org.eaxy', name: 'eaxy', version: '0.1'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.5'
+    compile group: 'com.google.guava', name: 'guava', version: '15.0'
+    compile group: 'com.google.code.gson', name: 'gson', version: '2.2.4'
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: '2.5.0'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'com.projectdarkstar.ext.jorbis', name: 'jorbis', version: '0.0.17'
+    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl', version: LwjglVersion
+    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl_util', version: LwjglVersion
+    compile group: 'io.netty', name: 'netty', version: '3.6.5.Final'
+    compile group: 'org.reflections', name: 'reflections', version: '0.9.9-RC1'
+    compile group: 'java3d', name: 'vecmath', version: '1.5.2'
+    //compile group: 'com.github.jponge', name: 'lzma-java', version: '1.2'
+    compile group: 'net.java.dev.jna', name: 'jna', version: '3.5.2'
+    compile group: 'net.java.dev.jna', name: 'platform', version: '3.5.2'
+    compile group: 'org.newdawn.slick', name: 'slick', version: '237'
+    compile group: 'org.terasology.bullet', name: 'tera-bullet', version: '1.0.3'
+    compile group: 'com.esotericsoftware.reflectasm', name: 'reflectasm', version: '1.07'
+    compile group: 'ec.util', name: 'MersenneTwister', version: '20'
+    compile group: 'org.abego.treelayout', name: 'org.abego.treelayout.core', version: '1.0.1'
+    compile group: 'com.miglayout', name: 'miglayout-core', version: '4.2'
+
+    // Wildcard dependency to catch any libs provided with the project (remote repo preferred instead)
+    compile fileTree(dir: 'libs', include: '*.jar')
+
+	// TODO: These could be moved into facade
+    runtime group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+	runtime group: 'org.slf4j', name: 'jul-to-slf4j', version: '1.7.5'
+    // And here is Groovy to read the config file
+    runtime group: 'org.codehaus.groovy', name: 'groovy', version: '2.1.7'
+
+    // In addition to all the above the dev source set also needs to depend on what gets compiled in main
+    devCompile sourceSets.main.output
+}
+
+// Instructions for packaging a jar file for the engine
+jar {
+    // Unlike the content modules Gradle grabs the assets as they're in a resources directory. Need to avoid dupes tho
+    duplicatesStrategy = 'exclude'
+
+    manifest {
+        def manifestClasspath = "$subDirLibs/"+configurations.runtime.collect { it.getName() }.join(" $subDirLibs/")
+        attributes("Class-Path" : manifestClasspath, "Implementation-Title": "Terasology-" + project.name, "Implementation-Version": env.BUILD_NUMBER + ", " + convertGitBranch(env.GIT_BRANCH) + ", " + env.BUILD_ID + ", " + displayVersion)
+    }
+}
+
+task distEngine (type: Sync) {
+    description = "Prepares the engine.jar for distribution"
+    into ("$distsDir/engine")
+    from jar
+}
+
+task distLibs (type: Sync) {
+    description = "Prepares the engine libs for distribution (useful for other builds)"
+    into ("$distsDir/libs")
+    from configurations.runtime
+}
+
+task sourceJar(type: Jar) {
+    description = "Create a JAR with all sources (main: java, resources)"
+    manifest.attributes("Implementation-Title": "Terasology-" + project.name)
+    classifier = 'sources'
+    from sourceSets.main.output
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    description = "Create a JAR with the JavaDoc for the java sources"
+    manifest.attributes("Implementation-Title": "Terasology-" + project.name)
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// Version file stuff                                                                                                //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+// First read the internal version out of the engine's module.txt
+def moduleFile = file('src/main/resources/assets/module.txt')
+
+if (!moduleFile.exists()) {
+    println "Y U NO EXIST MODULE.TXT!"
+} else {
+    println "Scanning for version in module.txt for engine"
+    def slurper = new JsonSlurper()
+    def moduleConfig = slurper.parseText(moduleFile.text)
+
+    // Gradle uses the magic version variable when creating the jar name (unless explicitly set somewhere else I guess)
+    version = moduleConfig.version
+
+    // Jenkins-Artifactory integration catches on to this as part of the Maven-type descriptor
+    group = 'org.terasology.engine'
+
+    // Check to see if we're running in Jenkins and in that case attach a snapshot+job build number
+    if (env.BUILD_NUMBER != null) {
+        version += '-SNAPSHOT+' + env.BUILD_NUMBER
+    }
+}
+
+// This version info file actually goes inside the built jar and can be used at runtime
+task createVersionInfoFile {
+    inputs.property('dateTime', startDateTimeString)
+    onlyIf { env.BUILD_URL != null }
+    doLast {
+        versionInfoFileDir.mkdirs()
+        ant.propertyfile (file: versionInfoFile) {
+            ant.entry(key:'buildNumber',value:env.BUILD_NUMBER)
+            ant.entry(key:'buildId',value:env.BUILD_ID)
+            ant.entry(key:'buildTag',value:env.BUILD_TAG)
+            ant.entry(key:'buildUrl',value:env.BUILD_URL)
+            ant.entry(key:'jobName',value:env.JOB_NAME)
+            ant.entry(key:'gitBranch',value:convertGitBranch(env.GIT_BRANCH))
+            ant.entry(key:'gitCommit',value:env.GIT_COMMIT)
+            ant.entry(key:'dateTime',value:startDateTimeString)
+            ant.entry(key:'displayVersion',value:displayVersion)
+            ant.entry(key:'engineVersion',value:version)
+        }
+    }
+}
+
+jar.dependsOn createVersionInfoFile
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// General IDE customization                                                                                         //
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+idea {
+    module {
+        // Add development "dev" dir
+        sourceDirs += sourceSets.dev.allJava.srcDirs
+
+        // Change around the output a bit
+        inheritOutputDirs = false
+        outputDir = file('build/classes')
+        testOutputDir = file('build/testClasses')
+    }
+}
+// The PC facade is responsible for the primary distribution - a plain Java application runnable on PCs
+
+// Grab all the common stuff like plugins to use, artifact repositories, code analysis config
+apply from: "$rootDir/config/gradle/common.gradle"
+
+import org.apache.tools.ant.filters.FixCrLfFilter
+import java.text.SimpleDateFormat;
+
+def dateTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
+dateTimeFormat.timeZone = TimeZone.getTimeZone("UTC")
+
+ext {
+    // Default path to store server data if running headless via Gradle
+    localServerDataPath = 'terasology-server'
+
+    // General props
+    mainClassName = 'org.terasology.engine.Terasology'
+    subDirLibs = 'libs'
+    templatesDir = new File(rootDir, 'templates')
+    rootDirDist = new File(rootDir, 'build/distributions')
+
+    // Read environment variables, including variables passed by jenkins continuous integration server
+    env = System.getenv()
+
+    // Version related
+    startDateTimeString = dateTimeFormat.format(new Date())
+    versionFileName = 'VERSION'
+    versionBase = new File(templatesDir, "version.txt").text.trim()
+    displayVersion = versionBase
+}
+
+dependencies {
+    compile project(':engine')
+}
+
+// Change the output dir
+sourceSets {
+    main {
+        java {
+            output.classesDir 'build/classes'
+        }
+        output.resourcesDir 'build/classes'
+    }
+}
+
+// Instructions for packaging a jar file for the PC facade
+jar {
+    manifest {
+        //TODO: Maybe later add the engine's version number into here?
+        def manifestClasspath = "$subDirLibs/" + configurations.runtime.collect { it.getName() }.join(" $subDirLibs/")
+        attributes("Main-Class": mainClassName, "Class-Path" : manifestClasspath, "Implementation-Title": "Terasology-" + project.name, "Implementation-Version": env.BUILD_NUMBER + ", " + env.GIT_BRANCH + ", " + env.BUILD_ID)
+    }
+}
+
+task runPC(type:JavaExec) {
+    description = "Run 'Terasology' to play the game as a standard PC application"
+
+    // Dependencies: natives + all modules & the PC facade itself (which will trigger the engine)
+    dependsOn rootProject.extractNatives
+    dependsOn rootProject.moduleClasses
+    dependsOn classes
+
+    // Run arguments
+    main = mainClassName
+    workingDir = rootDir
+    String[] runArgs = ["-homedir"]
+    args runArgs
+
+    // Classpath: PC itself, engine classes, engine dependencies. Not modules or natives since the engine finds those
+    classpath sourceSets.main.output.classesDir
+    classpath project(':engine').sourceSets.main.output.classesDir
+    classpath project(':engine').configurations.runtime
+}
+
+task startServer(type:JavaExec) {
+    description "Starts a headless multiplayer server with data stored in [project-root]/$localServerDataPath"
+
+    // Dependencies: natives + all modules & the PC facade itself (which will trigger the engine)
+    dependsOn rootProject.extractNatives
+    dependsOn rootProject.moduleClasses
+    dependsOn classes
+
+    // Run arguments
+    main = mainClassName
+    workingDir = rootDir
+    String[] runArgs = ["-headless", "-homedir=$localServerDataPath"]
+    args runArgs
+
+    // Classpath: PC itself, engine classes, engine dependencies. Not modules or natives since the engine finds those
+    classpath sourceSets.main.output.classesDir
+    classpath project(':engine').sourceSets.main.output.classesDir
+    classpath project(':engine').configurations.runtime
+}
+
+// Preps a version file to bundle with PC dists. This eventually goes into the root of a zip file
+task createVersionFile(type: Copy) {
+    inputs.property('dateTime', startDateTimeString)
+    onlyIf { env.BUILD_URL != null }
+    from templatesDir
+    into "$buildDir"
+    include versionFileName
+    expand(buildNumber: env.BUILD_NUMBER, buildUrl: env.BUILD_URL, gitBranch: env.GIT_BRANCH, dateTime: startDateTimeString, displayVersion: displayVersion)
+    filter(FixCrLfFilter, eol:FixCrLfFilter.CrLf.newInstance("crlf"))
+}
+
+// Main application dist target. Does NOT include any modules.
+task distApp (type: Sync) {
+    description = "Creates an application package for distribution"
+
+    dependsOn createVersionFile
+    dependsOn rootProject.extractNatives
+    dependsOn jar
+
+    into ("$distsDir/app")
+    from ("$rootDir/Heightmap.txt") {}
+    from ("$rootDir/README.markdown") {
+        filter(FixCrLfFilter, eol:FixCrLfFilter.CrLf.newInstance("crlf"))
+        rename('README.markdown', 'README')
+    }
+    from ("$rootDir/LICENSE") {
+        filter(FixCrLfFilter, eol:FixCrLfFilter.CrLf.newInstance("crlf"))
+    }
+    from ("$rootDir/NOTICE") {
+        filter(FixCrLfFilter, eol:FixCrLfFilter.CrLf.newInstance("crlf"))
+    }
+    from ("build/libs/PC.jar") {
+        rename 'PC.*', 'Terasology.jar'
+    }
+    from('launchScripts') {
+        exclude('*.xml')
+        exclude('TeraEd.exe')
+    }
+    from("$buildDir/$versionFileName") {}
+
+    into(subDirLibs) {
+        from configurations.runtime
+        from project(':engine').jar
+    }
+    into(dirNatives) {
+        from "$rootDir/$dirNatives"
+    }
+}
+
+// This is a TEMPORARY tweak to make "changing" dependencies always ('0') check for newer snapshots available
+// TODO: Remove this when versioning and promotion works fully, then we shouldn't care about snapshots normally anyway
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds'
+}
+
+// Distribute modules - with the option to provide a list of additional modules to include as dependencies
+// Note how in a local developer workspace this might grab more than Core, but in Jenkins always only Core
+// Example command including additional modules: gradlew -PextraModules="Signalling,BlockNetwork"
+task distModules (type: Sync) {
+    description = "Prepares modules for distribution"
+    //dependsOn distApp
+    dependsOn rootProject.moduleJars
+
+    // So this is probably a hack, but it works ;-) It does not work if it is in distApp, default "into" quirk ?
+    into("$distsDir/app/modules")
+    rootProject.terasologyModules().each {
+        from "$rootDir/modules/${it.name}/build/libs"
+        include "*.jar"
+    }
+
+    // If the execution was supplied with an extraModules property then include those modules as well
+    if (project.hasProperty('extraModules')) {
+        extraModules.split(',').each { String dependency ->
+            println "Extra module: " + dependency
+
+            // See if the supplied extra already exists in the local workspace, in that case don't add it again
+            if (findProject(':modules:' + dependency) != null) {
+                println "Found supplied extra $dependency already present in local workspace, ignoring"
+            } else {
+                dependencies {
+                    // TODO: When version handling and promotion is in then we can probably remove "changing"
+                    compile group: 'org.terasology.modules', name: dependency, version: '+', changing: true
+                }
+            }
+        }
+
+        // Note: This causes early resolution of artifacts! Can mess with order of execution/classpath and cause issues
+        // Example: gradlew distApp copyModules -PextraModules="Signalling" fails due to to lacking engine on classpath
+        // But the error goes away if either distApp is removed or this following statement isn't reached
+        configurations.compile.resolvedConfiguration.resolvedArtifacts.each { ResolvedArtifact artifact ->
+            def id = artifact.moduleVersion.id
+            if (id.group == 'org.terasology.modules') {
+                println "Remotely resolved $id.group - $id.name at version $id.version"
+                from artifact.file
+                into("$distsDir/app/modules")
+            }
+        }
+    }
+}
+
+task distAppZip (type: Zip) {
+    from "$distsDir/app"
+    baseName = "Terasology"
+}
+
+task distForLauncher (type: Sync) {
+
+    into rootDirDist
+    from distAppZip
+
+    into ("../resources/main/org/terasology/version") {
+        from ("$rootDir/engine/build/classes/org/terasology/version") {
+            include ('versionInfo.properties')
+        }
+    }
+}
+
+// Prep an IntelliJ module for the facade
+idea {
+    module {
+        // Change around the output a bit
+        inheritOutputDirs = false
+        outputDir = file('build/classes')
+        testOutputDir = file('build/testClasses')
+    }
+}
+
+task copyEclipseLauncher(type: Copy) {
+	from "$rootDir/config/eclipse"
+	into projectDir
+	include("Terasology.launch")
+}
+
+tasks.eclipse {
+	dependsOn copyEclipseLauncher
+	dependsOn rootProject.extractNatives
+}
+
+cleanEclipse.doLast {
+    new File(projectDir, "Terasology.launch").delete()
+}
+// Simple build file for modules - the one under the Core module is the template, will be copied as needed to modules
+
+// Git plugin details at https://github.com/ajoberstar/gradle-git
+import org.ajoberstar.gradle.git.tasks.*
+
+// Grab all the common stuff like plugins to use, artifact repositories, code analysis config
+apply from: "$rootDir/config/gradle/common.gradle"
+
+import groovy.json.JsonSlurper
+
+ext {
+    // Read environment variables, including variables passed by jenkins continuous integration server
+    env = System.getenv()
+}
+
+// TODO: Move this Gitty stuff off to the common.gradle under config as well?
+// The special build script section here ties dependencies to running the Gradle script itself
+buildscript {
+
+    // This needs to be in here as well for some reason - can't just inherit?
+    repositories {
+        mavenCentral()
+    }
+
+    // Dependencies at build script level
+    dependencies {
+        // Git plugin for Gradle
+        classpath 'org.ajoberstar:gradle-git:0.6.3'
+    }
+}
+
+
+def moduleDepends = [];
+def moduleFile = file('module.txt')
+
+// Really the module file should always exist if the module was correctly created or cloned using Gradle
+if (!moduleFile.exists()) {
+    println "Y U NO EXIST MODULE.TXT!"
+    throw new GradleException("Failed to find module.txt for " + project.name)
+// Otherwise, retrieve dependencies information from it
+} else {
+    //println "Scanning for dependencies in module.txt for " + project.name
+    def slurper = new JsonSlurper()
+    def moduleConfig = slurper.parseText(moduleFile.text)
+    for (dependency in moduleConfig.dependencies) {
+        if (dependency.id != 'engine') {
+            moduleDepends += dependency.id
+        }
+    }
+
+    // Gradle uses the magic version variable when creating the jar name (unless explicitly set somewhere else I guess)
+    version = moduleConfig.version
+
+    // Jenkins-Artifactory integration catches on to this as part of the Maven-type descriptor
+    group = 'org.terasology.modules'
+
+    // Check to see if we're running in Jenkins and in that case attach a snapshot+job build number
+    if (env.BUILD_NUMBER != null) {
+        version += '-SNAPSHOT+' + env.BUILD_NUMBER
+    }
+}
+
+// Set dependencies. Note that the dependency information from module.txt is used for other Terasology modules
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.10'
+    testCompile group: 'org.mockito', name: 'mockito-all', version: '1.9.0'
+    testCompile group: 'org.jboss.shrinkwrap', name: 'shrinkwrap-depchain-java7', version: '1.1.3'
+
+    // For reading logback.groovy when running unit tests. Excessive just for a config file?
+    testRuntime group: 'org.codehaus.groovy', name: 'groovy', version: '2.1.7'
+
+    println "Dependencies for " + project.name + " will be engine and potentially more on any following lines:"
+    moduleDepends.each {
+        println " + module dependency " + it
+    }
+
+    // Check to see if this module is not the root Gradle project - if so we are in a multi-project workspace
+    if (project.name != project(':').name) {
+        // Dependency on the engine itself (actually its built jar file)
+        compile project(':engine')
+
+        // Unit tests for the engine have been split out into their own sub-project (eases some config)
+        testCompile project(':engine-tests')
+
+        // If the module has dependencies on other modules we look in a few different spots to find them
+        if (moduleDepends.size() > 0) {
+            println "We're in a local multi-project workspace so will look for dependencies there first, then Artifactory"
+        }
+
+        for (dependency in moduleDepends) {
+
+            File wouldBeSrcPath = new File(rootDir, 'modules/' + dependency)
+
+            // TODO: module jars with version info (maybe supplied by user) won't match. Artifactory fetches get renamed
+            File wouldBeModuleJar = new File(rootDir, 'modules/' + dependency + '.jar')
+
+            //println "Scanning for source module at: " + wouldBeSrcPath.getAbsolutePath()
+            //println "Or local module jar: " + wouldBeModuleJar.getAbsoluteFile()
+
+            // First see if we have an actual source module project in the Gradle project tree (user addModule'ed it)
+            if (wouldBeSrcPath.exists()) {
+                //TODO: This is fragile, of course, and will hit problems with corrupt module directories (empty dir)
+
+                println "Found " + wouldBeSrcPath.getAbsolutePath() + ", setting a direct project dependency"
+                compile project(':modules:' + dependency)
+
+            } else if (wouldBeModuleJar.exists()) {
+
+                // Alternatively might find the dependency in the modules dir as a binary (manually placed or fetched)
+                println "Found " + wouldBeModuleJar.getAbsoluteFile() + ", it will be included via file dependency"
+
+                compile files(wouldBeModuleJar)
+
+                // Knowing that the jar is in /modules we know it'll be available at runtime
+                // If the user later adds a source version it'll override this binary naturally
+
+            } else {
+                println "*** Unsatisfied local dependency for module " + project.name + ": " + dependency
+                // The '+' is satisfied by any version. "changing" triggers better checking for updated snapshots
+                // TODO: When version handling and promotion is in then we can probably ignore snapshots in normal cases
+                compile(group: 'org.terasology.modules', name: dependency, version: '+', changing: true)
+
+                // NOTE: Referencing resolvedArtifacts actually resolves the involved artifacts at this time (early)
+                configurations.compile.resolvedConfiguration.resolvedArtifacts.each { ResolvedArtifact artifact ->
+                    def id = artifact.moduleVersion.id
+                    if (id.group == 'org.terasology.modules') {
+                        println "Remotely resolved $id.group - $id.name at version $id.version"
+
+                        // This copies the jar from the Gradle cache to the game's module dir for runtime usage
+                        wouldBeModuleJar.createNewFile()
+                        wouldBeModuleJar << artifact.file.bytes
+                        // After this has run the next execution will match the local binary case instead
+
+                        // TODO: Make the project clean task delete such transient module jars? They'll re-resolve
+                    }
+                }
+            }
+        }
+    } else {
+        println "We're in a single-project workspace (probably Jenkins) so will look elsewhere for everything"
+
+        // In Jenkins we can expect to have a sort of "project harness" dumped into a libs dir (engine, engine libs ..)
+        compile fileTree(dir: 'libs', include: '*.jar', exclude: 'engine.tests-*.jar')
+        testCompile fileTree(dir: 'libs', include: 'engine.tests-*.jar')
+
+        // To get Terasology module dependencies we simply declare them against Artifactory and wait - no runtime need
+        moduleDepends.each {
+            println "*** Attempting to fetch dependency module from Artifactory: " + project.name + ": " + it
+            // The '+' is satisfied by any version
+            compile(group: 'org.terasology.modules', name: it, version: '+')
+        }
+    }
+}
+
+// Generate the module directory structure if missing
+task createSkeleton() {
+    mkdir('assets')
+    mkdir('assets/animations')
+    mkdir('assets/blocks')
+    mkdir('assets/blockTiles')
+    mkdir('assets/fonts')
+    mkdir('assets/materials')
+    mkdir('assets/mesh')
+    mkdir('assets/music')
+    mkdir('assets/prefabs')
+    mkdir('assets/shaders')
+    mkdir('assets/shapes')
+    mkdir('assets/skeletalMesh')
+    mkdir('assets/sounds')
+    mkdir('assets/textures')
+    mkdir('src/main/java')
+    mkdir('src/test/java')
+}
+
+// This task syncs everything in the assets dir into the output dir, used when jarring the module
+task syncAssets(type: Sync) {
+    from 'assets'
+    into 'build/classes/assets'
+}
+
+// Change the output dir of each module
+sourceSets {
+    main {
+        java {
+            output.classesDir 'build/classes'
+        }
+    }
+}
+
+// Instructions for packaging a jar file - is a manifest even needed for modules?
+jar {
+    // Make sure the assets directory is included
+    dependsOn syncAssets
+
+    // Jarring needs to copy module.txt and all the assets into the output
+    doFirst {
+        copy {
+            from 'module.txt'
+            into 'build/classes'
+        }
+    }
+}
+
+// Prep an IntelliJ module for the Terasology module - yes, might want to read that twice :D
+idea {
+    module {
+        // Change around the output a bit
+        inheritOutputDirs = false
+        outputDir = file('build/classes')
+        testOutputDir = file('build/testClasses')
+    }
+}
+
+// For Eclipse just make sure the classpath is right
+eclipse {
+    classpath {
+        defaultOutputDir = file('build/classes')
+    }
+}
+
+// Utility task to update the module (except Core) via Git - not tested with local changes present, may cause trouble
+task (updateModule, type: GitPull)  {
+    description = 'Updates source for the module from its home (most likely GitHub)'
+
+    // Base whether the task executes on two things
+    // 1 - we actually asked for it ("gradlew updateModule") - otherwise we don't want it to run
+    // 2 - this is not the Core module, which lives with the engine and needs no updates
+    boolean enabled = "updateModule" in project.gradle.startParameter.taskNames && !project.name.equals("Core")
+    // TODO: Used to cheat with declaring tasks using << but that defers everything (including config) to execution phase
+    // Some tasks do not work that way, this one would ALWAYS go with default (root git repo) in that case
+    // Probably should go through other stuff and use this strategy instead of <<
+
+    // Only if we asked for it (and not Core) do we actually configure the repo path and log that we're updating
+    if (enabled) {
+
+        // This is the Git repo we're actually using - projectDir is specific to the executing project, a.k.a. module whatever
+        // If not enabled the default is the root project's Git dir, which is a valid Git dir
+        // However in the case of Core we'd be setting ain invalid Git dir which causes fail - so this avoids that
+        repoPath = projectDir
+
+        println "Pulling updates via Git to " + getRepoDir() + ", if dependencies change run Gradle again (like 'gradlew idea')"
+    }
+}

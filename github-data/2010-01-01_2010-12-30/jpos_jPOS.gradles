@@ -1,0 +1,601 @@
+apply from: 'jpos/libraries.gradle'
+
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+    apply plugin: 'maven'
+    apply plugin: 'signing'
+    apply plugin: 'pmd'
+
+    group = 'org.jpos'
+    version = '1.9.7-SNAPSHOT'
+    [ compileJava, compileTestJava, javadoc ]*.options*.encoding = 'UTF-8'
+    def isSnapshot = version.contains("SNAPSHOT")
+    def mavenCentralRepo = isSnapshot ?
+        'https://oss.sonatype.org/content/repositories/snapshots/' : 
+        'https://oss.sonatype.org/service/local/staging/deploy/maven2';
+
+    sourceCompatibility = 1.6
+    targetCompatibility = 1.6
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url 'http://download.oracle.com/maven' }
+        maven { url 'http://jline.sourceforge.net/m2repo' }
+    }
+    if (project.hasProperty("lint")) {
+      // gradle -Plint ...
+      tasks.withType(JavaCompile) {
+        options.compilerArgs << "-Xlint" 
+      } 
+    }
+
+    if (JavaVersion.current().isJava8Compatible()) {
+        tasks.withType(Javadoc) {
+          options.addStringOption('Xdoclint:none', '-quiet')
+        }
+    }
+
+    def pomConfig = {
+        name 'jPOS Project'
+        description """
+    jPOS is an ISO-8583 based financial transaction 
+    library/framework that can be customized and 
+    extended in order to implement financial interchanges.
+  """
+        url 'http://jpos.org'
+        inceptionYear '1998'
+        organization {
+            name 'jPOS.org'
+            url 'http://jpos.org'
+        }
+        issueManagement {
+            system 'YouTrack'
+            url 'https://jpos.org/issues'
+        }
+        scm {
+            url "http://github.com/jpos/jPOS"
+            connection "scm:git:https://github.com/jpos/jPOS.git"
+            developerConnection "scm:git:git@github.com:jpos/jPOS.git"
+        }
+        licenses {
+            license {
+                name 'GNU AFFERO GENERAL PUBLIC LICENSE'
+                url 'http://www.gnu.org/licenses/agpl-v3.html'
+                comments 'See http://jpos.org/license for more details.'
+                distribution 'repo'
+            }
+        }
+        developers {
+            developer {
+                id 'jpos-team'
+                name 'jPOS Development Team'
+                email 'info@jpos.org'
+            }
+        }
+    }
+    signing {
+        required { !isSnapshot }
+        sign configurations.archives
+    }
+    configure(install.repositories.mavenInstaller) {
+        pom.project pomConfig
+    }
+    uploadArchives {
+        repositories {
+            mavenDeployer {
+                pom.project pomConfig
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+                /*
+                repository(url: mavenCentralRepo) {
+                    authentication(userName: mavenCentralUsername, password: mavenCentralPassword)
+                }
+                */
+                repository(url: 'file:///opt/local/maven')
+            }
+        }
+    }
+}
+
+subprojects  {
+    configurations.compile.transitive = true
+    javadoc.failOnError = false
+    pmd.ignoreFailures = true
+}
+
+task aggregatedJavadoc (type: Javadoc, description: "Aggregated Javadocs") { 
+    source subprojects.collect {project -> 
+        project.sourceSets.main.allJava 
+    } 
+    destinationDir = new File(buildDir, 'docs/javadoc') 
+    classpath = files(subprojects.collect {project -> 
+        project.sourceSets.main.compileClasspath}) 
+    failOnError = false
+} 
+
+task wrapper( type: Wrapper ) {
+    gradleVersion = '1.9'
+}
+
+// Configure IDEA to use Git
+idea.project.ipr {
+  withXml { provider ->
+    provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping.@vcs = 'Git'
+  }
+}
+
+
+dependencies {
+    compile project(':jpos')
+    compile "log4j:log4j:1.2.16"
+}
+
+tasks.withType(JavaCompile) {
+  options.compilerArgs << "-Xlint:none"
+}
+apply plugin: 'groovy'
+apply plugin: 'idea'
+
+import org.jpos.buildtools.docs.DocbookPdf
+import org.jpos.buildtools.docs.DocbookHtml
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+task copySources(type: Sync) {
+    from "${projectDir}/src/asciidoc"
+    into "${buildDir}/docbook/source/"
+}
+
+task copyWebResources(type: Sync) {
+    from "${projectDir}/src/asciidoc"
+    include "images/**"
+    include "css/**"
+    into "${buildDir}/docbook/html/"
+}
+
+task a2x(dependsOn: copySources) << {
+    def inFile = "${buildDir}/docbook/source/master.asc"
+    def outFile = "${buildDir}/docbook/source/master.xml"
+    def cmd = "asciidoctor --safe -a docinfo -a lang=en -d book -b docbook5 -o ${outFile} ${inFile}"
+    def proc = cmd.execute(null, file(inFile).parentFile)
+    proc.in.eachLine { line -> println line }
+    proc.err.eachLine {line -> println 'ERROR: '+line }
+    proc.waitFor()
+}
+
+task createPdf(type: DocbookPdf) {
+    setDescription('Generates PDF docbook output.')
+    extension = 'fo'
+    dependsOn a2x
+    sourceFileName 'master.xml'
+    sourceDirectory "${buildDir}/docbook/source/" as File
+    docsDir "${buildDir}/docbook/pdf/" as File
+    stylesheet "${projectDir}/src/xslt/fo.xsl" as File
+}
+
+task createHtml(type: DocbookHtml) {
+    setDescription('Generates HTML docbook output.')
+    dependsOn a2x,copyWebResources
+    sourceFileName "master.xml"
+    sourceDirectory "${buildDir}/docbook/source/" as File
+    docsDir "${buildDir}/docbook/html/" as File
+    stylesheet "${projectDir}/src/xslt/html.xsl" as File
+}
+
+task viewHtml (dependsOn: createHtml, description: 'Open HTML docbook outout in default browser') << {
+    Class.forName("java.awt.Desktop").newInstance().browse(
+        new File("${buildDir}/docbook/html", 'master.html').toURI())
+}
+
+task viewPdf (dependsOn: createPdf , description: 'Open PDF docbook outout in default viewer') << {
+    Class.forName("java.awt.Desktop").newInstance().browse(
+        new File("${buildDir}/docbook/pdf", this.project.rootProject.name + '.pdf').toURI())
+}
+
+apply plugin: 'groovy'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+dependencies {
+    //noinspection GroovyAssignabilityCheck
+    def fopDeps = ['org.apache.xmlgraphics:fop:1.0@jar',
+            'org.apache.xmlgraphics:xmlgraphics-commons:1.4',
+            'org.apache.xmlgraphics:batik-bridge:1.7@jar',
+            'org.apache.xmlgraphics:batik-util:1.7@jar',
+            'org.apache.xmlgraphics:batik-css:1.7@jar',
+            'org.apache.xmlgraphics:batik-dom:1.7',
+            'org.apache.xmlgraphics:batik-parser:1.7',
+            'org.apache.xmlgraphics:batik-anim:1.7',
+            'org.apache.xmlgraphics:batik-script:1.7',
+            'org.apache.xmlgraphics:batik-svg-dom:1.7@jar',
+            'org.apache.avalon.framework:avalon-framework-api:4.3.1']
+
+    compile localGroovy()
+    compile 'xerces:xercesImpl:2.10.0',
+            'xml-resolver:xml-resolver:1.2',
+            'saxon:saxon:6.5.3',
+            fopDeps,
+            'docbook:docbook-xml:4.5',
+            'net.sf.xslthl:xslthl:2.1.0',
+            'net.sf.docbook:docbook-xsl:1.76.1:ns-resources@zip',
+            'net.sf.docbook:docbook-xsl-saxon:1.0.0',
+            gradleApi()
+
+}
+
+apply plugin: 'osgi'
+
+dependencies {
+    compile libraries.jdom
+    compile libraries.jdbm
+    compile libraries.sleepycat_je
+    compile libraries.commons_cli
+    compile libraries.jline
+    compile libraries.beanshell
+    compile libraries.javatuples
+    compile libraries.xerces
+
+    // compile 'org.apache.felix:org.apache.felix.framework:4.2.1'
+    compile( "org.osgi:org.osgi.core:4.3.1" )
+    testCompile "org.hamcrest:hamcrest-core:1.3"
+    testCompile "org.hamcrest:hamcrest-library:1.3"
+    testCompile("org.mockito:mockito-all:1.9.0") {
+        exclude(module: 'hamcrest-core')
+    }
+    testCompile("junit-addons:junit-addons:1.4") {
+        exclude(module: 'junit')
+	exclude(module: 'xmlParserAPIs')
+        exclude(module: 'hamcrest-core')
+    }
+    testCompile "org.easytesting:fest-assert:1.4"
+    testCompile "xmlunit:xmlunit:1.3"
+    testCompile("junit:junit-dep:4.10") {
+        exclude(module: 'hamcrest-core')
+    }
+}
+
+def archiveJarName="${project.name}-${project.version}.jar"
+def jposCopySpec = copySpec {
+    def cfg = new Properties()
+    def target = project.hasProperty('target') ? target : 'devel'
+    cfg.put('jarname', archiveJarName.toString())
+    cfg.put('target', target.toString())
+    File cfgFile = file("${target}.properties")
+    if (cfgFile.exists()) {
+        cfgFile.withInputStream{
+            cfg.load(it);   
+        }
+    }
+    from(file("src/dist")) {
+        exclude 'cfg/*.jks'
+        exclude 'cfg/*.ks'
+        filter(
+            org.apache.tools.ant.filters.ReplaceTokens, 
+            tokens: cfg
+        )
+    }
+    from(file("src/dist")) {
+        include 'cfg/*.ks'
+        include 'cfg/*.jks'
+    }
+    from(jar) {
+        rename archiveJarName, "${cfg.jarname}"
+    }
+    into("lib") {
+        from(configurations.runtime)
+    }
+}
+
+def bundleVendor='jPOS.org'
+def bundleDescription="jPOS ${project.version}"
+def bundleActivator = 'org.jpos.q2.Activator'
+def bundleImportPackage = 'javax.crypto,javax.crypto.spec,javax.management,javax.naming,javax.net.ssl,javax.security.cert,javax.swing,javax.swing.border,javax.swing.event,javax.swing.table,javax.swing.text,javax.swing.text.html,javax.swing.tree,javax.xml.transform,javax.xml.transform.stream,org.osgi.framework;version="[1.6,2)",org.osgi.framework.launch;version="[1.0,2)",org.w3c.dom,org.xml.sax,org.xml.sax.helpers,org.xml.sax.ext'
+def bundleExportPackage = 'org.jpos.bsh,org.jpos.core,org.jpos.iso,org.jpos.iso.channel,org.jpos.iso.filter,org.jpos.iso.gui,org.jpos.iso.header,org.jpos.iso.packager,org.jpos.iso.validator,org.jpos.q2,org.jpos.q2.cli,org.jpos.q2.install,org.jpos.q2.iso,org.jpos.q2.qbean,org.jpos.q2.security,org.jpos.q2.ui,org.jpos.security,org.jpos.security.jceadapter,org.jpos.space,org.jpos.tlv,org.jpos.transaction,org.jpos.transaction.gui,org.jpos.transaction.participant,org.jpos.ui,org.jpos.ui.action,org.jpos.ui.factory,org.jpos.util'
+
+task listJars << {
+    configurations.testCompile.each { File file -> println file.name }
+}
+ 
+jar () {
+    manifest {
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Main-Class': 'org.jpos.q2.Q2',
+                   'Class-Path': manifestClasspath
+        instruction 'Bundle-Vendor', bundleVendor
+        instruction 'Bundle-Description', bundleDescription
+        // instruction 'Include-Resource', configurations.runtime.collect { 'lib/' + it.getName() }.join(' ')
+        instruction 'Bundle-Activator', bundleActivator
+        instruction 'Import-Package', bundleImportPackage
+        instruction 'Export-Package', bundleExportPackage
+    } 
+}
+
+task bundleFull (type: Jar) {
+    dependsOn jar
+    classifier = 'bundle-full'
+    from sourceSets.main.output.classesDir, sourceSets.main.output.resourcesDir
+    manifest = osgiManifest {
+        classesDir = sourceSets.main.output.classesDir
+        classpath = sourceSets.main.runtimeClasspath
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Main-Class': 'org.jpos.q2.Q2',
+                   'Class-Path': manifestClasspath
+        // instruction 'Include-Resource', configurations.runtime.collect { 'lib/' + it.getName() }.join(' ')
+        instruction 'Bundle-Vendor', bundleVendor
+        instruction 'Bundle-Description', bundleDescription + ' full'
+        // instruction 'Include-Resource', configurations.runtime.collect { 'lib/' + it.getName() }.join(' ')
+        instruction 'Bundle-Activator', bundleActivator
+        instruction 'Import-Package', bundleImportPackage
+        instruction 'Export-Package', bundleExportPackage
+        instruction 'Bundle-ClassPath', '.,' + configurations.runtime.collect { "lib/" + it.getName() }.join(',')
+    } 
+    into ('lib') {
+        from configurations.runtime {
+            exclude 'org.osgi.core*.jar'
+        }
+    }
+}
+
+task sourceJar( type: Jar ) {
+    classifier = "sources"
+    from sourceSets.main.allSource
+}
+
+
+task javadocJar (type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from new File(project.buildDir, 'docs/javadoc')
+}
+
+artifacts {
+    archives sourceJar, javadocJar, bundleFull
+}
+
+task dist (type: Tar) { 
+    dependsOn 'assemble', 'sourceJar'
+    compression = Compression.GZIP
+    includeEmptyDirs true
+    with jposCopySpec
+    into "jpos-$version"
+}
+
+task version (type: JavaExec, dependsOn: classes) {
+    description = "Display jPOS Version"
+    main = 'org.jpos.q2.Q2'
+    args = "--version".split().toList()
+    classpath sourceSets.main.runtimeClasspath, configurations.runtime
+}
+
+class GitRevisionTask extends DefaultTask
+{
+    @InputFile @Optional
+    File gitHead
+    boolean gotHead
+
+    File getRefFile()
+    {
+        return new File(gitHead.parent,gitHead.text.replace('ref: ', '').trim())
+    }
+
+    @OutputFile
+    File outputFile
+
+    @TaskAction
+    public void writeFile()
+    {
+        Properties props=new Properties()
+        if (gotHead) {
+            File ref=getRefFile()
+            if (ref.exists()) {
+                props.put("branch",ref.getName())
+                props.put("revision",ref.text.substring(0,7))
+            } else {
+                props.put("branch", "detached");
+                props.put("revision", gitHead.text.substring(0,7))
+            }
+        } else {
+            props.put("branch", "unknown");
+            props.put("revision", "unknown");
+        }
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+class BuildTimestampTask extends DefaultTask {
+    // We don't want to declare @OutputFile, we need a fresh timestamp on every run
+    File outputFile
+
+    @TaskAction
+    public void writeFile() {
+        new File(outputFile.parent).mkdirs()
+        Properties props=new Properties()
+        props.put("version", project.version);
+        props.put("buildTimestamp", new Date().format("yyyy-MM-dd HH:mm:ss z"));
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+task createRevisionPropertyFile(type: GitRevisionTask) {
+    gitHead = "$rootDir/.git/HEAD" as File
+    gotHead = gitHead.exists()
+    if (!gotHead)
+        gitHead = null;
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/q2/revision.properties" as File
+}
+
+task createBuildTimestampPropertyFile(type: BuildTimestampTask) {
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/q2/buildinfo.properties" as File
+}
+
+processResources.dependsOn createBuildTimestampPropertyFile, createRevisionPropertyFile
+
+task installApp(type: Sync) {
+    description 'Installs jPOS based application'
+    into { file("${project.buildDir}/install/${project.name}") }
+    with jposCopySpec
+}
+
+apply plugin: 'osgi'
+
+dependencies {
+    compile "commons-cli:commons-cli:1.2"
+    compile 'org.apache.felix:org.apache.felix.framework:4.2.1'
+    // compile( "org.osgi:org.osgi.core:4.3.1" )
+}
+
+def archiveJarName="${project.name}-${project.version}.jar"
+def jposCopySpec = copySpec {
+    def cfg = new Properties()
+    def target = project.hasProperty('target') ? target : 'devel'
+    cfg.put('jarname', archiveJarName.toString())
+    cfg.put('target', target.toString())
+    File cfgFile = file("${target}.properties")
+    if (cfgFile.exists()) {
+        cfgFile.withInputStream{
+            cfg.load(it);   
+        }
+    }
+    from(file("src/dist")) {
+        exclude 'cfg/*.jks'
+        filter(
+            org.apache.tools.ant.filters.ReplaceTokens, 
+            tokens: cfg
+        )
+    }
+    from(file("src/dist")) {
+        include 'cfg/*.jks'
+    }
+    from(jar) {
+        rename archiveJarName, "${cfg.jarname}"
+    }
+    into("lib") {
+        from(configurations.runtime)
+    }
+}
+
+task listJars << {
+    configurations.testCompile.each { File file -> println file.name }
+}
+ 
+jar () {
+    manifest {
+        def manifestClasspath = configurations.runtime.collect { "lib/" + it.getName() }.join(' ') 
+        attributes 'Implementation-Title': 'jPOS', 
+                   'Implementation-Version': version,
+                   'Main-Class': 'org.jpos.qnode.QNode',
+                   'Class-Path': manifestClasspath
+        instruction 'Bundle-Vendor', 'jPOS.org'
+        instruction 'Bundle-Description', "jPOS ${project.version}"
+    } 
+}
+
+task sourceJar( type: Jar ) {
+    classifier = "sources"
+    from sourceSets.main.allSource
+}
+
+task javadocJar (type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from new File(project.buildDir, 'docs/javadoc')
+}
+
+artifacts {
+    archives sourceJar, javadocJar
+}
+
+task dist (type: Tar) { 
+    dependsOn 'assemble', 'sourceJar'
+    compression = Compression.GZIP
+    includeEmptyDirs true
+    with jposCopySpec
+    into "jpos-$version"
+}
+
+task version (type: JavaExec, dependsOn: classes) {
+    description = "Display jPOS Version"
+    main = 'org.jpos.qnode.QNode'
+    args = "--version".split().toList()
+    classpath sourceSets.main.runtimeClasspath, configurations.runtime
+}
+
+class GitRevisionTask extends DefaultTask
+{
+    @InputFile @Optional
+    File gitHead
+    boolean gotHead
+
+    File getRefFile()
+    {
+        return new File(gitHead.parent,gitHead.text.replace('ref: ', '').trim())
+    }
+
+    @OutputFile
+    File outputFile
+
+    @TaskAction
+    public void writeFile()
+    {
+        Properties props=new Properties()
+        if (gotHead) {
+            File ref=getRefFile()
+            if (ref.exists()) {
+                props.put("branch",ref.getName())
+                props.put("revision",ref.text.substring(0,7))
+            } else {
+                props.put("branch", "detached");
+                props.put("revision", gitHead.text.substring(0,7))
+            }
+        } else {
+            props.put("branch", "unknown");
+            props.put("revision", "unknown");
+        }
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+class BuildTimestampTask extends DefaultTask {
+    // We don't want to declare @OutputFile, we need a fresh timestamp on every run
+    File outputFile
+
+    @TaskAction
+    public void writeFile() {
+        new File(outputFile.parent).mkdirs()
+        Properties props=new Properties()
+        props.put("version", project.version);
+        props.put("buildTimestamp", new Date().format("yyyy-MM-dd HH:mm:ss z"));
+        props.store(new FileOutputStream(outputFile),"Revision Properties")
+    }
+}
+
+task createRevisionPropertyFile(type: GitRevisionTask) {
+    gitHead = "$rootDir/.git/HEAD" as File
+    gotHead = gitHead.exists()
+    if (!gotHead)
+        gitHead = null;
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/qnode/revision.properties" as File
+}
+
+task createBuildTimestampPropertyFile(type: BuildTimestampTask) {
+    outputFile = "$sourceSets.main.output.resourcesDir/org/jpos/qnode/buildinfo.properties" as File
+}
+
+processResources.dependsOn createBuildTimestampPropertyFile, createRevisionPropertyFile
+
+task installApp(type: Sync) {
+    description 'Installs jPOS based application'
+    into { file("${project.buildDir}/install/${project.name}") }
+    with jposCopySpec
+}
+

@@ -1,0 +1,1249 @@
+<?xml version="1.0"?>
+<project name="Arduino PDE" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="pde.jar" />
+  </target>
+
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../core/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../core/core.jar" />
+
+    <mkdir dir="bin" />
+
+    <!-- ant seems to nuke ${java.home} for some reason, pointing at the JRE
+	 subfolder instead of the actual JDK found at JAVA_HOME. 
+	 To avoid this, we grab the actual JAVA_HOME environment variable 
+	 and use that to specify the location of tools.jar. -->
+
+    <!-- if someone is better with ant please help clean this up -->
+    <property environment="env" />
+    <property name="java_home" value="${env.JAVA_HOME}" />
+
+    <condition property="linux"><os family="unix" /></condition>
+    <fail if="linux" unless="java_home" 
+	  message="The JAVA_HOME variable must be set to the location of a full JDK. For instance, on Ubuntu Linux, this might be /usr/lib/jvm/java-6-sun." />
+
+    <condition property="windows"><os family="windows" /></condition>
+    <fail if="windows" unless="java_home" 
+	  message="The JAVA_HOME variable must be set to the location of a full JDK. For instance, on Windows, this might be c:\jdk1.6.0_18." />
+
+<!--
+    <dirname property="blah" file="${java.home}" />
+    <echo message="here! ${java.home}/lib/tools.jar or there: ${blah}" />
+    <echo message="override ${env.JAVA_HOME}/lib/tools.jar" />
+    <fail />
+-->
+<!--
+    <javac target="1.5" 
+	   srcdir="src" 
+	   destdir="bin" 
+	   excludes="**/tools/format/**" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   debug="true"
+	   classpath="../core/core.jar; ${env.JAVA_HOME}/lib/tools.jar; lib/ant.jar; lib/ant-launcher.jar; lib/apple.jar; lib/ecj.jar; lib/jna.jar; lib/RXTXcomm.jar; lib/log4j-1.2.16.jar; lib/log4j.properties" />
+  </target>
+  -->
+  <javac target="1.6"
+	   source="1.6" 
+	   srcdir="src" 
+	   destdir="bin" 
+	   excludes="**/tools/format/**" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   debug="true"
+	   classpath="../core/core.jar; ${env.JAVA_HOME}/lib/tools.jar; lib/ant.jar; lib/ant-launcher.jar; lib/apple.jar; lib/ecj.jar; lib/jna.jar; lib/RXTXcomm.jar; lib/log4j-1.2.16.jar; lib/log4j.properties" />
+   </target>
+
+<target name="build" depends="compile" description="Build PDE">
+	  <jar basedir="bin" destfile="pde.jar" >
+		  <manifest>
+                <attribute name="Built-By" value="Rick Anderson"/>  
+                <attribute name="Main-Class" value="processing.app.Base"/>  
+                <attribute name="Class-Path" value="RXTXcomm.jar core.jar ecj.jar jna.jar log4j-1.2.16.jar pde.jar"/>  
+		  </manifest>
+	  </jar>
+  </target>
+
+</project>
+<?xml version="1.0"?>
+<project name="mpide" default="build">
+  <!--echo message="os.name = ${os.name}" /-->
+  <!--echo message="os.arch = ${os.arch}" /-->
+  <!--echo message="os.version = ${os.version}" /-->
+  <!-- Sets properties for macosx/windows/linux depending on current system -->
+    <property file="upload.properties"/>
+    <property name="aws.bucket" value="chipkit" />
+
+ <condition property="macosx"><os family="mac" /></condition>
+  <condition property="windows"><os family="windows" /></condition>
+  <condition property="linux"><os family="unix" /></condition>
+  <condition property="linux64"><os family="unix" arch="amd64" /></condition>
+
+<condition property="platform" value="macosx">
+	<os family="mac" />
+</condition>
+<condition property="platform" value="windows">
+	<os family="windows" />
+</condition>
+  <condition property="platform"  value="linux">
+	<os family="unix" arch="i386" />
+</condition>
+<condition property="platform" value="linux64">
+	<os family="unix" arch="amd64" />
+</condition>
+<condition property="platform" value="raspberrypi">
+	<os family="unix" arch="arm" />
+</condition>
+
+  <!-- set time propert -->  
+  <tstamp>
+    <format property="TODAY" pattern="yyyyMMdd" />
+  </tstamp>
+
+  <!-- Libraries required for running mpide -->
+  <fileset dir=".." id="runtime.jars">
+    <include name="core/core.jar" />
+    <include name="app/pde.jar" />
+    <include name="app/lib/ecj.jar" />
+    <include name="app/lib/jna.jar" />
+    <include name="app/lib/RXTXcomm.jar" />
+    <include name="app/lib/ant.jar" />
+    <include name="app/lib/ant-launcher.jar" />
+    <include name="app/lib/log4j-1.2.16.jar" />
+    <include name="app/lib/log4j.properties" />
+  </fileset>
+
+  <target name="build" description="Build mpide.">
+    <antcall target="${platform}-build" />
+  </target>
+
+  <target name="run" description="Run mpide.">
+    <antcall target="${platform}-run" />
+  </target>
+  
+  <target name="win-debug" description="Run mpide from Java." depends="build">
+      <java dir="./${platform}/work"
+          classpath="${platform}/work/lib:${platform}/work/lib/RXTXcomm.jar:${platform}/work/lib/core.jar:${platform}/work/lib/ecj.jar:${platform}/work/lib/jna.jar:${platform}/work/lib/log4j-1.2.16.jar:${platform}/work/lib/pde.jar"
+          fork="true"
+          jar="./${platform}/work/lib/pde.jar">
+    </java>
+  </target>
+
+   <target name="linux-debug" description="Run mpide from Java." depends="build">
+      <java dir="./${platform}/work"
+          classpath="${platform}/work/lib:${platform}/work/lib/RXTXcomm.jar:${platform}/work/lib/core.jar:${platform}/work/lib/ecj.jar:${platform}/work/lib/jna.jar:${platform}/work/lib/log4j-1.2.16.jar:${platform}/work/lib/pde.jar"
+          fork="true"
+          jar="./${platform}/work/lib/pde.jar">
+    </java>
+  </target>
+
+
+<target name="dist" depends="revision-check"
+	  description="Build mpide for distribution.">
+    <input message="Enter version number:" 
+	addproperty="version"
+	defaultvalue="${revision}" />
+
+    <antcall target="${platform}-dist" />
+</target>
+
+<target name="deb" depends="revision-check"
+      description="Build mpide for distribution.">
+    <input message="Enter version number:"
+    addproperty="version"
+    defaultvalue="${revision}" />
+    <antcall target="${platform}-deb" />
+</target>
+
+
+  <target name="dist-test" depends="revision-check"
+          description="Build mpide for distribution.">
+    <input message="Enter version number:"
+           addproperty="version"
+           defaultvalue="${revision}-${platform}-${TODAY}-test" />
+  <propertyfile file="upload.properties">
+      <entry  key="uploadversion" value="${version}"/>
+  </propertyfile>
+    <antcall target="${platform}-dist" />
+  </target>
+
+  <target name="deb-test" depends="revision-check"
+          description="Build mpide for distribution.">
+    <input message="Enter version number:"
+           addproperty="version"
+           defaultvalue="${revision}-${platform}-${TODAY}-test" />
+  <propertyfile file="upload.properties">
+      <entry  key="uploadversion" value="${version}"/>
+  </propertyfile>
+    <antcall target="${platform}-deb" />
+  </target>
+
+  <!-- "§$§$&, ant doesn't have a built-in help target :(  -->
+  <target name="help" description="Show project help">
+    <java classname="org.apache.tools.ant.Main">
+      <arg value="-p" />
+    </java>
+  </target>
+
+  <!-- - - - - - - - - - - - - - - - - - -->
+  <!-- Subprojects: Core, App, Libraries -->
+  <!-- - - - - - - - - - - - - - - - - - -->
+
+  <target name="subprojects-clean">
+    <subant buildpath="../core" target="clean"/>
+    <subant buildpath="../app" target="clean"/>
+  </target>
+
+  <target name="subprojects-build">
+    <subant buildpath="../core" target="build"/>
+    <subant buildpath="../app" target="build"/>
+  </target>
+
+
+  <!-- - - - - - - - - -->
+  <!-- Basic Assembly  -->
+  <!-- - - - - - - - - -->
+
+  <target name="assemble">
+    <fail unless="target.path" 
+	  message="Do not call assemble from the command line." />
+    
+    <!-- copy shared tools folder -->
+    <copy todir="${target.path}/tools">
+      <fileset dir="shared/tools" />
+    </copy>
+    
+    <!-- copy library folder -->
+    <copy todir="${target.path}/libraries">
+      <fileset dir="../libraries" />
+    </copy>
+    
+    <!-- copy hardware folder -->
+    <copy todir="${target.path}/hardware">
+      <fileset dir="../hardware" />
+    </copy>
+    
+    <!-- copy shared examples folder -->
+    <copy todir="${target.path}/examples">
+      <fileset dir="shared/examples" />
+    </copy>
+    
+    <!-- Unzip documentation -->
+    <unzip dest="${target.path}" src="shared/reference.zip" overwrite="false"/>
+    
+    <!-- Write the revision file! -->
+    <echo file="${target.path}/lib/version.txt" message="${version}" />
+  </target>
+
+  
+  <!-- - - - - - - - - -->
+  <!-- Revision check  -->
+  <!-- - - - - - - - - -->
+  <target name="revision-check">
+    <!-- figure out the revision number -->
+    <loadfile srcfile="../todo.txt" property="revision">
+      <filterchain>
+	<headfilter lines="1"/>
+	<tokenfilter>
+	  <stringtokenizer suppressdelims="true"/>
+	  <!-- grab the thing from the first line that's 4 digits -->
+	  <containsregex pattern="(\d\d\d\d)" />
+	</tokenfilter>
+      </filterchain>
+    </loadfile>
+    <!-- <echo message="revision is ${revision}." /> -->
+    
+    <!-- figure out the revision number in base.java -->
+    <loadfile srcfile="../app/src/processing/app/Base.java" 
+	      property="revision.base">
+      <filterchain>
+	<tokenfilter>
+	  <linetokenizer />
+	  <containsregex pattern="String VERSION_NAME = "/>
+	  <replaceregex pattern="[^0-9]*" flags="g" replace=""/>
+	</tokenfilter>
+      </filterchain>
+    </loadfile>
+    <!-- <echo message="base revision is ${revision.base}." /> -->
+    
+    <condition property="revision.correct">
+      <!-- Using contains because I can't figure out how to get rid of the
+	   LF in revision.base. Please file a bug if you have a fix. -->
+      <contains string="${revision.base}" substring="${revision}"/>
+    </condition>
+    
+    <!-- the revision.base property won't be set
+	 if $revision wasn't found... -->
+    <fail unless="revision.correct" 
+	  message="Fix revision number in Base.java" />
+  </target>
+  
+  
+  <!-- - - - - - - - -->
+  <!-- Mac OS X      -->
+  <!-- - - - - - - - -->
+
+  <target name="macosx-clean" depends="subprojects-clean" description="Clean Mac OS X build">
+    <delete dir="macosx/work" />
+    <delete dir="macosx/working_dir" />
+    <delete dir="macosx/working.dmg" />
+    <delete file="macosx/mpide-*.dmg" />
+  </target>
+  
+  <target name="macosx-checkos" unless="macosx">
+    <echo>
+      =======================================================
+      mpide for Mac OS X can only be built on Mac OS X.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="macosx-build" if="macosx" depends="revision-check, macosx-checkos, subprojects-build" description="Build Mac OS X version">
+    	<mkdir dir="macosx/work" />
+    
+    <!-- assemble the pde -->
+    <copy todir="macosx/work">
+      <fileset dir="macosx/" includes="template.app/**"/>
+    </copy>
+    
+<!--    <rename src="macosx/work/template.app" 
+	    dest="macosx/work/mpide.app" />-->
+    <move file="macosx/work/template.app" 
+	  tofile="macosx/work/mpide.app" />
+
+    <chmod file="macosx/work/mpide.app/Contents/MacOS/JavaApplicationStub" perm="755" />
+    
+    <copy todir="macosx/work/mpide.app/Contents/Resources/Java" flatten="true">
+      <fileset refid="runtime.jars"/>
+    </copy>
+    
+    <copy todir="macosx/work/mpide.app/Contents/Resources/Java">
+      <fileset dir="shared" includes="lib/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+
+    <!-- Unzip AVR tools -->
+    <!-- <unzip dest="macosx/work/mpide.app/Contents/Resources/Java/hardware" src="macosx/dist/tools-universal.zip" overwrite="false"/> -->
+
+    <exec executable="unzip">
+      <arg value="-q" />
+      <arg value="-n" />
+      <arg value="-d" />
+      <arg value="macosx/work/mpide.app/Contents/Resources/Java/hardware" />
+      <arg value="macosx/dist/tools-universal.zip" />
+    </exec>
+     
+<unzip dest="macosx/work/mpide.app/Contents/Resources/Java/hardware/pic32/compiler" src="macosx/dist/pic32-tools-chipKIT-cxx-master-Darwin-image-20130228.zip" overwrite="false"/>
+<chmod perm="+x" maxparallel="0">
+      <fileset dir="macosx/work/mpide.app/Contents/Resources/Java/hardware/pic32/compiler" includes="**/*" />
+</chmod>
+
+    <copy todir="macosx/work/mpide.app/Contents/Resources/Java/hardware/tools/avr/avr/include/avr">    
+      <fileset file="macosx/dist/eeprom.h" />
+    </copy>
+
+    <antcall target="update-avrdude-macosx">
+    </antcall>
+
+    <antcall target="assemble">
+      <param name="target.path" value="macosx/work/mpide.app/Contents/Resources/Java" />
+    </antcall>
+  </target>
+
+  <target name="macosx-run" depends="macosx-build" description="Run Mac OS X version">
+    <exec executable="macosx/work/mpide.app/Contents/MacOS/JavaApplicationStub" spawn="true"/>
+  </target>
+
+  <target name="macosx-debug" depends="macosx-build" description="Run Mac OS X version">
+    <exec executable="macosx/work/mpide.app/Contents/MacOS/JavaApplicationStub" spawn="false"/>
+  </target>
+
+
+  <target name="macosx-dist" if="macosx" depends="macosx-build" description="Create a .dmg of the Mac OS X version">
+   	<property name="extension" value="dmg"/>  
+	<propertyfile file="upload.properties">
+      		<entry  key="extension" value="${extension}"/>
+  	</propertyfile>
+
+    <!-- now build the dmg -->
+    <gunzip src="macosx/template.dmg.gz" dest="macosx/working.dmg" />
+    
+    <mkdir dir="macosx/working_dir" />
+    <exec executable="hdiutil">
+      <arg line="attach macosx/working.dmg -noautoopen -mountpoint macosx/working_dir" />
+      <!--<arg line="attach macosx/working.dmg -noautoopen -quiet -mountpoint macosx/working_dir" />-->
+    </exec>
+    
+    <copy todir="macosx/working_dir">
+      <fileset dir="macosx/work">
+        <exclude name="**/mpideTestSuite/**" />
+      </fileset>
+    </copy>
+
+    <!-- The ant copy command does not preserve permissions. -->
+    <chmod file="macosx/working_dir/mpide.app/Contents/MacOS/JavaApplicationStub" perm="+x" />
+    <chmod perm="+x" parallel="false"  maxparallel="0">
+        <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/pic32/compiler" includes="**/*" />
+    </chmod>
+    <chmod perm="+x">
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/bin" includes="**/*" />
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/avr/bin" includes="**/*" />
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/avr-3/bin" includes="**/*" />
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/avr-4/bin" includes="**/*" />
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/libexec/gcc/avr/3.4.6/" includes="**/cc1*" />
+      <fileset dir="macosx/working_dir/mpide.app/Contents/Resources/Java/hardware/tools/avr/libexec/gcc/avr/4.3.2/" includes="**/cc1*" />
+    </chmod>
+
+    <!-- Pause briefly for the OS to catch up with the DMG changes. 
+	 This prevents "hdiutil: couldn't eject "disk3" - Resource busy"
+	 errors when ejecting the disk in the next step.
+         You may need to set this value higher for your system. -->
+    <sleep seconds="3" />
+
+    <exec executable="hdiutil">
+      <!--<arg line="detach macosx/working_dir -quiet -force" />-->
+      <arg line="detach macosx/working_dir" />
+    </exec>
+  
+    <delete file="macosx/mpide-*.dmg" />
+    <exec executable="hdiutil">
+      <arg line="convert macosx/working.dmg -quiet -format UDZO -imagekey zlib-level=9 -o macosx/mpide-${version}.dmg" />
+    </exec>
+
+    <!-- Clean up the interim files. -->
+    <delete file="macosx/working.dmg" />
+    <delete dir="macosx/working_dir" />
+    
+    <echo>
+      =======================================================
+      mpide for Mac OS X was built. Grab the image from   
+      
+      macosx/mpide-${version}.dmg
+      =======================================================
+  </echo>
+  <propertyfile file="upload.properties">
+      <entry  key="uploadversion" value="${version}"/>
+  </propertyfile>
+
+  </target>
+
+  
+  <!-- - - - - - - - -->
+  <!-- Linux         -->
+  <!-- - - - - - - - -->
+  
+  <target name="linux-clean" depends="subprojects-clean" description="Clean linux version">
+    <delete dir="linux/work" />
+  </target>
+  
+  <target name="raspberrypi-clean" depends="subprojects-clean" description="Clean raspberry pi linux version">
+    <delete dir="raspberrypi/work" />
+  </target>
+  
+  <target name="linux-checkos" unless="linux">
+    <echo>
+      =======================================================
+      mpide for Linux can only be built on on unix systems.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="linux-build" depends="revision-check, linux-checkos, subprojects-build" description="Build linux version">
+    <mkdir dir="linux/work" />
+    
+    <copy todir="linux/work">
+      <fileset dir="shared" includes="lib/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+    
+    <copy todir="linux/work">
+      <fileset dir="linux/dist" includes="lib/**" />
+    </copy>
+
+    <copy todir="linux/work/lib" flatten="true">
+      <fileset refid="runtime.jars" />
+    </copy>
+    
+    <antcall target="assemble">
+      <param name="target.path" value="linux/work" />
+    </antcall>
+
+    <copy todir="linux/work/hardware">
+      <fileset dir="linux/dist" includes="tools/**" />
+    </copy>
+
+    <chmod perm="755" file="linux/work/hardware/tools/avrdude" />
+
+    <copy todir="linux/work" file="linux/dist/mpide" />
+    <chmod perm="755" file="linux/work/mpide" />
+    <unzip dest="linux/work/hardware/pic32/compiler" src="linux/dist/pic32-tools-chipKIT-cxx-master-Linux32-image-20130228.zip" overwrite="false"/>
+    <chmod perm="+x">
+      <fileset dir="linux/work/hardware/pic32/compiler" includes="**/*" />
+    </chmod>
+
+  </target>
+
+  <target name="raspberrypi-build" depends="revision-check, linux-checkos, subprojects-build" description="Build linux ARM version">
+    <mkdir dir="raspberrypi/work" />
+    
+    <copy todir="raspberrypi/work">
+      <fileset dir="shared" includes="lib/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+    
+    <copy todir="raspberrypi/work">
+      <fileset dir="raspberrypi/dist" includes="lib/**" />
+    </copy>
+
+    <copy todir="raspberrypi/work/lib" flatten="true">
+      <fileset refid="runtime.jars" />
+    </copy>
+    
+    <antcall target="assemble">
+      <param name="target.path" value="raspberrypi/work" />
+    </antcall>
+
+    <get src="http://chipkit.s3.amazonaws.com/compilers/pic32-tools-chipKIT-cxx-master-arm-linux-image.zip"
+         dest="raspberrypi/dist"
+         verbose="false"
+         usetimestamp="true"/>
+
+    <get src="http://chipkit.s3.amazonaws.com/raspberrypi/tools.tar"
+        dest="raspberrypi/dist"
+        verbose="false"
+        usetimestamp="true"/>
+
+    <untar dest="raspberrypi/work/hardware/" src="raspberrypi/dist/tools.tar" overwrite="false" />
+    <chmod perm="755" file="raspberrypi/work/hardware/tools/avrdude" />
+
+    <!-- For now we'll just leach the generic linux startup script.  If we want
+         to tweak a specific Pi version we can change this to one stored in the
+         raspberrypi/dist folder instead. -->
+    <copy todir="raspberrypi/work" file="linux/dist/mpide" />
+    <chmod perm="755" file="raspberrypi/work/mpide" />
+    <unzip dest="raspberrypi/work/hardware/pic32/compiler" src="raspberrypi/dist/pic32-tools-chipKIT-cxx-master-arm-linux-image.zip" overwrite="false"/>
+    <chmod perm="+x">
+      <fileset dir="raspberrypi/work/hardware/pic32/compiler" includes="**/*" />
+    </chmod>
+
+  </target>
+
+ <target name="linux32-build" depends="linux-build" description="Build linux (32-bit) version">
+    <!-- Unzip AVR tools -->
+    <exec executable="tar" dir="linux/work/hardware">
+      <arg value="-xjf"/>
+      <arg value="../../avr_tools_linux32.tar.bz2"/>
+    </exec>
+  </target>
+
+
+  <target name="linux64-build" depends="linux-build" description="Build linux (64-bit) version">
+    <copy tofile="linux/work/hardware/tools/avrdude" file="linux/dist/tools/avrdude64" overwrite="true" />
+    <copy tofile="linux/work/lib/librxtxSerial.so" file="linux/dist/lib/librxtxSerial64.so" overwrite="true" />   
+    <chmod perm="755" file="linux/work/hardware/tools/avrdude" />
+ <!-- Unzip AVR tools -->
+    <exec executable="tar" dir="linux/work/hardware">
+      <arg value="-xjf"/>
+      <arg value="../../avr_tools_linux64.tar.bz2"/>
+    </exec>
+ 
+    <chmod perm="+x">
+      <fileset dir="linux/work/hardware/pic32/compiler" includes="**/*" />
+    </chmod>
+
+
+  </target>
+  
+  <target name="linux-run" depends="linux-build" 
+	  description="Run Linux (32-bit) version">
+    <exec executable="./linux/work/mpide" spawn="false"/>
+  </target>
+  
+  <target name="linux64-run" depends="linux64-build" 
+	  description="Run Linux (64-bit) version">
+    <exec executable="./linux/work/mpide" spawn="false"/>
+  </target>
+
+  <target name="raspberrypi-dist" depends="raspberrypi-build" 
+	  description="Build .tar.gz of raspberry pi linux version">
+
+    <input message="Enter version number:"
+    addproperty="version"
+    defaultvalue="${revision}" />
+
+    <property name="extension" value="tgz"/> 
+    <propertyfile file="upload.properties">
+           <entry  key="extension" value="${extension}"/>
+    </propertyfile>
+
+    <tar compression="gzip"  longfile="gnu"  destfile="raspberrypi/mpide-${version}.tgz">
+      <tarfileset dir="raspberrypi/work" 
+		  prefix="mpide-${version}" 
+		  excludes="mpide, 
+			    hardware/tools/avrdude,
+			    java/**,
+			    hardware/pic32/compiler/pic32-tools/**"
+		  /> 
+      <tarfileset dir="raspberrypi/work/hardware/pic32/compiler/pic32-tools/" dirmode="755" prefix="mpide-${version}/hardware/pic32/compiler/pic32-tools" />
+      <tarfileset file="raspberrypi/work/hardware/pic32/compiler/pic32-tools/**" filemode="755" prefix="mpide-${version}/hardware/pic32/compiler/pic32-tools" />
+
+      <tarfileset file="raspberrypi/work/mpide" filemode="755" prefix="mpide-${version}" />
+      <tarfileset file="raspberrypi/work/hardware/tools/avrdude" filemode="755" prefix="mpide-${version}/hardware/tools" />
+    </tar>
+
+    <echo>
+      =======================================================
+      mpide for Raspberry Pi was built. Grab the archive from   
+      
+      build/raspberrypi/mpide-${version}.tgz
+      =======================================================
+    </echo>
+  </target>
+
+  <target name="linux-dist" depends="build" 
+	  description="Build .tar.gz of linux version">
+    <property name="extension" value="tgz"/> 
+    <propertyfile file="upload.properties">
+           <entry  key="extension" value="${extension}"/>
+    </propertyfile>
+
+    <!--get src="http://dev.processing.org/build/jre-tools-6u18-linux-i586.tgz" 
+	 dest="linux/jre.tgz" 
+	 usetimestamp="true" />    
+    <untar compression="gzip" 
+	   dest="linux/work" 
+	   src="linux/jre.tgz" 
+	   overwrite="false"/-->
+
+<!--
+    <tar compression="gzip" basedir="linux/work" 
+	 destfile="linux/mpide-${version}.tgz" />
+-->
+    <tar compression="gzip"  longfile="gnu"  destfile="linux/mpide-${version}.tgz">
+      <tarfileset dir="linux/work" 
+		  prefix="mpide-${version}" 
+		  excludes="mpide, 
+			    hardware/tools/avrdude,
+			    java/**,
+			    hardware/pic32/compiler/pic32-tools/**"
+		  /> 
+      <tarfileset dir="linux/work/hardware/pic32/compiler/pic32-tools/" dirmode="755" prefix="mpide-${version}/hardware/pic32/compiler/pic32-tools" />
+      <tarfileset file="linux/work/hardware/pic32/compiler/pic32-tools/**" filemode="755" prefix="mpide-${version}/hardware/pic32/compiler/pic32-tools" />
+
+      <tarfileset file="linux/work/mpide" filemode="755" prefix="mpide-${version}" />
+      <tarfileset file="linux/work/hardware/tools/avrdude" filemode="755" prefix="mpide-${version}/hardware/tools" />
+    </tar>
+
+    <echo>
+      =======================================================
+      mpide for Linux was built. Grab the archive from   
+      
+      build/linux/mpide-${version}.tgz
+      =======================================================
+    </echo>
+  </target>
+
+  <target name="get-version">
+    <input message="Enter version number:"
+    addproperty="version"
+    defaultvalue="${revision}-${platform}" />
+  </target>
+
+  <target name="raspberrypi-deb" depends="revision-check, get-version, raspberrypi-build"
+      description="Build .deb of raspberrypi version">
+
+    <property name="extension" value="deb"/>
+
+    <propertyfile file="upload.properties">
+           <entry  key="extension" value="${extension}"/>
+    </propertyfile>
+
+    <mkdir dir="raspberrypi/mpide-${version}" />
+    <!-- These are currently generic linux files - .desktop, PNG icons, etc.
+         Nothing Pi specific here, so there's no point in duplicating them
+         in the Pi dist tree. -->
+    <copy todir="raspberrypi/mpide-${version}/usr">
+      <fileset dir="linux/dist/usr" />
+    </copy>
+
+    <copy todir="raspberrypi/mpide-${version}/usr/share/mpide">
+        <fileset dir="raspberrypi/work" />
+    </copy>
+    <chmod perm="755">
+      <fileset dir="raspberrypi/mpide-${version}/usr/share/mpide" includes="mpide" />
+      <fileset dir="raspberrypi/mpide-${version}/usr/share/mpide/tools" includes="**/*" />
+      <fileset dir="raspberrypi/mpide-${version}/usr/share/mpide/hardware/tools" includes="**/*" />
+      <fileset dir="raspberrypi/mpide-${version}/usr/share/mpide/hardware/pic32/compiler" includes="**/*" />
+      <!--fileset dir="raspberrypi/mpide-${version}/usr/share/mpide/hardware/pic32/tools" includes="**/*" /-->
+    </chmod>
+    <symlink link="raspberrypi/mpide-${version}/usr/bin/mpide" resource="/usr/share/mpide/mpide" overwrite="true" />
+
+    <mkdir dir="raspberrypi/mpide-${version}/DEBIAN" />
+    <echo file="raspberrypi/mpide-${version}/DEBIAN/control">
+Package: mpide
+Version: ${version}
+Maintainer: matt@majenko.co.uk
+Architecture: armhf
+Section: Programming
+Depends: avr-libc, avrdude, binutils-avr, extra-xdg-menus, gcc-avr, libftdi1, libjna-java, librxtx-java
+Description: chipKIT MPIDE Development environment
+
+</echo>
+    <exec executable="dpkg-deb" dir="raspberrypi">
+      <arg value="-b"/>
+      <arg value="mpide-${version}"/>
+    </exec>
+    <delete dir="raspberrypi/mpide-${version}" />
+
+    <echo>
+      =======================================================
+      mpide for Raspberry Pi was built. Grab the package from   
+      
+      build/raspberrypi/mpide-${version}.deb
+      =======================================================
+    </echo>
+</target>
+
+  <target name="linux-deb" depends="build"
+      description="Build .deb of linux version">
+    <property name="extension" value="deb"/>
+    <propertyfile file="upload.properties">
+           <entry  key="extension" value="${extension}"/>
+    </propertyfile>
+
+    <mkdir dir="linux/mpide-${version}" />
+    <copy todir="linux/mpide-${version}/usr">
+      <fileset dir="linux/dist/usr" />
+    </copy>
+
+    <copy todir="linux/mpide-${version}/usr/share/mpide">
+        <fileset dir="linux/work" />
+    </copy>
+    <chmod perm="755">
+      <fileset dir="linux/mpide-${version}/usr/share/mpide" includes="mpide" />
+      <fileset dir="linux/mpide-${version}/usr/share/mpide/tools" includes="**/*" />
+      <fileset dir="linux/mpide-${version}/usr/share/mpide/hardware/tools" includes="**/*" />
+      <fileset dir="linux/mpide-${version}/usr/share/mpide/hardware/pic32/compiler" includes="**/*" />
+      <!--fileset dir="linux/mpide-${version}/usr/share/mpide/hardware/pic32/tools" includes="**/*" /-->
+    </chmod>
+    <symlink link="linux/mpide-${version}/usr/bin/mpide" resource="/usr/share/mpide/mpide" overwrite="true" />
+
+    <mkdir dir="linux/mpide-${version}/DEBIAN" />
+    <echo file="linux/mpide-${version}/DEBIAN/control">
+Package: mpide
+Version: ${version}
+Maintainer: matt@majenko.co.uk
+Architecture: i386
+Section: Programming
+Depends: avr-libc, avrdude, binutils-avr, extra-xdg-menus, gcc-avr, libftdi1, libjna-java, librxtx-java
+Description: chipKIT MPIDE Development environment
+
+</echo>
+    <exec executable="dpkg-deb" dir="linux">
+      <arg value="-b"/>
+      <arg value="mpide-${version}"/>
+    </exec>
+    <delete dir="linux/mpide-${version}" />
+
+    <echo>
+      =======================================================
+      mpide for Linux was built. Grab the package from   
+      
+      build/linux/mpide-${version}.deb
+      =======================================================
+    </echo>
+</target>
+
+
+  
+  <target name="linux64-dist" depends="linux-dist" 
+	  description="Build .tar.gz of linux version" />
+  
+  <!-- - - - - - - - -->
+  <!-- Windows       -->
+  <!-- - - - - - - - -->
+  
+  <target name="windows-clean" depends="subprojects-clean"
+	  description="Clean windows version">
+    <delete dir="windows/work" />
+  </target>
+  
+  <target name="windows-checkos" unless="windows">
+    <echo>
+      =======================================================
+      mpide for Windows can only be built on windows.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="windows-build" 
+	  depends="revision-check, windows-checkos, subprojects-build" 
+	  description="Build windows version">
+    <mkdir dir="windows/work" />
+    
+    <!-- assemble the pde -->
+    <mkdir dir="windows/work/lib" />
+    <copy todir="windows/work/lib" flatten="true">
+      <fileset refid="runtime.jars" />
+    </copy>
+    
+    <copy todir="windows/work">
+      <fileset dir="shared" includes="lib/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+    
+    <copy todir="windows/work">
+      <fileset dir="windows/dist" includes="*.dll" />
+    </copy>
+    
+    <copy todir="windows/work">
+      <fileset dir="windows/dist" includes="drivers/**" />
+    </copy>
+    
+    <!-- Unzip AVR tools -->
+    <unzip dest="windows/work/hardware" src="windows/avr_tools.zip" overwrite="false"/>
+    <!-- pic32 compiler -->
+   <unzip dest="windows/work/hardware/pic32/compiler" src="windows/dist/pic32-tools-chipKIT-cxx-master-win32-image-20130228.zip" overwrite="false"/>
+    <chmod perm="+x">
+      <fileset dir="windows/work/hardware/pic32/compiler" includes="**/*" />
+    </chmod>
+
+
+    <copy todir="windows/work/hardware/tools/avr/avr/include/avr">
+      <fileset file="windows/eeprom.h" />
+    </copy>
+
+    <antcall target="assemble">
+      <param name="target.path" value="windows/work" />
+  </antcall>
+
+  <antcall target="update-avrdude-windows">
+  </antcall>
+
+    
+    <property name="launch4j.dir" value="windows/launcher/launch4j/" />
+    <taskdef name="launch4j" 
+	     classname="net.sf.launch4j.ant.Launch4jTask" 
+	     classpath="${launch4j.dir}/launch4j.jar; ${launch4j.dir}/lib/xstream.jar; " />
+
+    <copy todir="windows/work">
+      <fileset dir="windows/launcher" 
+	       includes="about.bmp, application.ico, config.xml"/>
+    </copy>
+    <launch4j configFile="windows/work/config.xml" />
+    <delete dir="windows/work" 
+	    includes="about.bmp, application.ico, config.xml" />
+
+    <!-- cygwin requires html, dll, and exe to have the +x flag -->
+    <chmod perm="755">
+      <fileset dir="windows/work" includes="**/*.html, **/*.dll, **/*.exe" />
+    </chmod>
+  </target>
+  
+  <target name="windows-run" depends="windows-build" 
+	  description="Run windows version">
+    <exec executable="windows/work/mpide.exe" 
+	  dir="windows/work" spawn="true"/>
+  </target>
+
+  <target name="windows-dist" depends="windows-build" 
+	  description="Create .zip files of windows version">
+    <property name="extension" value="zip"/>   
+    <propertyfile file="upload.properties">
+           <entry  key="extension" value="${extension}"/>
+    </propertyfile>
+
+    <!--get src="http://dev.processing.org/build/jre-tools-6u18-windows-i586.zip" 
+	 dest="windows/jre.zip" 
+	 usetimestamp="true" /-->
+
+    <unzip dest="windows/work" src="windows/jre.zip" overwrite="false"/>
+
+    <!--
+    <zip basedir="windows/work" 
+	 prefix="mpide-${version}"
+	 destfile="windows/mpide-${version}.zip" />
+    <zip basedir="windows/work" 
+	 prefix="mpide-${version}"
+	 destfile="windows/mpide-${version}-expert.zip" 
+	 excludes="java/**" />
+    -->
+
+    <zip destfile="windows/mpide-${version}.zip">
+      <zipfileset dir="windows/work" 
+		  prefix="mpide-${version}" />
+    </zip>
+
+    <zip destfile="windows/mpide-${version}-expert.zip">
+      <zipfileset dir="windows/work" 
+		  prefix="mpide-${version}" 
+		  excludes="java/**" />
+    </zip>
+    
+    <echo>
+      =======================================================
+      mpide for Windows was built. Grab the archive from   
+      
+      windows/mpide-${version}.zip
+      windows/mpide-${version}-expert.zip
+      =======================================================
+    </echo>
+  </target>
+  
+
+  <!-- - - - - - - - -->
+  <!-- Source        -->
+  <!-- - - - - - - - -->
+ 
+   <target name="source-dist" depends="revision-check"
+	  description="Build .tar.gz of source code">
+    <input message="Enter version number:" 
+	   addproperty="version"
+	   defaultvalue="${revision}" />
+
+    <tar compression="gzip" longfile="gnu" destfile="mpide-${version}-src.tar.gz">
+      <tarfileset dir="../" 
+		  prefix="mpide-${version}" 
+		  excludes="**/*.tgz,
+			     **/macosx/,
+			     **/windows/,
+			     **/work/,
+			     **/.git/,
+			     **/*.class"
+		  /> 
+    </tar>
+
+    <echo>
+      =======================================================
+      mpide source distribution was built. Grab the archive from   
+      
+      mpide-${version}-src.tar.gz
+      =======================================================
+    </echo>
+  </target>
+  
+
+  <!-- - - - - - - - -->
+  <!-- Run It!       -->
+  <!-- - - - - - - - -->
+  
+  <target name="clean" description="Perform a spring cleaning" 
+	  depends="linux-clean, windows-clean, macosx-clean, raspberrypi-clean, subprojects-clean">
+  </target>
+
+
+  <target name="update-avrdude-macosx" description="Update the avrdude configuration to latest version." depends="">
+      <copy todir="macosx/work/mpide.app/Contents/Resources/Java/hardware/tools/avr/etc/">
+        <fileset file="macosx/dist/avrdude.conf" />
+    </copy>
+  </target>
+
+  <target name="update-avrdude-windows" description="Update the avrdude configuration to latest version." depends="">
+      <copy todir="windows/work/hardware/tools/avr/etc/">
+        <fileset file="windows/dist/avrdude.conf" />
+    </copy>
+  </target>
+  <!-- not need linux does this already.
+    <target name="update-avrdude-linux" description="Update the avrdude configuration to latest version." depends="">
+      <copy todir="macosx/work/mpide.app/Contents/Resources/Java/hardware/tools/avr/etc/">
+        <fileset file="linux/dist/tools/avrdude.conf" />
+    </copy>
+  </target>
+    -->
+   <!-- Task for setting up the aws-ant-tasks -->
+    <target name="awstasks.setup">
+        <path id="tasks.path">
+            <fileset dir="antlibs" includes="*.jar"/>
+        </path>
+
+        <taskdef name="s3put" classpath="antlibs" classname="it.corley.ant.S3PutTask"
+                 classpathref="tasks.path"/>
+        <typedef name="contenttype.mapping" classname="it.corley.ant.ContentTypeMapping" classpathref="tasks.path"/>
+        <typedef name="cachecontrol.mapping" classname="it.corley.ant.CacheControlMapping" classpathref="tasks.path"/>
+    	<typedef name="contentencoding.mapping" classname="it.corley.ant.ContentEncodingMapping" classpathref="tasks.path"/>
+    </target>
+    <!-- Upload the current build -->
+    <target name="upload" description="Use the Task" depends="awstasks.setup">
+        <property file="test.properties"/>
+        <s3put key="${aws.access_key}" secret="${aws.secret_key}" bucket="${aws.bucket}"
+               dest="builds" publicread="true" cacheControl="3600" contentType="application/x-readme">
+            <fileset dir="${platform}" includes="mpide-${uploadversion}.${extension}"/> 
+            <contenttypemapping extension="md" contenttype="text/plain"/>
+            <cachecontrolmapping extension="md" maxage="7200"/>
+   	    	<contentencodingmapping extension="md" encoding="UTF-8" />
+        </s3put>
+        <echo message="Upload task complete" /> 
+    </target>
+    <!-- Debugging echo target for s3, other values could be added as needed. -->
+    <target name="echo">
+        <echo message="${aws.access_key}"/>
+        <echo message="${aws.secret_key}"/>
+        <echo message="${aws.bucket}"/>
+        <echo message="${version}"/>
+    </target>
+
+
+</project>
+<project name="launch4j" default="compile" basedir=".">
+	<property name="src" location="src" />
+	<property name="lib" location="lib" />
+	<property name="build" location="build" />
+	<property name="jar" location="./${ant.project.name}.jar" />
+	<property name="launch4j.dir" location="." />
+
+	<path id="dist.classpath">
+		<pathelement path="${build}" />
+		<fileset dir="${lib}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+		<tstamp />
+		<mkdir dir="${build}" />
+	</target>
+
+	<target name="compile" depends="init" description="compile the source">
+		<javac srcdir="${src}" destdir="${build}" classpathref="dist.classpath" source="1.4" debug="on" />
+		<copy todir="${build}/images">
+			<fileset dir="${src}/images">
+				<include name="**/*" />
+			</fileset>
+		</copy>
+		<copy todir="${build}">
+			<fileset dir="${src}">
+				<include name="**/*.properties" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="jar" depends="compile" description="create jar">
+		<fileset dir="${lib}" id="lib.dist.fileset">
+			<include name="**/*.jar" />
+		</fileset>
+		<pathconvert pathsep=" " property="dist.classpath" refid="lib.dist.fileset">
+			<map from="${lib}" to="./lib" />
+		</pathconvert>
+		<!-- Put everything in ${build} into a jar file -->
+		<jar jarfile="${jar}">
+			<fileset dir="${build}" excludes="**/messages_es.properties" />
+			<manifest>
+				<attribute name="Main-Class" value="net.sf.launch4j.Main" />
+				<attribute name="Class-Path" value=". ${dist.classpath}" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="demo" depends="jar" description="build the demos">
+		<ant dir="./demo/ConsoleApp" inheritAll="false" />
+		<ant dir="./demo/SimpleApp" inheritAll="false" />
+	</target>
+
+	<target name="clean" description="clean up">
+		<delete dir="${build}" />
+		<delete file="${jar}" />
+		<ant dir="./demo/ConsoleApp" target="clean" inheritAll="false" />
+		<ant dir="./demo/SimpleApp" target="clean" inheritAll="false" />
+	</target>
+</project>
+<project name="ConsoleApp" default="exe" basedir=".">
+	<property name="src" location="src" />
+	<property name="lib" location="lib" />
+	<property name="build" location="build" />
+	<property name="launch4j.dir" location="../.." />
+
+	<path id="dist.classpath">
+		<pathelement path="${build}" />
+		<fileset dir="${lib}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+		<tstamp />
+		<mkdir dir="${build}" />
+	</target>
+
+	<target name="compile" depends="init" description="compile the source">
+		<javac srcdir="${src}" destdir="${build}" classpathref="dist.classpath" source="1.4" debug="on" />
+	</target>
+
+	<target name="jar" depends="compile" description="create the jar">
+		<fileset dir="${lib}" id="lib.dist.fileset">
+			<include name="**/*.jar" />
+		</fileset>
+		<pathconvert pathsep=" " property="dist.classpath" refid="lib.dist.fileset">
+			<map from="${lib}" to=".\lib" />
+		</pathconvert>
+		<!-- Put everything in ${build} into a jar file -->
+		<jar jarfile="${ant.project.name}.jar">
+			<fileset dir="${build}" includes="**/*" />
+			<manifest>
+				<!-- SET YOUR MAIN CLASS HERE -->
+				<attribute name="Main-Class" value="net.sf.launch4j.example.ConsoleApp" />
+				<attribute name="Class-Path" value=". ${dist.classpath}" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="exe" depends="jar">
+		<taskdef name="launch4j" classname="net.sf.launch4j.ant.Launch4jTask" classpath="${launch4j.dir}/launch4j.jar
+		    :${launch4j.dir}/lib/xstream.jar" />
+		<launch4j>
+			<config headerType="console" jar="ConsoleApp.jar" outfile="ConsoleApp.exe" errTitle="ConsoleApp" chdir="." customProcName="true" icon="l4j/ConsoleApp.ico">
+				<singleInstance mutexName="net.sf.launch4j.example.ConsoleApp" />
+				<jre minVersion="1.4.0" />
+			</config>
+		</launch4j>
+	</target>
+
+	<target name="clean" description="clean up">
+		<delete dir="${build}" />
+		<delete file="${ant.project.name}.jar" />
+		<delete file="${ant.project.name}.exe" />
+	</target>
+</project>
+<project name="SimpleApp" default="exe" basedir=".">
+	<property name="src" location="src" />
+	<property name="lib" location="lib" />
+	<property name="build" location="build" />
+	<property name="launch4j.dir" location="../.." />
+
+	<path id="dist.classpath">
+		<pathelement path="${build}" />
+		<fileset dir="${lib}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+		<tstamp />
+		<mkdir dir="${build}" />
+	</target>
+
+	<target name="compile" depends="init" description="compile the source">
+		<javac srcdir="${src}" destdir="${build}" classpathref="dist.classpath" source="1.4" debug="on" />
+	</target>
+
+	<target name="jar" depends="compile" description="create the jar">
+		<fileset dir="${lib}" id="lib.dist.fileset">
+			<include name="**/*.jar" />
+		</fileset>
+		<pathconvert pathsep=" " property="dist.classpath" refid="lib.dist.fileset">
+			<map from="${lib}" to=".\lib" />
+		</pathconvert>
+		<!-- Put everything in ${build} into a jar file -->
+		<jar jarfile="${ant.project.name}.jar">
+			<fileset dir="${build}" includes="**/*" />
+			<manifest>
+				<!-- SET YOUR MAIN CLASS HERE -->
+				<attribute name="Main-Class" value="net.sf.launch4j.example.SimpleApp" />
+				<attribute name="Class-Path" value=". ${dist.classpath}" />
+			</manifest>
+		</jar>
+	</target>
+
+	<target name="exe" depends="jar">
+		<taskdef name="launch4j" classname="net.sf.launch4j.ant.Launch4jTask" classpath="${launch4j.dir}/launch4j.jar
+		    :${launch4j.dir}/lib/xstream.jar" />
+		<launch4j configFile="./l4j/SimpleApp.xml" />
+	</target>
+
+	<target name="clean" description="clean up">
+		<delete dir="${build}" />
+		<delete file="${ant.project.name}.jar" />
+		<delete file="${ant.project.name}.exe" />
+	</target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing Core" default="build">
+
+  <target name="clean" description="Clean out the build directories">
+    <delete dir="bin" />
+    <delete file="core.jar" />
+  </target>
+  
+  <target name="compile" description="Compile">
+    <taskdef name="methods" 
+	     classname="PAppletMethods" 
+	     classpath="methods/methods.jar" />
+    <methods dir="${basedir}/src/processing/core" />
+
+    <mkdir dir="bin" />
+    <javac target="1.5" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   srcdir="src" destdir="bin"/>
+  </target>		
+
+  <target name="build" depends="compile" description="Build core library">
+    <jar basedir="bin" destfile="core.jar" />
+  </target>
+  
+</project>
+<project name="methods" default="task-lib">
+
+  <target name="compile">
+    <mkdir dir="bin" />
+    <!--		<javac target="1.5" srcdir="src" destdir="bin" classpath="../ant/ant.jar" debug="true"/>-->
+<!--    <javac target="1.5" srcdir="src" destdir="bin" classpath="/usr/share/ant/ant.jar" debug="true"/>-->
+    <javac target="1.5" 
+	   srcdir="src" destdir="bin" 
+	   debug="true" 
+	   includeantruntime="true" />
+  </target>
+  
+  <target name="task-lib" depends="compile">
+    <jar basedir="bin" destfile="methods.jar" />
+  </target>
+  
+  <target name="demo">
+    <taskdef name="methods" 
+	     classname="PAppletMethods" 
+	     classpath="methods.jar" />
+    <preproc dir="demo"/>
+  </target>
+  
+  <target name="clean">
+    <delete dir="bin" />
+    <delete file="methods.jar" />
+  </target>
+</project>
+<project name="preproc" default="task-lib">
+
+	<target name="compile">
+		<mkdir dir="bin" />
+<!--		<javac target="1.5" srcdir="src" destdir="bin" classpath="../ant/ant.jar" debug="true"/>-->
+		<javac target="1.5" srcdir="src" destdir="bin" classpath="/usr/share/ant/ant.jar" debug="true"/>
+	</target>
+		
+	<target name="task-lib" depends="compile">
+		<jar basedir="bin" destfile="preproc.jar" />
+	</target>
+	
+	<target name="demo">
+		<taskdef name="preproc" classname="processing.build.PAppletMethods" classpath="preproc.jar" />
+		<preproc dir="demo"/>
+	</target>
+	
+	<target name="clean">
+		<delete dir="bin" />
+		<delete file="preproc.jar" />
+	</target>
+</project>

@@ -1,0 +1,2874 @@
+<project name="montysolr" default="usage">
+
+	<description>Java extensions for Python - Java search engine made python-friendly</description>
+
+
+	<!--
+  ==================================================================
+     Configuration section
+  ==================================================================
+  -->
+
+
+	<property name="montysolr.home" location="." />
+	<property name="src.dir.java" location="src/java" />
+	<property name="src.dir.python" location="src/python" />
+	<property name="build.dir" location="build" />
+	<property name="dist.dir" value="build/dist" />
+	<property name="classes.dir" value="build/classes/java" />
+
+	<property file="build.properties" />
+
+
+	<property name="solr.home" location="${build.dir}/solr-download/apache-solr-${solr.version}"/>
+	<property name="webdist.home" location="${webdist}" />
+	<property name="lib.dir" value="lib" />
+	<property name="app.name" value="montysolr_java" />
+    <property name="app.solr.name" value="solr_java" />	
+	<property name="app.version" value="${montysolr.version}" />
+	<property name="jar.suffix" value="${app.name}-${app.version}.jar" />
+	<property name="ddash" value="--" />
+
+    
+	<!--set default PYTHONPATH if the environemnt is empty -->
+	<property environment="env" />
+	<property name="env.PYTHONPATH" value="${dist.dir}${path.separator}${src.dir.python}${path.separator}"/>
+
+	<!--
+    these classes must be made available/known to JCC when we compile the wrapper
+    They will be made visible to Python, but are also used for generation of the jars.
+     -->
+	<property name="montysolr.classes" value="
+		monty.solr.jni.MontySolrBridge
+		monty.solr.jni.MontySolrVM
+		monty.solr.jni.PythonBridge
+		monty.solr.jni.PythonMessage
+		" />
+	<property name="jcc.build" value="${montysolr.classes}" />
+	<property name="jcc.packages" value=""/>
+    
+    <!--
+    trunk (future 5) = http://svn.apache.org/repos/asf/lucene/dev/trunk
+    4.x (future 4.1 etc) = http://svn.apache.org/repos/asf/lucene/dev/branches/branch_4x
+    4.0 = http://svn.apache.org/repos/asf/lucene/dev/branches/lucene_solr_4_0
+    
+    29/11/12 - tracking 4.0 (before it was trunk)
+    //-->
+	<property name="solr.svn" value="http://svn.apache.org/repos/asf/lucene/dev/branches/lucene_solr_4_0" />	
+
+	<!--
+    _build variables are there to add extra classes to the wrapper - some packages (either in lucene or for montysolr)
+    are not usable/visible, unless also these classes are present. So this is here to add these extra components to the build.
+    I tried registerining packages only, but it didn't work for v2.9, so i am listing classes directly
+    java.util.ArrayList
+    -->
+	<property name="jcc.build_also" value="
+		java.lang.Float
+		java.lang.System
+		java.lang.String
+		" />
+
+
+
+	<import file="common-build.xml"/>
+	<path id="classpath">
+		<path refid="common.classpath"/>
+	</path>
+	<path id="test.classpath">
+		<path refid="common.test.classpath"/>
+	</path>
+	<path id="junit.classpath">
+		<path refid="common.junit.classpath"/>
+	</path>
+
+
+
+	<!--
+      ==================================================================
+         Initialization & maintenance
+      ==================================================================
+      -->
+
+	<target name="compile-test" depends="compile,common.compile-test" />
+
+	<target name="config" depends="init">
+		<property name="montysolr.jar" value="${build.dir}/${final.name}.jar" />
+
+	</target>
+
+	<!-- Default target: usage.  Prints out instructions. -->
+	<target name="usage"
+	          description="Prints out instructions">
+		<echo message="Welcome to the MontySolr project!" />
+		<echo message="Use 'ant build-all' to compile MontySolr and prepare demos." />
+		<echo message="Use 'ant run-example' to run the example." />
+
+		<echo message="And for developers:"/>
+		<echo message="Use 'ant clean' to clean compiled files." />
+		<echo message="Use 'ant compile' to compile the Java source code." />
+		<echo message="Use 'ant build' to compile only MontySolr as a Python module." />
+		<echo message="Use 'ant build-solr' to compile only Solr as a Python module." />
+		<echo message="TODOs:" />
+		<echo message="Use 'ant automatic-install' to install everything incl dependencies." />
+		<echo message="Use 'ant package' to generate zip, tgz, and maven artifacts for distribution." />
+		<echo message="Use 'ant test' to run unit tests." />
+	</target>
+
+
+
+
+	<!-- this is needed for all targets -->
+	<target name="init" depends="check_properties,die_unless_propertiesOK,check-solr-location">
+		<mkdir dir="${build.dir}" />
+		<mkdir dir="${dist.dir}" />
+		<mkdir dir="${classes.dir}" />
+		<mkdir dir="${build.dir}/jar" />
+
+		<exec executable="${python}" failonerror="false" errorproperty="test_import_errors" >
+			<arg value="-c"/>
+			<arg value="import jcc; import lucene; lucene.initVM()" />
+		</exec>
+
+		<condition property="import_ok">
+			<equals arg1="${test_import_errors}" arg2=""/>
+		</condition>
+
+		<fail unless="import_ok" message="${test_import_errors}${line.separator}Please install the required Python modules first (jcc, lucene)" />
+
+
+		<!-- retrieves the location of the jcc and stores in inside jcc_egg -->
+	    <exec executable="${python}" failonerror="true" outputproperty="jcc_egg" logerror="true">
+	        <arg value="-c"/>
+	        <arg value="import os, jcc; print os.path.dirname(os.path.dirname(jcc.__file__))" />
+	    </exec>
+	    
+	</target>
+
+
+	<target name="check_properties">
+		<condition property="propertiesOK">
+			<and>
+				<isset property="python" />
+				<isset property="jcc" />
+				<isset property="montysolr.version" />
+				<isset property="solr.version" />
+				<isset property="ant" />
+			</and>
+		</condition>
+	</target>
+
+	<target name="die_unless_propertiesOK" unless="propertiesOK">
+		<echo>The properties of the project are not set correctly. Copy "build.properties.default" -> "build.properties" and edit the new file if necessary.</echo>
+		<fail />
+	</target>
+
+
+
+	<target name="clean" >
+		<delete dir="${build.dir}" />
+		<delete dir="${classes.dir}" />
+		<mkdir dir="${classes.dir}"/>
+	</target>
+
+	<target name="default" depends="usage" />
+
+
+	<!--
+      ==================================================================
+         Compilation section for jars
+      ==================================================================
+      -->
+
+	<!-- this is needed for building targets -->
+	<target name="config-build" depends="config,check-solr-location,check-lucene-jars,set-jar-paths,write-properties" >
+		<property name="_properties.written" value="true" />
+	</target>
+
+
+	<target name="set-jar-paths">
+		<!--
+              The part below will discover all the paths inside the directory (for the
+              given pattern) and the property with .path end element will look like
+              path1 [dash][dash]jar path2 [dash][dash]jar path3....
+
+              However, this is suboptimal for cases, when there are two versions of the
+              jar file in the folder, for example:
+               solr-core-1.4.1.jar
+               solr-core-1.4.2-dev.jar
+
+          We include them all. TODO: pick the newest file only
+          -->
+		<path id="solr.core.path">
+			<fileset dir="${solr.real.location}/dist" id="solr.core.jar" >
+				<filename name="*solr-core-*.jar"/>
+			</fileset>
+		</path>
+		<pathconvert property="solr.core.jar.string" pathsep=" --jar ">
+			<path refid="solr.core.path" />
+		</pathconvert>
+
+		<path id="solr.sorlj.path">
+			<fileset dir="${solr.real.location}/dist" id="solr.solrj.jar" >
+				<filename name="*solr-solrj-*.jar"/>
+			</fileset>
+		</path>
+		<pathconvert property="solr.solrj.jar.string" pathsep=" --jar ">
+			<path refid="solr.sorlj.path" />
+		</pathconvert>
+
+		<path id="montysolr.classpath">
+			<fileset dir="${build.dir}" includes="montysolr*.jar" />
+			<fileset dir="${solr.real.location}/dist" includes="**/*.jar" />
+			<fileset dir="${solr.real.location}" includes="lib/**/*.jar" />
+			<fileset dir="${solr.real.location}" includes="example/lib/**/*.jar" />
+			<fileset dir="${solr.real.location}" includes="example/start.jar" />
+			<fileset dir="${lib.dir}" includes="**/*.jar" />
+		</path>
+	</target>
+
+	<!-- Compiles all java classes -->
+	<target name="compile" depends="config-build">
+		<compile srcdir="${src.dir.java}" destdir="${classes.dir}">
+			<classpath path="${jcc_egg}/jcc/classes"/>
+			<classpath refid="montysolr.classpath"/>
+		</compile>
+	</target>
+
+	<target name="test" depends="write-properties">
+		   <antcall target="common.test" inheritall="true" inheritrefs="true"/>
+	</target>
+
+    
+	<target name="test-all" depends="test,test-contrib" description="Run tests for core and contrib"/>
+    
+	
+	<!-- writes into a simple format various config variables, they can be used by unittests/java -->
+	<target name="write-properties" depends="config">
+		   <echo file="${build.dir}/build.properties">
+message=Automatically generated by ant during compilation of MontySolr, do not change!
+solr.home=${solr.home}
+solr.real.location=${solr.real.location}
+jcc=${jcc}
+jcc_egg=${jcc_egg}
+python=${python}
+solr.version=${solr.version}    
+montysolr.version=${montysolr.version}
+ant=${ant}
+		   </echo>
+	</target>
+
+
+
+
+	<!--
+  ==================================================================
+     Testing Python Eggs
+  ==================================================================
+  -->
+	<target name="before-unzip">
+		<delete dir="${build.dir}/${app.name}.egg-info" failonerror="no" />
+		<delete dir="${build.dir}/EGG-INFO" failonerror="no" />
+	</target>
+
+	<!-- Unzip the egg into python-test to be loadable -->
+	<target name="unzip-egg" depends="config-build,before-unzip">
+		<delete dir="${dist.dir}/${app.name}" failonerror="yes" />
+		<unzip dest="${dist.dir}" overwrite="yes">
+			<fileset dir="${dist.dir}">
+				<include name="${app.name}*.egg" />
+			</fileset>
+		</unzip>
+		<move file="${dist.dir}/EGG-INFO" tofile="${dist.dir}/${app.name}.egg-info" />
+
+		<!-- write the current classpath into a text file -->
+		<echo file="${dist.dir}/${app.name}/classpath">${toString:montysolr.classpath}</echo>
+	</target>
+
+
+
+	<!-- Just a basic test to verify that our montysolr package is correctly compiled and contains the necessary classes -->
+	<target name="test-egg" depends="config-build">
+		<exec executable="${python}" dir="${dist.dir}" failonerror="true" logerror="true">
+			<arg value="-c" />
+			<arg value="import ${app.name} as X;X.initVM(X.CLASSPATH+'${path.separator}${toString:montysolr.classpath}',vmargs='-Dsolr.solr.home=/x/dev/workspace/test-solr/solr,-Dsolr.data.dir=/x/dev/workspace/test-solr/solr/data');assert (X.__file__ == 'montysolr/__init__.pyc')" />
+		</exec>
+	</target>
+
+
+
+	<!--
+	==================================================================
+     Embedding PythonVM in JavaVM
+    ==================================================================
+    -->
+
+	<!-- build solr for python -->
+	<target name="build-solr" depends="config-build,compile-solr-egg,unzip-solr-egg"
+	               description="Build separately the Python egg of Solr"/>
+    <target name="compile-solr-egg" depends="config-build">
+        <mkdir dir="${build.dir}" />
+        <delete dir="${build.dir}/build" failonerror="no" />
+
+        <echo message="You can watch Monty Python, this takes a while..." />
+
+        <exec executable="${python}" dir="${build.dir}" failonerror="true" logerror="true">
+            <env key="PYTHONPATH" value="${src.dir.python}${path.separator}${env.PYTHONPATH}" />
+
+            <!-- this is mac specific, i will yet have to find out how to make it os-specific,
+                 but it makes no problems to Ubuntu/SLC linux os'es so far -->
+            <env key="JCC_LFLAGS" value="-framework${path.separator}JavaVM${path.separator}-framework${path.separator}Python" />
+
+
+            <arg line="${jcc}" />
+            <arg value="${ddash}shared" />
+        	<arg value="${ddash}use_full_names" />
+            <arg value="${ddash}version" />
+            <arg value="${app.version}" />
+            <arg value="${ddash}import"/>
+            <arg value="lucene" />
+            <arg line="${ddash}jar ${solr.core.jar.string}" />
+            <arg line="${ddash}jar ${solr.solrj.jar.string}" />
+            <arg value="${ddash}classpath" />
+            <arg value="${toString:montysolr.classpath}${path.separator}${jcc_egg}/jcc/classes/" />
+            <arg value="${ddash}package" />
+            <arg value="java.lang" />
+            <arg value="${ddash}python" />
+            <arg value="${app.solr.name}" />
+            <arg value="${ddash}build" />
+            <arg value="${ddash}bdist" />
+            <arg line="${ddash}files 5" />
+            <!-- We exclude the embedded classes because they are Jetty specific -->
+            <arg line="${ddash}exclude org.apache.solr.search.FunctionQParser
+                       ${ddash}exclude org.apache.solr.client.solrj.embedded.NoLog 
+                       ${ddash}exclude org.apache.solr.client.solrj.embedded.JettySolrRunner
+                       ${ddash}exclude org.apache.solr.update.processor.UniqFieldsUpdateProcessorFactory
+                       ${ddash}exclude org.apache.noggit.JSONParser
+                       ${ddash}exclude org.apache.solr.util.xslt.TransformerProvider
+                       ${ddash}rename org.apache.solr.handler.loader.ContentStreamLoader=LoaderContentStreamLoader
+                      " />
+        </exec>
+    </target>
+	
+	
+	<!-- Build MontySolr for Python -->
+	<target name="build" depends="config-build,compile-montysolr-egg,unzip-egg"
+		   description="Build MontySolr separately"/>
+
+	
+	<target name="compile-montysolr-egg" depends="compile,jar">
+		<mkdir dir="${build.dir}" />
+		<delete dir="${build.dir}/build" failonerror="no" />
+
+		<exec executable="${python}" dir="${build.dir}" failonerror="true" logerror="true">
+			<env key="PYTHONPATH" value="${src.dir.python}${path.separator}../${dist.dir}${path.separator}${env.PYTHONPATH}" />
+
+			<!-- this is mac specific, i will yet have to find out how to make it os-specific -->
+			<env key="JCC_LFLAGS" value="-framework${path.separator}JavaVM${path.separator}-framework${path.separator}Python" />
+
+			<arg line="${jcc}" />
+			<arg value="${ddash}shared" />
+			<arg value="${ddash}use_full_names" />
+			<arg value="${ddash}version" />
+			<arg value="${app.version}" />
+			<arg line="${jcc.build}" />
+			<arg line="${jcc.build_also}" />
+			<arg value="${ddash}import"/>
+			<arg value="lucene" />
+			<arg value="${ddash}import" />
+			<arg value="${app.solr.name}" />
+
+			<arg line="${jcc.packages}" />
+			<arg value="${ddash}package" />
+			<arg line="org.apache.solr.request" />
+			<arg value="${ddash}classpath" />
+			<arg value="${toString:montysolr.classpath}${path.separator}../${montysolr.jar}:${path.separator}${jcc_egg}/jcc/classes/" />
+			<arg value="${ddash}include" />
+			<arg value="${montysolr.jar}" />
+			<arg value="${ddash}python" />
+			<arg value="${app.name}" />
+			<arg value="${ddash}build" />
+			<arg value="${ddash}bdist" />
+
+			<!-- this can be activated if i want to distribute python together with the jcc, python code
+                 will be copied into the extension folder
+            <arg value="${ddash}module" />
+            <arg value="${src.dir.python}" />
+            -->
+		</exec>
+	</target>
+
+
+    <!--
+    ==================================================================
+     Commands for a lazy developer
+    ==================================================================
+    -->
+	
+	<target name="build-all" depends="get-solr,build-solr,build,jar,build-contrib"
+	        description="Build Python egg for Solr, and sorlpie egg to be embedded inside Java VM, this is what you need to run Python inside Solr"/>
+	    
+    
+    <target name="build-contrib" >
+      
+      <exec executable="${ant}" failifexecutionfails="true" failonerror="true" >
+        <arg line="build-all -f ${common.dir}/contrib/antlrqueryparser/build.xml"/>
+      </exec>
+      <exec executable="${ant}" failifexecutionfails="true" failonerror="true" >
+        <arg line="build-all -f ${common.dir}/contrib/newseman/build.xml"/>
+      </exec>
+      <exec executable="${ant}" failifexecutionfails="true" failonerror="true" >
+        <arg line="build-all -f ${common.dir}/contrib/adsabs/build.xml"/>
+      </exec>
+      <exec executable="${ant}" failifexecutionfails="true" failonerror="true" >
+        <arg line="build-all -f ${common.dir}/contrib/examples/build.xml"/>
+      </exec>
+
+      <!--
+           seems that ant 1.8.x gets the order differently, huh... so we must make sure
+           antlrqueryparser is built before the rest, so i can't use apply
+           
+      <apply executable="${ant}" parallel="false" failonerror="true" failifexecutionfails="true">
+        <arg line="build-all"/>
+        <arg value="-f"/>
+        <fileset dir="${common.dir}/contrib">
+          <include name="**/newseman/build.xml"/>
+          <include name="**/adsabs/build.xml"/>
+          <include name="**/examples/build.xml"/>
+        </fileset>
+      </apply>
+      -->
+      
+    </target>
+	
+	<target name="test-contrib" >
+        <apply executable="${ant}" parallel="false" failonerror="true" >
+          <arg line="test"/>
+          <arg value="-f"/>
+          <fileset dir="${common.dir}/contrib">
+            <include name="**/antlrqueryparser/build.xml"/>
+            <include name="**/newseman/build.xml"/>
+          </fileset>
+        </apply>
+	  
+  	  <apply executable="${ant}" parallel="false" failonerror="true" >
+        <arg line="test"/>
+        <arg value="-f"/>
+  	    <arg line="-Dtests.file.encoding=UTF-8" />
+        <fileset dir="${common.dir}/contrib">
+          <include name="**/adsabs/build.xml"/>
+        </fileset>
+      </apply>
+	      
+    </target>
+
+	
+
+
+
+	<!--
+    ====================================================================
+                   Installation goodies
+    ====================================================================
+    -->
+    
+	
+	<target name="get-solr"
+          depends="get-solr-usign-svn,check-solr-location,download-solr,build-solr-example">
+	</target>
+
+	
+	
+	<!-- this is for development purposes - especially when lucene/solr stable releases are not yet there -->
+	<target name="get-solr-usign-svn">
+		<mkdir dir="${solr.home}"/>
+		
+		<exec executable="${python}" failifexecutionfails="true" dir="${solr.home}">
+			<arg value="-c"/>
+			<arg value="import os;'${solr.version}'.lower().__contains__('svn') and (os.path.isdir('.svn') and os.system('svn update --force') or os.system('svn checkout ${solr.svn} .'))"/>
+		</exec>
+		
+		<antcall target="check-solr-location" />
+	</target>
+
+	<!-- this target sets the location of the solr, if not present, we'll assume build/solr-download/apache-solr-${solr.version}/solr
+	   The property may also be set by a download-solr task
+	 -->
+	<target name="check-solr-location" >
+		<condition property="solr.real.location" value="${solr.home}">
+			<and>
+				<available file="${solr.home}/example/README.txt"/>
+				<available file="${solr.home}/contrib/contrib-build.xml"/>
+			</and>
+		</condition>
+		
+		<condition property="solr.real.location" value="${solr.home}/solr">
+            <and>
+                <available file="${solr.home}/solr/example/README.txt"/>
+                <available file="${solr.home}/solr/contrib/contrib-build.xml"/>
+            </and>
+        </condition>
+
+		<condition property="solr.real.location" value="${build.dir}/solr-download/apache-solr-${solr.version}/solr">
+			<and>
+				<available file="${build.dir}/solr-download/apache-solr-${solr.version}/solr/example/README.txt"/>
+				<available file="${build.dir}/solr-download/apache-solr-${solr.version}/solr/contrib/contrib-build.xml"/>
+			</and>
+		</condition>
+
+		<echo message="Did we find solr location? Path=${solr.real.location}"/>
+	</target>
+
+
+	<!-- Download the solr binary distribution, unless it was already downloaded (if solr.real.location is
+         set, then we know solr was already downloaded/exists) -->
+	<target name="download-solr"
+		unless="solr.real.location" depends="get-solr-mirror">
+
+
+		<!-- can't rely on the init target -->
+		<mkdir dir="${build.dir}/solr-download/"/>
+
+		<echo>Downloading Solr, please wait... (but if it takes too long, then run me again and I'll use a different mirror)</echo>
+
+		<get src="${solr.mirror}/${solr.version}/apache-solr-${solr.version}-src.tgz" dest="${build.dir}/solr-download/${solr.version}-src.tgz" 
+			verbose="true" ignoreerrors="true"/>
+		
+		<condition property="_download.using.apache.mirror" value="true">
+            <not>
+                <available file="${build.dir}/solr-download/${solr.version}-src.tgz"/>
+            </not>
+        </condition>
+        
+        <antcall target="download-using-apache-mirror" />
+		
+	    <antcall target="untar-solr" />
+		
+		<!-- set the property, it may be used by other targets (see check-solr-location target) -->
+		<property name="solr.real.location" value="${build.dir}/solr-download/apache-solr-${solr.version}/solr"/>
+	</target>
+	
+	
+	<target name="download-using-apache-mirror" if="_download.using.apache.mirror">
+            <echo>This is used only when the download using mirror site fails</echo>
+            <get src="http://archive.apache.org/dist/lucene/solr/${solr.version}/apache-solr-${solr.version}-src.tgz" dest="${build.dir}/solr-download/${solr.version}-src.tgz" 
+                        verbose="true" ignoreerrors="false"/>
+            
+    </target>
+
+	<target name="untar-solr" >
+		<untar dest="${build.dir}/solr-download" src="${build.dir}/solr-download/${solr.version}-src.tgz" compression="gzip"/>
+	</target>
+
+	<target name="build-solr-example" depends="check-solr-location">
+		<echo>Building the Solr example</echo>
+
+		<!--
+        Unfortunately, the ant task is having some problems with the basedir (ant 1.7)
+        <ant target="example"
+            dir="${build.dir}/solr-download/apache-solr-${solr.version}/"
+            inheritall="false"
+        />
+        -->
+
+		<exec executable="${ant}" dir="${solr.real.location}" logerror="true">
+			<env key="PATH" value="${ant.home}/bin${path.separator}${env.PATH}" />
+			<arg value="example" />
+		</exec>
+	</target>
+
+
+	
+	
+    <target name="unzip-solr-egg">
+        <!-- retrieves the location of the jcc -->
+        <exec executable="${python}" failonerror="true" outputproperty="_tmp_solr_err" dir="${build.dir}/dist" logerror="true">
+            <arg value="-c"/>
+            <arg value="import os,glob; print os.path.abspath(glob.glob('./${app.solr.name}*.egg')[0])" />
+        </exec>
+
+        <delete dir="${dist.dir}/${app.solr.name}.egg-info" failonerror="no" />
+        <delete dir="${dist.dir}/${app.solr.name}" failonerror="no" />
+
+        <unzip dest="${dist.dir}" overwrite="yes">
+            <fileset dir="${dist.dir}">
+                <include name="${app.solr.name}*.egg" />
+            </fileset>
+        </unzip>
+        <move file="${dist.dir}/EGG-INFO" tofile="${dist.dir}/${app.solr.name}.egg-info" />
+    </target>
+
+	
+	<target name="try-lucene-jars" depends="check-solr-location" >
+		<!-- since on old ant we cannot ignore it -->
+		<mkdir dir="${solr.real.location}/dist" />
+
+		<path id="montysolr.classpath.testing">
+			<fileset dir="${solr.real.location}/dist" includes="**/*.jar" />
+		</path>
+
+		<condition property="lucene.jars.exist" value="true">
+			<and>
+				<available classname="org.apache.lucene.spatial.tier.InvalidGeoException" classpath="${toString:montysolr.classpath.testing}" />
+			</and>
+		</condition>
+
+		<echo message="Are lucene jars available? ${lucene.jars.exist}" level="verbose" />
+	</target>
+
+	<target name="check-lucene-jars" depends="try-lucene-jars" unless="lucene.jars.exist">
+		<delete dir="${solr.real.location}/dist/montysolr-extracted" />
+		<mkdir dir="${solr.real.location}/dist/montysolr-extracted" />
+		<unzip dest="${solr.real.location}/dist/montysolr-extracted" overwrite="yes">
+			<fileset dir="${solr.real.location}/dist">
+				<include name="apache-solr*.war" />
+			</fileset>
+		</unzip>
+		<move todir="${solr.real.location}/dist/montysolr-extracted">
+			<fileset dir="${solr.real.location}/dist/montysolr-extracted/WEB-INF/lib">
+				<include name="**/**.jar"/>
+			</fileset>
+		</move>
+		<delete dir="${solr.real.location}/dist/montysolr-extracted" includeemptydirs="true">
+			<exclude name="**/**.jar"/>
+		</delete>
+	</target>
+
+
+	<target name="run-example"
+	   description="Assembles ADSABS example and starts MontySolr (don't forget to do build-all first)"
+	   depends="">
+
+		<exec executable="${ant}" dir="${common.dir}/contrib/examples" logerror="true" 
+			newenvironment="true">
+            <arg line="build-one run-configured -Dename=adsabs -Dprofile=normal.profile" />
+        </exec>
+
+	</target>
+
+	
+	<target name="get-solr-mirror" depends="init" unless="solr.real.location">
+		<exec executable="${python}" outputproperty="solr.mirror" failonerror="true" logerror="true">
+			<arg value="-c" />
+			<arg  value="import urllib;t = urllib.urlopen('http://www.apache.org/dyn/closer.cgi/lucene/solr/').read();l = filter(lambda x: 'lucene/solr' in x, map(lambda x: x.split('&quot;')[0], filter(lambda x: x[:4] == 'http', t.split('href=&quot;'))));print l[0]"/>
+		</exec>
+		<echo>We will use the mirror: ${solr.mirror}</echo>
+	</target>
+
+	
+	<target name="install-eclipse-project-files" depends="init" >
+
+		<property name="_home" location="." />
+
+		<exec executable="${python}" failonerror="true" outputproperty="_top_folder" logerror="true">
+			<arg value="-c"/>
+			<arg value="import os;print os.path.basename(os.path.abspath('.'))" />
+		</exec>
+
+		<exec executable="${python}" failonerror="true" outputproperty="_python_ver" logerror="true">
+			<arg value="-c"/>
+			<arg value="import sys;print '%s.%s' % sys.version_info[:2]" />
+		</exec>
+
+		<echo file=".project">
+			<![CDATA[
+<?xml version="1.0" encoding="UTF-8"?>
+			<projectDescription>
+				<name>]]></echo>
+				<echo file=".project" append="true">${_top_folder}</echo>
+				<echo file=".project" append="true">
+					<![CDATA[</name>
+					<comment>
+					</comment>
+					<projects>
+						<project>lucene_solr_3_1</project>
+					</projects>
+					<buildSpec>
+						<buildCommand>
+							<name>org.python.pydev.PyDevBuilder</name>
+							<arguments>
+							</arguments>
+						</buildCommand>
+						<buildCommand>
+							<name>org.eclipse.jdt.core.javabuilder</name>
+							<arguments>
+							</arguments>
+						</buildCommand>
+					</buildSpec>
+					<natures>
+						<nature>org.eclipse.jdt.core.javanature</nature>
+						<nature>org.python.pydev.pythonNature</nature>
+					</natures>
+				</projectDescription>
+		   ]]> </echo>
+
+			<echo file=".pydevproject">
+&lt;?xml version="1.0" encoding="UTF-8" standalone="no"?&gt;
+&lt;?eclipse-pydev version="1.0"?&gt;
+
+&lt;pydev_project&gt;
+    &lt;pydev_property name="org.python.pydev.PYTHON_PROJECT_INTERPRETER"&gt;Default&lt;/pydev_property&gt;
+    &lt;pydev_property name="org.python.pydev.PYTHON_PROJECT_VERSION"&gt;python ${_python_ver}&lt;/pydev_property&gt;
+    &lt;pydev_pathproperty name="org.python.pydev.PROJECT_SOURCE_PATH"&gt;
+    &lt;path&gt;/${_top_folder}/src/python&lt;/path&gt;
+    &lt;/pydev_pathproperty&gt;
+    &lt;pydev_pathproperty name="org.python.pydev.PROJECT_EXTERNAL_SOURCE_PATH"&gt;
+    &lt;path&gt;${_home}/build/dist&lt;/path&gt;
+    &lt;/pydev_pathproperty&gt;
+&lt;/pydev_project&gt;
+	   </echo>
+
+			<echo file=".classpath">
+				<![CDATA[
+              <?xml version="1.0" encoding="UTF-8"?>
+				<classpath>
+					<classpathentry kind="src" path="src/java"/>
+					<classpathentry kind="src" path="test/java"/>
+					<classpathentry kind="lib" path="lib/junit-3.8.2.jar"/>
+					<classpathentry kind="lib" path="lib/jzlib-1.0.7.jar"/>
+					<classpathentry kind="lib" path="lib/commons-io-1.4.jar"/>
+					<classpathentry kind="lib" path="lib/slf4j-api-1.5.5.jar"/>
+					<classpathentry kind="lib" path="lib/slf4j-jdk14-1.5.5.jar"/>
+					<classpathentry kind="lib" path="]]></echo>
+	    <echo file=".classpath" append="true">${jcc_egg}/jcc/classes</echo>
+		<echo file=".classpath" append="true"><![CDATA["/>
+					<classpathentry combineaccessrules="false" kind="src" path="/lucene_solr_3_1"/>
+					<classpathentry kind="con" path="org.eclipse.jdt.launching.JRE_CONTAINER"/>
+					<classpathentry combineaccessrules="false" kind="src" path="/jetty-6.1.4"/>
+					<classpathentry kind="output" path="bin"/>
+				</classpath>
+            ]]> </echo>
+
+
+	</target>
+
+
+	
+	<!-- poorman's way to run the python tests from inside ./src/python -->
+	<target name="test-python">
+	   <run-python-unittests python="${python}" python-path="${env.PYTHONPATH}${path.separator}${dist.dir}${path.separator}${src.dir.python}"
+	    srcdir="${common.dir}/src/python"
+	   />
+	</target>
+	
+	</project>
+<?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+<project name="common" xmlns:artifact="antlib:org.apache.maven.artifact.ant"
+                       xmlns:ivy="antlib:org.apache.ivy.ant"
+	                   xmlns:junit4="antlib:com.carrotsearch.junit4">
+	<description>
+    This file is designed for importing into a main build file, and not intended
+    for standalone use.
+    </description>
+	
+	<!--
+    ======================================================================
+             Selected properties from lucene/common-build.xml 
+    ======================================================================  
+    //-->
+
+	<dirname file="${ant.file.common}" property="common.dir"/>
+	<property name="dev-tools.dir" value="${common.dir}/../dev-tools"/>
+
+	<!-- Give user a chance to override without editing this file
+	      (and without typing -D each time it compiles it -->
+	<property file="${user.home}/lucene.build.properties"/>
+	<property file="${user.home}/build.properties"/>
+	<property file="${basedir}/build.properties"/>
+	<property file="${common.dir}/build.properties"/>
+
+	<tstamp>
+		<format property="current.year" pattern="yyyy"/>
+		<format property="DSTAMP" pattern="yyyy-MM-dd"/>
+		<format property="TSTAMP" pattern="HH:mm:ss"/>
+		<!-- datetime format that is safe to treat as part of a dotted version -->
+		<format property="dateversion" pattern="yyyy.MM.dd.HH.mm.ss" />
+	</tstamp>
+
+	<property name="name" value="${ant.project.name}"/>
+	<property name="Name" value="MontySolr"/>
+	<property name="dev.version" value="4.0-SNAPSHOT"/>
+	<property name="tests.luceneMatchVersion" value="4.0"/>
+	<property name="version" value="${dev.version}"/>
+	<property name="spec.version" value="${version}"/>
+	<property name="year" value="2000-${current.year}"/>
+	<property name="final.name" value="montysolr-${name}-${version}"/>
+
+	<property name="common.classpath.excludes" value="**/*.txt,**/*.template,**/*.sha1" />
+
+	<property name="ivy.bootstrap.version" value="2.2.0" />
+	<property name="ivy.resource" value="org/apache/ivy/ant/antlib.xml" />
+	<available resource="${ivy.resource}" property="ivy.available" />
+	<property name="ivy.default.configuration" value="*"/>
+    <property name="ivy.sync" value="true"/>
+
+	<property name="junit.jar" value="junit-4.10.jar"/>
+	<property name="junit-location.jar" value="${common.dir}/lib/${junit.jar}"/>
+
+	<path id="junit-path">
+		<fileset dir="${common.dir}/lib">
+			<include name="junit-*.jar" />
+			<include name="randomizedtesting-runner-*.jar" />
+		</fileset>
+	</path>
+
+	<path id="ant-path">
+		<fileset dir="${common.dir}/lib" includes="ant-*.jar"/>
+	</path>
+
+	<!-- default arguments to pass to JVM executing tests -->
+	<property name="args" value=""/>
+
+	<property name="tests.seed" value="" />
+	<property name="tests.jvms" value="auto" />
+	<property name="tests.multiplier" value="1" />
+	<property name="tests.codec" value="random" />
+	<property name="tests.postingsformat" value="random" />
+	<property name="tests.locale" value="random" />
+	<property name="tests.timezone" value="random" />
+	<property name="tests.directory" value="random" />
+	<property name="tests.linedocsfile" value="europarl.lines.txt.gz" />
+    <property name="tests.loggingfile" value="${common.dir}/logging.properties"/>
+	<property name="tests.nightly" value="false" />
+	<property name="tests.weekly" value="false" />
+	<property name="tests.slow" value="true" />
+	<property name="tests.cleanthreads.sysprop" value="perMethod"/>
+	<property name="tests.asserts.gracious" value="false"/>
+	<property name="tests.verbose" value="false"/>
+	<property name="tests.infostream" value="${tests.verbose}"/>
+
+	<condition property="tests.heapsize" value="768M">
+		<isset property="run.clover"/>
+	</condition>
+	<property name="tests.heapsize" value="512M"/>
+
+	<condition property="tests.clover.args" value="-XX:ReservedCodeCacheSize=128m">
+		<isset property="run.clover"/>
+	</condition>
+	<property name="tests.clover.args" value=""/>
+
+	<property name="tests.tempDir" value="${build.dir}/test"/>
+
+    <condition property="tests.remoteDebug" value="-Xdebug -Xnoagent -Djava.compiler=NONE -Xrunjdwp:transport=dt_socket,address=8787,server=y,suspend=y" else="" >
+        <isset property="remoteDebug"/>
+    </condition>
+    <echo message="remote debug: ${tests.remoteDebug}"/>
+	
+	<property name="tests.cachefile" location="${common.dir}/build/junit4/cached-timehints.txt" />
+	<property name="tests.cachefilehistory" value="20" />
+
+	<!-- Override these in your local properties to your desire. -->
+	<!-- Show simple class names (no package) in test suites. -->
+	<property name="tests.useSimpleNames" value="false" />
+	<!-- Max width for class name truncation.  -->
+	<property name="tests.maxClassNameColumns" value="10000" />
+	<!-- Show suite summaries for tests. -->
+	<property name="tests.showSuiteSummary" value="true" />
+	<!-- Show timestamps in console test reports. -->
+	<property name="tests.timestamps" value="false" />
+	<!-- Heartbeat in seconds for reporting long running tests or hung forked JVMs. -->
+	<property name="tests.heartbeat" value="60" />
+
+	<!-- Configure test emission to console for each type of status -->
+	<property name="tests.showError" value="true" />
+	<property name="tests.showFailure" value="true" />
+	<property name="tests.showIgnored" value="true" />
+
+    <!-- Display at most this many failures as a summary at the end of junit4 run. -->
+    <property name="tests.showNumFailures" value="10" />
+
+	<property name="javac.deprecation" value="off"/>
+	<property name="javac.debug" value="on"/>
+	<property name="javac.source" value="1.6"/>
+	<property name="javac.target" value="1.6"/>
+	<property name="javac.source.backwards" value="1.6"/>
+	<property name="javac.target.backwards" value="1.6"/>
+	<property name="javac.args" value="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
+	<property name="bootclasspath" value=""/>
+	<property name="javadoc.link" value="http://download.oracle.com/javase/6/docs/api/"/>
+	<property name="javadoc.link.junit" value="http://junit.sourceforge.net/javadoc/"/>
+	<property name="javadoc.packagelist.dir" value="${common.dir}/tools/javadoc"/>
+	<available file="${javadoc.packagelist.dir}/java6/package-list" property="javadoc.java6.packagelist.exists"/>
+	<property name="javadoc.access" value="protected"/>
+	<property name="javadoc.charset" value="utf-8"/>
+	<property name="javadoc.dir" value="${common.dir}/build/docs"/>
+	<property name="javadoc.maxmemory" value="512m" />
+	<!-- Javadoc classpath -->
+	<path id="javadoc.classpath">
+		<path refid="classpath"/>
+		<pathelement location="${ant.home}/lib/ant.jar"/>
+		<fileset dir=".">
+			<exclude name="build/**/*.jar"/>
+			<include name="**/lib/*.jar"/>
+		</fileset>
+	</path>
+
+	<property name="changes.src.dir" value="${common.dir}/site/changes"/>
+	<property name="changes.target.dir" value="${common.dir}/build/docs/changes"/>
+
+	<property name="project.name" value="site"/>
+	<!-- todo: is this used by anakia or something else? -->
+	<property name="build.encoding" value="utf-8"/>
+
+	<property name="src.dir" location="src/java"/>
+	<property name="tests.src.dir" location="src/test"/>
+	<property name="build.dir" location="build"/>
+	<!-- Needed in case a module needs the original build, also for compile-tools to be called from a module -->
+	<property name="common.build.dir" location="${common.dir}/build"/>
+	<property name="tests.lockdir" location="${common.build.dir}"/>
+	<property name="dist.dir" location="${common.dir}/dist"/>
+	<property name="maven.dist.dir" location="${dist.dir}/maven"/>
+	<property name="m2.repository.url" value="file://${maven.dist.dir}"/>
+	<property name="m2.repository.private.key" value="${user.home}/.ssh/id_dsa"/>
+
+
+	<property name="backwards.dir" location="backwards"/>
+	<property name="build.dir.backwards" location="${build.dir}/backwards"/>
+
+	<property name="junit.output.dir" location="${build.dir}/test"/>
+	<property name="junit.output.dir.backwards" location="${build.dir.backwards}/test"/>
+	<property name="junit.reports" location="${build.dir}/test/reports"/>
+	<property name="junit.reports.backwards" location="${build.dir.backwards}/test/reports"/>
+
+	<property name="manifest.file" location="${build.dir}/MANIFEST.MF"/>
+
+
+
+
+	<propertyset id="uptodate.and.compiled.properties" dynamic="true">
+		<propertyref regex=".*\.uptodate$$"/>
+		<propertyref regex=".*\.compiled$$"/>
+	</propertyset>
+
+	<patternset id="lucene.local.src.package.patterns"
+	              excludes="**/pom.xml,**/*.iml,**/*.jar,build/**,dist/**,benchmark/work/**,benchmark/temp/**,tools/javadoc/java6/**,tools/clover/**"
+	  />
+
+	<!-- Default exclude sources and javadoc jars from Ivy fetch to save time and bandwidth -->
+	<condition property="ivy.exclude.types" 
+	      value=""
+	      else="source|javadoc">
+		<isset property="fetch.sources.javadocs"/>
+	</condition>
+
+	<!-- Check for minimum supported ANT version. -->
+	<fail message="Minimum supported ANT version is 1.8.2. Yours: ${ant.version}">
+		<condition>
+			<not>
+				<antversion atleast="1.8.2" />
+			</not>
+		</condition>
+	</fail>
+
+
+	
+	<!-- define dummy clover path used by junit -->
+    <path id="clover.classpath"/>
+
+	<!--
+    ======================================================================
+              important paths for MontySolr 
+    ======================================================================	
+	//-->
+	
+	<property file="${common.build.dir}/build.properties" prefix="prop"/>
+
+	<!-- common classpaths that are shareable across montysolr
+	               in fact, we try hard to find all the solr/lucene libs
+	               as well as setup montysolr project files. Use this in
+	               contrib and in main build.xml for classrefs 
+	          -->
+	<path id="common.classpath">
+		<pathelement location="${common.dir}/build/classes/java"/>
+		<!-- montysolr jars -->
+		<fileset dir="${common.dir}/build/jar">
+			<include name = "**/*.jar" />
+		</fileset>
+		<!-- lucene/solr jars -->
+		<fileset dir="${common.dir}/build/solr-download">
+			<include name = "**/dist/**/*.jar" />
+			<include name = "**/example/start.jar" />
+		</fileset>
+		<!-- montysolr lib jars -->
+		<fileset dir="${common.dir}/lib">
+			<include name = "**/*.jar" />
+		</fileset>
+		<!-- location of JCC classes, found only when imported from main build.xml -->
+		<pathelement location="${jcc_egg}/jcc/classes" />
+		<!-- location of JCC classes, from the generated build.properties -->
+		<pathelement location="${prop.jcc_egg}/jcc/classes" />
+	</path>
+
+	<path id="common.demo.classpath">
+		<path refid="common.classpath"/>
+		<pathelement location="${common.dir}/build/classes/demo"/>
+	</path>
+
+	<path id="common.test.classpath">
+
+		<path refid="junit-path"/>
+		<path refid="ant-path"/>
+		<pathelement location="${common.dir}/build/classes/test"/>
+
+		<!-- these classes cannot be found in solr/lucene jars, they are needed
+	                 for proper compilation of unittests -->
+
+		<dirset dir="${common.dir}/build/solr-download">
+			<include name = "**/solr/build/solr-test-framework/classes/java"/>
+		</dirset>
+
+		<dirset dir="${common.dir}/build/solr-download">
+			<include name = "**/lucene/build/codecs/classes/java"/>
+			<include name = "**/lucene/build/test-framework/classes/java"/>
+		</dirset>
+		<path refid="common.classpath"/>
+	</path>
+
+	<path id="common.junit.classpath">
+		<path refid="common.test.classpath"/>
+		<path refid="junit-path"/>
+		<pathelement location="${common.dir}/build/classes/test"/>
+		<pathelement location="${common.dir}/build/classes/java"/>
+		<pathelement path="${java.class.path}"/>
+	</path>
+	
+	<!-- if testcase is specified let the family be empty (to include all) -->
+	<condition property="tests.family" value="">
+        <isset property="testcase" />
+    </condition>
+	<condition property="tests.family" value="${testfamily}">
+        <isset property="testfamily" />
+    </condition>
+	<property name="tests.family" value="Test" />
+
+	<!--
+	======================================================================
+	          SELECTED TARGETS FROM lucene/common-build.xml
+	======================================================================
+	//-->
+
+	<target name="clean"
+    description="Removes contents of build and dist directories">
+		<delete dir="${build.dir}"/>
+		<delete dir="${dist.dir}"/>
+		<delete file="velocity.log"/>
+	</target>
+
+
+	<target name="init" depends="resolve">
+		<!-- currently empty -->
+	</target>
+
+	<target name="ivy-configure">
+		<!-- [DW] ivy loses its configuration for some reason. cannot explain this. if
+	          you have an idea, fix it.
+	          unless="ivy.settings.uptodate" -->
+		<!-- override: just for safety, should be unnecessary -->
+		<ivy:configure file="${common.dir}/ivy-settings.xml" override="true"/>
+		<!-- <property name="ivy.settings.uptodate" value="true"/> -->
+	</target>
+
+	<target name="resolve" depends="ivy-availability-check,ivy-fail,ivy-configure">
+		<!-- todo, make this a property or something. 
+	         only special cases need bundles -->
+		<ivy:retrieve type="jar,bundle" log="download-only" 
+	                  conf="${ivy.default.configuration}"/>
+	</target>
+
+	<property name="ivy_install_path" location="${user.home}/.ant/lib" />
+	<property name="ivy_bootstrap_url1" value="http://repo1.maven.org/maven2"/>
+	<!-- you might need to tweak this from china so it works -->
+	<property name="ivy_bootstrap_url2" value="http://mirror.netcologne.de/maven2"/>
+	<property name="ivy_checksum_sha1" value="f9d1e83e82fc085093510f7d2e77d81d52bc2081"/>
+
+	<target name="ivy-availability-check" unless="ivy.available">
+		<echo>
+	     This build requires Ivy and Ivy could not be found in your ant classpath.
+
+	     (Due to classpath issues and the recursive nature of the Lucene/Solr 
+	     build system, a local copy of Ivy can not be used an loaded dynamically 
+	     by the build.xml)
+
+	     You can either manually install a copy of Ivy ${ivy.bootstrap.version} in your ant classpath:
+	       http://ant.apache.org/manual/install.html#optionalTasks
+
+	     Or this build file can do it for you by running the Ivy Bootstrap target:
+	       ant ivy-bootstrap     
+	     
+	     Either way you will only have to install Ivy one time.
+
+	     'ant ivy-bootstrap' will install a copy of Ivy into your Ant User Library:
+	       ${user.home}/.ant/lib
+	     
+	     If you would prefer, you can have it installed into an alternative 
+	     directory using the "-Divy_install_path=/some/path/you/choose" option, 
+	     but you will have to specify this path every time you build Lucene/Solr 
+	     in the future...
+	       ant ivy-bootstrap -Divy_install_path=/some/path/you/choose
+	       ...
+	       ant -lib /some/path/you/choose clean compile
+	       ...
+	       ant -lib /some/path/you/choose clean compile
+
+	     If you have already run ivy-bootstrap, and still get this message, please 
+	     try using the "--noconfig" option when running ant, or editing your global
+	     ant config to allow the user lib to be loaded.  See the wiki for more details:
+	       http://wiki.apache.org/lucene-java/HowToContribute#antivy
+	    </echo>
+	</target>
+	<target name="ivy-fail" unless="ivy.available">
+		<fail>Ivy is not available</fail>
+	</target>
+	<target name="ivy-bootstrap" description="Download and install Ivy in the users ant lib dir" depends="ivy-bootstrap1,ivy-bootstrap2,ivy-checksum"/>
+
+	<!-- try to download from repo1.maven.org -->
+	<target name="ivy-bootstrap1">
+		<ivy-download src="${ivy_bootstrap_url1}" dest="${ivy_install_path}"/>
+		<available file="${ivy_install_path}/ivy-${ivy.bootstrap.version}.jar" property="ivy.bootstrap1.success" />
+	</target>
+
+	<target name="ivy-bootstrap2" unless="ivy.bootstrap1.success">
+		<ivy-download src="${ivy_bootstrap_url2}" dest="${ivy_install_path}"/>
+	</target>
+
+	<target name="ivy-checksum">
+		<checksum file="${ivy_install_path}/ivy-${ivy.bootstrap.version}.jar"
+	              property="${ivy_checksum_sha1}"
+	              algorithm="SHA"
+	              verifyproperty="ivy.checksum.success"/>
+		<fail message="Checksum mismatch for ivy-${ivy.bootstrap.version}.jar. Please download this file manually">
+			<condition>
+				<isfalse value="${ivy.checksum.success}"/>
+			</condition>
+		</fail>
+	</target>
+
+	<macrodef name="ivy-download">
+		<attribute name="src"/>
+		<attribute name="dest"/>
+		<sequential>
+			<mkdir dir="@{dest}"/>
+			<echo message="installing ivy ${ivy.bootstrap.version} to ${ivy_install_path}"/>
+			<get src="@{src}/org/apache/ivy/ivy/${ivy.bootstrap.version}/ivy-${ivy.bootstrap.version}.jar"
+	           dest="@{dest}/ivy-${ivy.bootstrap.version}.jar" usetimestamp="true" ignoreerrors="true"/>
+		</sequential>
+	</macrodef>
+
+
+
+
+
+	<target name="compile-core" depends="init"
+          description="Compiles core classes">
+		<compile
+      srcdir="${src.dir}"
+      destdir="${build.dir}/classes/java">
+			<classpath refid="classpath"/>
+		</compile>
+
+		<!-- Copy the resources folder (if existent) -->
+		<copy todir="${build.dir}/classes/java">
+			<fileset dir="${src.dir}/../resources" erroronmissingdir="no"/>
+		</copy>
+	</target>
+
+	<target name="compile" depends="compile-core">
+		<!-- convenience target to compile core -->
+	</target>
+
+	<target name="jar-core" depends="compile-core"
+    description="Packages the JAR file">
+		<jarify/>
+	</target>
+
+
+
+
+	<macrodef name="build-manifest" description="Builds a manifest file">
+		<attribute name="title"/>
+		<attribute name="implementation.title"/>
+		<attribute name="spec.version"/>
+		<attribute name="manifest.file" default="${manifest.file}"/>
+		<sequential>
+			<manifest file="@{manifest.file}">
+				<!--
+	        http://java.sun.com/j2se/1.5.0/docs/guide/jar/jar.html#JAR%20Manifest
+	        http://java.sun.com/j2se/1.5.0/docs/guide/versioning/spec/versioning2.html
+	        http://java.sun.com/j2se/1.5.0/docs/api/java/lang/Package.html
+	        http://java.sun.com/j2se/1.5.0/docs/api/java/util/jar/package-summary.html
+	        http://java.sun.com/developer/Books/javaprogramming/JAR/basics/manifest.html
+	        -->
+				<!-- Don't set 'Manifest-Version' it identifies the version of the
+	             manifest file format, and should always be 1.0 (the default)
+
+	             Don't set 'Created-by' attribute, its purpose is
+	             to identify the version of java used to build the jar,
+	             which ant will do by default.
+
+	             Ant will happily override these with bogus strings if you
+	             tell it to, so don't.
+
+	             NOTE: we don't use section info because all of our manifest data
+	             applies to the entire jar/war ... no package specific info.
+	        -->
+				<attribute name="Extension-Name" value="@{implementation.title}"/>
+				<attribute name="Specification-Title" value="@{title}"/>
+				<!-- spec version must match "digit+{.digit+}*" -->
+				<attribute name="Specification-Version" value="@{spec.version}"/>
+				<attribute name="Specification-Vendor"
+	                   value="The Apache Software Foundation"/>
+				<attribute name="Implementation-Title" value="@{implementation.title}"/>
+				<!-- impl version can be any string -->
+				<attribute name="Implementation-Version"
+	                   value="${version} ${svnversion} - ${user.name} - ${DSTAMP} ${TSTAMP}"/>
+				<attribute name="Implementation-Vendor"
+	                   value="CERN"/>
+				<attribute name="X-Compile-Source-JDK" value="${javac.source}"/>
+				<attribute name="X-Compile-Target-JDK" value="${javac.target}"/>
+			</manifest>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="jarify" description="Builds a JAR file">
+		<attribute name="basedir" default="${build.dir}/classes/java"/>
+		<attribute name="destfile" default="${build.dir}/${final.name}.jar"/>
+		<attribute name="title" default="MontySolr Extension: ${ant.project.name}"/>
+		<attribute name="excludes" default="**/pom.xml,**/*.iml"/>
+		<attribute name="metainf.source.dir" default="${common.dir}"/>
+		<attribute name="implementation.title" default="org.apache.lucene"/>
+		<attribute name="spec.version" default="${spec.version}"/>
+		<attribute name="manifest.file" default="${manifest.file}"/>
+		<element name="nested" optional="true" implicit="true"/>
+		<sequential>
+
+			<build-manifest title="@{title}"
+	                      implementation.title="@{implementation.title}"
+	                      spec.version="@{spec.version}"
+	                      manifest.file="@{manifest.file}"/>
+
+			<jar destfile="@{destfile}"
+	           basedir="@{basedir}"
+	           manifest="@{manifest.file}"
+	           excludes="@{excludes}">
+				<metainf dir="@{metainf.source.dir}" includes="LICENSE.txt,NOTICE.txt"/>
+				<nested />
+			</jar>
+		</sequential>
+	</macrodef>
+
+
+	<target name="compile-test" depends="compile-core">
+		<compile-test-macro srcdir="${tests.src.dir}" destdir="${build.dir}/classes/test"
+  						test.classpath="test.classpath"/>
+	</target>
+
+	<property name="tests.verbose" value="false"/>
+
+	<macrodef name="compile-test-macro" description="Compiles junit tests.">
+		<attribute name="srcdir"/>
+		<attribute name="destdir"/>
+		<attribute name="test.classpath"/>
+		<attribute name="javac.source" default="${javac.source}"/>
+		<attribute name="javac.target" default="${javac.target}"/>
+
+		<sequential>
+			<compile
+        srcdir="@{srcdir}" 
+        destdir="@{destdir}"
+        javac.source="@{javac.source}"
+        javac.target="@{javac.source}">
+				<classpath refid="@{test.classpath}"/>
+			</compile>
+
+			<!-- Copy any data files present to the classpath -->
+			<copy todir="@{destdir}">
+				<fileset dir="@{srcdir}" excludes="**/*.java"/>
+			</copy>
+		</sequential>
+	</macrodef>
+    
+	
+	<!-- Aliases for tests filters -->
+	  <condition property="tests.class" value="*.${testcase}">
+	    <isset property="testcase" />
+	  </condition>
+	  <condition property="tests.method" value="${testmethod}*">
+	    <isset property="testmethod" />
+	  </condition>
+	  <condition property="tests.showSuccess" value="true">
+	    <or>
+	      <isset property="tests.class" />
+	      <isset property="tests.method" />
+	    </or>
+	  </condition>
+	  <!-- default -->
+	  <property name="tests.showSuccess" value="false"/>
+
+      <condition property="tests.showOutput" value="always">
+        <or> 
+          <isset property="tests.class" />
+          <isset property="tests.method" />
+        </or>
+      </condition>
+      <property name="tests.showOutput" value="onerror"/>
+
+	<!-- Test macro using junit4. -->
+	<macrodef name="test-macro" description="Executes junit tests.">
+		<attribute name="junit.output.dir" default="${junit.output.dir}"/>
+		<attribute name="junit.classpath" default="junit.classpath"/>
+		<attribute name="testsDir" default="${build.dir}/classes/test"/>
+		<attribute name="tempDir" default="${tests.tempDir}"/>
+		<attribute name="threadNum" default="1"/>
+		<attribute name="tests.nightly" default="${tests.nightly}"/>
+		<attribute name="tests.weekly" default="${tests.weekly}"/>
+		<attribute name="tests.slow" default="${tests.slow}"/>
+		<attribute name="tests.multiplier" default="${tests.multiplier}"/>
+		<attribute name="testFamily" default="Test"/>
+
+		<sequential>
+			<!-- Warn if somebody uses removed properties. -->
+			<fail message="This property has been removed: tests.iter, use -Dtests.iters=N.">
+				<condition>
+					<isset property="tests.iter" />
+				</condition>
+			</fail>
+			<!-- this combo makes no sense LUCENE-4146 -->
+			<fail message="You are attempting to use 'tests.iters' in combination with a 'tests.method' value with does not end in a '*' -- This combination makes no sense, because the 'tests.method' filter will be unable to match the synthetic test names generated by the multiple iterations.">
+				<condition>
+					<and>
+						<isset property="tests.iters" />
+						<isset property="tests.method" />
+						<not>
+							<matches pattern="\*$" string="${tests.method}" />
+						</not>
+					</and>
+				</condition>
+			</fail>
+
+			<!-- Defaults. -->
+			<property name="tests.class"  value="" />
+			<property name="tests.method" value="" />
+			<property name="tests.dynamicAssignmentRatio" value="0.50" />
+			<!-- 50% of suites -->
+			<property name="tests.haltonfailure" value="true" />
+			<property name="tests.iters" value="" />
+			<property name="tests.dups"  value="1" />
+
+			<!-- Pick the random seed now (unless already set). -->
+	        <junit4:pickseed property="tests.seed" />
+
+	        <!-- Pick file.encoding based on the random seed. -->
+	        <junit4:pickfromlist property="tests.file.encoding" allowundefined="false" seed="${tests.seed}">
+	            <!-- Guaranteed support on any JVM. -->
+	            <value>US-ASCII</value>   <!-- single byte length -->
+	            <value>ISO-8859-1</value> <!-- single byte length -->
+	            <value>UTF-8</value>      <!-- variable byte length -->
+	            <value><!-- empty/ default encoding. --></value>
+
+	            <!--
+	            Disabled because of Java 1.7 bug on Linux/ Unix:
+	            http://bugs.sun.com/bugdatabase/view_bug.do?bug_id=7181721
+
+	            <value>UTF-16</value>     
+	            <value>UTF-16LE</value>   
+	            <value>UTF-16BE</value>
+	            -->
+	        </junit4:pickfromlist>
+			
+			<junit4:junit4
+	            dir="@{tempDir}"
+	            tempdir="@{tempDir}"
+	            maxmemory="${tests.heapsize}" 
+	            
+	            parallelism="@{threadNum}"
+
+	            printSummary="true"
+	            haltonfailure="${tests.haltonfailure}" 
+	            failureProperty="tests.failed"
+
+	            dynamicAssignmentRatio="${tests.dynamicAssignmentRatio}"
+	            shuffleOnSlave="true"
+	            leaveTemporary="false"
+	            seed="${tests.seed}"
+
+	            heartbeat="${tests.heartbeat}"
+				uniqueSuiteNames="false"
+	        >
+				<!-- Classpaths. -->
+				<classpath refid="@{junit.classpath}"/>
+				<classpath refid="clover.classpath" />
+
+				<!-- Assertions. -->
+				<assertions>
+					<enable package="org.apache.lucene"/>
+					<enable package="org.apache.solr"/>
+				</assertions>
+
+				<!-- JVM arguments and system properties. -->
+				<jvmarg line="${args}"/>
+				<jvmarg line="${tests.clover.args}"/>
+
+                <!-- For remote debugging from Eclipse -->
+                <jvmarg line="${tests.remoteDebug}" />
+
+				<!-- set the number of times tests should run -->
+				<sysproperty key="tests.iters" value="${tests.iters}"/>
+				<!-- allow tests to control debug prints -->
+				<sysproperty key="tests.verbose" value="${tests.verbose}"/>
+				<!-- even more debugging -->
+				<sysproperty key="tests.infostream" value="${tests.infostream}"/>
+				<!-- directory for formatter lock -->
+				<sysproperty key="tests.lockdir" value="${tests.lockdir}"/>
+				<!-- set the codec tests should run with -->
+				<sysproperty key="tests.codec" value="${tests.codec}"/>
+				<!-- set the postingsformat tests should run with -->
+				<sysproperty key="tests.postingsformat" value="${tests.postingsformat}"/>
+				<!-- set the locale tests should run with -->
+				<sysproperty key="tests.locale" value="${tests.locale}"/>
+				<!-- set the timezone tests should run with -->
+				<sysproperty key="tests.timezone" value="${tests.timezone}"/>
+				<!-- set the directory tests should run with -->
+				<sysproperty key="tests.directory" value="${tests.directory}"/>
+				<!-- set the line file source for oal.util.LineFileDocs -->
+				<sysproperty key="tests.linedocsfile" value="${tests.linedocsfile}"/>
+				<!-- set the Version that tests should run against -->
+				<sysproperty key="tests.luceneMatchVersion" value="${tests.luceneMatchVersion}"/>
+				<!-- for lucene we can be strict, and we don't want false fails even across methods -->
+				<sysproperty key="tests.cleanthreads" value="${tests.cleanthreads.sysprop}"/>
+				<!-- logging config file -->
+				<sysproperty key="java.util.logging.config.file" value="${tests.loggingfile}"/>
+				<!-- set whether or not nightly tests should run -->
+				<sysproperty key="tests.nightly" value="@{tests.nightly}"/>
+				<!-- set whether or not weekly tests should run -->
+				<sysproperty key="tests.weekly" value="@{tests.weekly}"/>
+				<!-- set whether or not slow tests should run -->
+				<sysproperty key="tests.slow" value="@{tests.slow}"/>
+
+				<!-- set whether tests framework should not require java assertions enabled -->
+				<sysproperty key="tests.asserts.gracious" value="${tests.asserts.gracious}"/>
+
+				<!-- TODO: create propertyset for test properties, so each project can have its own set -->
+				<sysproperty key="tests.multiplier" value="@{tests.multiplier}"/>
+
+				<!-- Temporary directory in the cwd. -->
+				<sysproperty key="tempDir" value="."/>
+
+				<sysproperty key="lucene.version" value="${dev.version}"/>
+
+				<sysproperty key="jetty.testMode" value="1"/>
+				<sysproperty key="jetty.insecurerandom" value="1"/>
+				<sysproperty key="solr.directoryFactory" value="org.apache.solr.core.MockDirectoryFactory"/>
+
+                <!-- disable AWT while running tests -->
+                <sysproperty key="java.awt.headless" value="true"/>
+
+				<!-- Only pass these to the test JVMs if defined in ANT. -->
+				<syspropertyset>
+					<propertyref prefix="tests.maxfailures" />
+					<propertyref prefix="tests.failfast" />
+					<propertyref prefix="tests.badapples" />
+				</syspropertyset>
+
+				<!-- Pass randomized settings to the forked JVM. -->
+				<syspropertyset ignoreEmpty="true">
+					<propertyref prefix="tests.file.encoding" />
+					<mapper type="glob" from="tests.*" to="*" />
+				</syspropertyset>
+
+				<!-- Use static cached test balancing statistcs. -->
+				<balancers>
+					<junit4:execution-times>
+						<fileset dir="${common.dir}/build/junit4" includes="**/*.txt" />
+					</junit4:execution-times>
+				</balancers>
+
+				<!-- Reporting listeners. -->
+				<listeners>
+					<!-- A simplified console output (maven-like). -->
+					<junit4:report-text
+	                    showThrowable="true" 
+	                    showStackTraces="true" 
+                        showOutput="${tests.showOutput}"
+
+	                    showStatusOk="${tests.showSuccess}"
+	                    showStatusError="${tests.showError}"
+	                    showStatusFailure="${tests.showFailure}"
+	                    showStatusIgnored="${tests.showIgnored}"
+
+	                    showSuiteSummary="${tests.showSuiteSummary}"
+
+	                    useSimpleNames="${tests.useSimpleNames}"
+	                    maxClassNameColumns="${tests.maxClassNameColumns}"
+	                    
+	                    timestamps="${tests.timestamps}"
+                        showNumFailures="${tests.showNumFailures}"
+	                />
+
+					<!-- Emits full status for all tests, their relative order on slaves. -->
+					<junit4:report-text
+	                    file="@{junit.output.dir}/tests-report.txt"
+	                    showThrowable="true" 
+	                    showStackTraces="true" 
+                        showOutput="${tests.showOutput}"
+
+	                    showStatusOk="true"
+	                    showStatusError="true"
+	                    showStatusFailure="true"
+	                    showStatusIgnored="true"
+
+	                    showSuiteSummary="true"
+	                    timestamps="true"
+	                />
+
+					<!-- Emits status on errors and failures only. -->
+					<junit4:report-text
+	                    file="@{junit.output.dir}/tests-failures.txt"
+	                    showThrowable="true" 
+	                    showStackTraces="true" 
+                        showOutput="${tests.showOutput}"
+
+	                    showStatusOk="false"
+	                    showStatusError="true"
+	                    showStatusFailure="true"
+	                    showStatusIgnored="false"
+
+	                    showSuiteSummary="false"
+	                    timestamps="true"
+	                />
+
+					<!-- Emit the information about tests timings (could be used to determine
+	                     the slowest tests or for reuse in balancing). -->
+
+					<junit4:report-execution-times file="@{junit.output.dir}/tests-timehints.txt" historyLength="5" />
+
+                    <!-- ANT-compatible XMLs for jenkins records etc. -->
+                    <junit4:report-ant-xml dir="@{junit.output.dir}" outputStreams="no" />
+
+                    <!--
+                    Enable if you wish to have a nice HTML5 report.
+                    <junit4:report-json file="@{junit.output.dir}/tests-report-${ant.project.name}/index.html" outputStreams="no" />
+                    -->
+
+				</listeners>
+			    
+				<!-- Input test classes. -->
+	            <junit4:duplicate times="${tests.dups}">
+	              <fileset dir="@{testsDir}">
+	                <include name="**/@{testFamily}*.class" />
+	                <include name="**/*@{testFamily}.class" />
+	                <exclude name="**/*$*" />
+	              </fileset>
+	            </junit4:duplicate>
+			</junit4:junit4>
+
+			<!-- Report the 5 slowest tests from this run to the console. -->
+			<echo>5 slowest tests:</echo>
+			<junit4:tophints max="5">
+				<file file="@{junit.output.dir}/tests-timehints.txt" />
+			</junit4:tophints>
+		</sequential>
+	</macrodef>
+
+	<target name="install-junit4-taskdef" depends="ivy-configure">
+		<!-- JUnit4 taskdef. -->
+		<ivy:resolve   file="${common.dir}/build/solr-download/apache-solr-${solr.version}/lucene/test-framework/ivy.xml" type="jar" log="quiet" />
+		<ivy:cachepath file="${common.dir}/build/solr-download/apache-solr-${solr.version}/lucene/test-framework/ivy.xml" conf="junit4-stdalone" type="jar" transitive="false" pathid="path.junit4" />
+
+		<taskdef uri="antlib:com.carrotsearch.junit4">
+			<classpath refid="path.junit4" />
+		</taskdef>
+	</target>
+
+	<target name="test" depends="compile-test,install-junit4-taskdef" 
+		description="Runs unit tests">
+		<mkdir dir="${junit.output.dir}"/>
+		<mkdir dir="${common.dir}/build/junit4"/>
+		<test-macro threadNum="${tests.jvms}" testFamily="${tests.family}"/>
+	</target>
+
+
+	<target name="generate-test-reports" description="Generates test reports">
+		<mkdir dir="${junit.reports}"/>
+		<junitreport todir="${junit.output.dir}">
+			<!-- this fileset let's the task work for individual modules,
+	           as well as the project as a whole
+	       -->
+			<fileset dir="${build.dir}">
+				<include name="**/test/TEST-*.xml"/>
+			</fileset>
+			<report format="frames" todir="${junit.reports}"/>
+		</junitreport>
+
+		<mkdir dir="${junit.reports.backwards}"/>
+		<junitreport todir="${junit.output.dir.backwards}">
+			<!-- this fileset let's the task work for individual modules,
+	           as well as the project as a whole
+	       -->
+			<fileset dir="${build.dir.backwards}">
+				<include name="**/test/TEST-*.xml"/>
+			</fileset>
+			<report format="frames" todir="${junit.reports.backwards}"/>
+		</junitreport>
+	</target>
+
+	<target name="jar" depends="jar-core">
+		<!-- convenience target to package core JAR -->
+	</target>
+
+	<target name="jar-src">
+		<sequential>
+			<mkdir dir="${build.dir}" />
+			<jarify basedir="${src.dir}" destfile="${build.dir}/${final.name}-src.jar">
+				<fileset dir="${src.dir}/../resources" erroronmissingdir="no"/>
+			</jarify>
+		</sequential>
+	</target>
+
+	<target name="default" depends="jar-core"/>
+
+
+
+	<!--+
+      | M A C R O S
+      +-->
+	<macrodef name="compile">
+		<attribute name="srcdir"/>
+		<attribute name="destdir"/>
+		<attribute name="javac.source" default="${javac.source}"/>
+		<attribute name="javac.target" default="${javac.target}"/>
+		<element name="nested" implicit="yes" optional="yes"/>
+
+		<sequential>
+			<mkdir dir="@{destdir}"/>
+			<javac
+            includeAntRuntime="${javac.includeAntRuntime}"
+            encoding="${build.encoding}"
+            srcdir="@{srcdir}"
+            destdir="@{destdir}"
+            deprecation="${javac.deprecation}"
+            debug="${javac.debug}"
+            source="@{javac.source}"
+            target="@{javac.target}">
+
+				<!-- <compilerarg line="-Xmaxwarns 10000000"/>
+            <compilerarg line="-Xmaxerrs 10000000"/> -->
+				<!-- for generics in Java 1.5: -->
+				<compilerarg line="-Xlint -Xlint:-deprecation -Xlint:-serial"/>
+
+				<nested/>
+			</javac>
+		</sequential>
+	</macrodef>
+
+
+	<macrodef name="invoke-javadoc">
+		<element name="sources" optional="yes"/>
+		<attribute name="destdir"/>
+		<attribute name="title" default="${Name} ${version} API"/>
+		<attribute name="overview" default="${src.dir}/overview.html"/>
+		<sequential>
+			<copy todir="@{destdir}/../prettify" overwrite="false">
+				<fileset dir="${prettify.dir}"/>
+			</copy>
+			<javadoc
+          overview="@{overview}"
+          packagenames="org.apache.lucene.*"
+          destdir="@{destdir}"
+          access="${javadoc.access}"
+          encoding="${build.encoding}"
+          charset="${javadoc.charset}"
+          docencoding="${javadoc.charset}"
+          author="true"
+          version="true"
+          use="true"
+          source="${ant.java.version}"
+          link="${javadoc.link}"
+          windowtitle="${Name} ${version} API"
+          doctitle="@{title}"
+          stylesheetfile="@{destdir}/../prettify/stylesheet+prettify.css"
+          maxmemory="${javadoc.maxmemory}"
+          bottom="Copyright &amp;copy; ${year} Apache Software Foundation.  All Rights Reserved.">
+				<tag name="lucene.experimental" 
+      	description="WARNING: This API is experimental and might change in incompatible ways in the next release."/>
+				<tag name="lucene.internal"
+        description="NOTE: This API is for Lucene internal purposes only and might change in incompatible ways in the next release."/>
+				<link offline="true" packagelistLoc="${javadoc.dir}"/>
+				<header>
+					<![CDATA[
+           <script src="{@docRoot}/../prettify/prettify.js" type="text/javascript">
+				</script>
+				<script language="JavaScript">window.onload=function(){windowTitle();prettyPrint();}</script>
+        ]]></header>
+
+			<sources />
+
+			<classpath refid="javadoc.classpath"/>
+		</javadoc>
+	</sequential>
+</macrodef>
+
+
+
+
+<!-- a cheap unittesting routine that executes all the tests found in the folder and below -->
+<macrodef name="run-python-unittests">
+	<attribute name="srcdir"/>
+	<attribute name="python"/>
+	<attribute name="test-file" default=""/>
+	<attribute name="python-path"/>
+	<attribute name="failonerror" default="true"/>
+
+	<sequential>
+		<apply executable="@{python}" failonerror="@{failonerror}">
+			<env key="PYTHONPATH" value="@{python-path}" />
+			<arg value="-c" />
+			<arg value="import os,sys,unittest;x=sys.argv.pop();print 'Testing ', x;a,b=os.path.split(x);sys.path.insert(0,a);m=__import__(os.path.basename(b.split('.')[0]));y=unittest.main(m)"/>
+			<fileset dir="@{srcdir}">
+				<include name="**/unittest_*.py"/>
+			</fileset>
+		</apply>
+
+		<!--
+        	<exec executable="@{python}" failonerror="true">
+	            <env key="PYTHONPATH" value="@{python-path}${dist.dir}${path.separator}${env.PYTHONPATH}" />
+        		<arg value="-c" />
+        	    <arg value="x='@{test-file}';import os,sys,unittest;a,b=os.path.split(x);sys.path.insert(0,a);m=__import__(os.path.basename(b.split('.')[0]));y=unittest.main(m)" />
+        	</exec>
+        	-->
+	</sequential>
+</macrodef>
+
+	<macrodef name="get-lucene-solr-package">
+	    <attribute name="package"/>
+		<attribute name="ant" default="${prop.ant}"/>
+		<attribute name="ant-target" default="jar"/>
+		<attribute name="pattern" default="*.jar"/>
+		<attribute name="into" default="${build.dir}/lib"/>
+		
+		
+		<sequential>
+	        
+	        <mkdir dir="@{into}"/>
+			
+
+	        <!-- cal the ant -->
+			<apply executable="@{ant}" parallel="false" failonerror="true" failifexecutionfails="true">
+	          <arg line="@{ant-target}"/>
+	          <arg value="-f"/>
+	          <fileset dir="${prop.solr.home}">
+	            <include name="lucene/@{package}/build.xml"/>
+	          	<include name="solr/contrib/@{package}/build.xml"/>
+	          </fileset>
+	        </apply>
+	
+
+	        <!-- then copy the result -->
+	        <copy todir="@{into}" overwrite="true" verbose="true" flatten="true">
+	            <fileset dir="${prop.solr.home}">
+	                <include name="lucene/build/@{package}/@{pattern}" />
+	            	<include name="solr/build/contrib/solr-@{package}/@{pattern}" />
+	            </fileset>
+	        </copy>
+
+	    </sequential>
+	</macrodef>
+
+</project>
+<?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+<project name="adsabs" default="default">
+
+    <description>
+    ADS search engine extensions
+    </description>
+
+    <import file="../contrib-build.xml" />
+    <import file="../antlrqueryparser/macros.xml" />
+    
+    <!-- with this we'll trick antlrqueryparser into generating grammars for us in our folder -->
+    <property name="aqp.grammardir" location="${common.dir}/contrib/${ant.project.name}/grammars"/>
+	
+	<property name="ads.grammars.dir" location="./grammars" />
+    <property name="ads.parser.dir" location="src/java/org/apache/lucene/queryparser/flexible/aqp/parser" />
+    
+    <condition property="aqp.grammar" value="ADS">
+        <not>
+            <isset property="grammar"/>
+        </not>
+    </condition>
+    <property name="aqp.grammar" value="${grammar}"/>
+
+
+    <import file="../antlrqueryparser/build.xml" />
+    
+    
+    <!-- don't overrdie run.classpath, compile.classpath and test.classpath
+         they are defined inside contrib/antlrqueryparser -->
+	
+	<!-- oh well... i have to override it to include my own jars...-->
+	<path id="test.classpath">
+		<path refid="test.base.classpath"/>
+        <path refid="common.test.classpath"/>
+        <path refid="classpath"/>
+        <fileset dir="${common.dir}/contrib/antlrqueryparser/lib">
+            <include name="**/antlr-runtime*.jar"/>
+        </fileset>
+		<fileset dir="lib">
+         <include name="**/luke*.jar"/>
+		     <include name="**/mongo*.jar"/>
+    </fileset>
+	</path>
+    
+    <path id="additional.classpath">
+        <path refid="test.classpath"/>
+        <path refid="compile.classpath"/>
+        <fileset dir="lib">
+            <include name="**/**.jar"/>
+        </fileset>
+    </path>
+    
+    <path id="junit.classpath">
+        <path refid="common.junit.classpath"/>
+        <path refid="additional.classpath"/>
+    </path>
+    
+
+    <target name="clean">
+        <delete dir="${build.dir}" />
+        <clean-parser grammar-name="${aqp.grammar}" parser-dir="${ads.parser.dir}"/>
+        <clean-parser grammar-name="ADS" parser-dir="${ads.parser.dir}"/>
+    </target>
+
+    <target name="compile-core" depends="compile,common.compile-core"/>
+
+    <target name="compile" depends="compile-prerequisites" unless="adsabs-grammar-done" >
+    	<antcall target="generate-antlr" />
+        <compile srcdir="src/java" 
+            destdir="${build.dir}/classes/java">
+            <classpath refid="compile.classpath"/>
+            <classpath refid="additional.classpath"/>
+            <include name="**/**.java"/>
+        </compile>
+    	<property name="adsabs-grammar-done" value="true"/>
+    </target>
+    
+    
+	<target name="test" depends="clean,compile" >
+        <antcall target="common.test" inheritRefs="true"/>
+    </target>
+
+    <target name="quick-test" >
+        <compile srcdir="src/java" 
+            destdir="${build.dir}/classes/java">
+            <classpath refid="compile.classpath"/>
+            <classpath refid="additional.classpath"/>
+            <include name="**/**.java"/>
+        </compile>
+        <antcall target="common.test" inheritRefs="true"/>
+    </target>
+    
+    <target name="compile-prerequisites" depends="">
+        
+        <!-- we are using some classes from the parser test framework
+             so we must compile them ourselves (not to depend on luck)
+             
+             But we'll put them into test so that it is not included
+             inside generated jars
+        --> 
+        <compile srcdir="${common.dir}/contrib/antlrqueryparser/src/java" 
+            destdir="${build.dir}/classes/test">
+            <classpath refid="test.classpath"/>
+        	<classpath refid="additional.classpath"/>
+            <include name="**/**.java"/>
+        </compile>
+        
+        <compile srcdir="${common.dir}/contrib/antlrqueryparser/src/test" 
+            destdir="${build.dir}/classes/test">
+            <classpath refid="compile.classpath"/>
+            <classpath refid="test.classpath"/>
+        	<classpath refid="additional.classpath"/>
+            <include name="**/Build*.java"/>
+            <include name="**/*Abstract*.java"/>
+        </compile>
+    	
+    	
+    	<compile srcdir="${prop.solr.home}/lucene/analysis/common/src/test" 
+            destdir="${build.dir}/classes/test">
+            <classpath refid="test.classpath"/>
+            <classpath refid="additional.classpath"/>
+  		<exclude name="**/Test*.java"/>
+  		<include name="**/util/**.java"/>
+      </compile>
+      
+      <compile srcdir="${prop.solr.home}/solr/contrib/dataimporthandler/src/test"
+          destdir="${build.dir}/classes/test">
+          <classpath refid="compile.classpath"/>
+          <classpath refid="test.classpath"/>
+          <include name="**/Abstract*.java"/>
+      </compile>
+    </target>
+    
+    <target name="build-all"  depends="clean,default">
+        
+    </target>
+    
+	<target name="process-synonyms" depends="compile">
+		<echo>Processing synonyms...</echo>
+		<java classname="org.adsabs.solr.analysis.ProcessCuratedAuthorSynonyms">
+			<classpath path="${build.dir}/classes/java"/>
+			<classpath refid="additional.classpath"/>
+			<arg value="/proj/ads/abstracts/config/author.syn.new"/>
+			<arg value="/tmp/syn.out"/>
+		</java>
+	</target>
+
+</project>
+<?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+<project name="antlrqueryparser" default="default">
+
+	<description>
+    ANTLR Flexible Query Parser
+  </description>
+
+	<import file="../contrib-build.xml"/>
+	<property file="${common.dir}/contrib/antlrqueryparser/build.properties" prefix="dotprop"/>
+
+	<!-- parameters for the build, many of these have default values -->
+	<condition property="aqp.grammardir" value="./grammars">
+        <not>
+            <isset property="grammardir"/>
+        </not>
+  </condition>
+  
+  <property name="aqp.grammardir" value="${grammardir}"/>
+	<property name="aqp.grammars.dir" location="${aqp.grammardir}" />
+	<property name="aqp.parser.dir" location="src/java/org/apache/lucene/queryparser/flexible/aqp/parser" />
+	<property name="aqp.classes.dir" location="${build.dir}/classes/java" />
+	<property name="aqp.classes.parser.dir" location="${aqp.classes.dir}/org/apache/lucene/queryparser/flexible/aqp/parser" />
+	<property name="aqp.dotfile" location="${build.dir}/graph.dot" />
+	<property name="aqp.generate.py" location="${common.dir}/contrib/antlrqueryparser/src/python/generate_asts.py" />
+
+
+	<condition property="aqp.grammar" value="StandardLuceneGrammar">
+		<not>
+			<isset property="grammar"/>
+		</not>
+	</condition>
+	<property name="aqp.grammar" value="${grammar}"/>
+
+	
+	<condition property="aqp.rule" value="mainQ">
+		<not>
+			<isset property="rule"/>
+		</not>
+	</condition>
+	<property name="aqp.rule" value="${rule}"/>
+
+
+	<condition property="aqp.query" value="standard query">
+		<not>
+			<isset property="query"/>
+		</not>
+	</condition>
+	<property name="aqp.query" value="${query}" />
+	
+
+	
+	
+	
+	<mkdir dir="${build.dir}/classes/test"/>
+	<path id="classpath">
+		<path refid="base.classpath"/>
+		<pathelement location="${build.dir}/classes/java"/>
+		<fileset dir="${common.dir}/build/solr-download">
+			<include name="**/antlr-runtime*.jar"/>
+		</fileset>
+		<fileset dir="${prop.solr.home}">
+			<include name="solr/dist/**/lucene-queryparser*.jar"/>
+          <include name="lucene/build/sandbox/**.jar"/>
+    </fileset>
+	</path>
+
+  <path id="compile.classpath">
+    <path refid="classpath"/>
+  	<pathelement location="${build.dir}/classes/test" />
+  	<fileset dir="${common.dir}/contrib/antlrqueryparser/lib">
+        <include name="**/antlr*complete*.jar"/>
+    </fileset>
+  </path>
+        	
+	<path id="test.classpath">
+		<path refid="test.base.classpath"/>
+        <path refid="common.test.classpath"/>
+		<path refid="classpath"/>
+		<fileset dir="${common.dir}/contrib/antlrqueryparser/lib">
+			<include name="**/antlr-runtime*.jar"/>
+		</fileset>
+	</path>
+
+	<path id="additional.classpath" />
+
+
+
+	<target name="clean">
+		<delete dir="${build.dir}" />
+		<clean-parser grammar-name="${aqp.grammar}" parser-dir="${aqp.parser.dir}"/>
+	</target>
+
+	<target name="compile-core" depends="generate-antlr,compile"/>
+
+	
+	<target name="generate-antlr" depends="antlr-generate" 
+		description="Regenerates grammar; usage -Dgrammar=&lt;name&gt;"/>
+
+	
+	<target name="antlr-generate" >
+		<generate-grammar grammar-name="${aqp.grammar}"
+			 grammar-dir="${aqp.grammars.dir}"
+			 parser-dir="${aqp.parser.dir}"
+			 build-dir="${aqp.classes.dir}"
+			 classpathref="compile.classpath"
+			   />
+	</target>
+
+
+	<!-- compiles both grammar and the test classes -->
+	<target name="compile-all" depends="compile,compile-ast" />
+		
+    
+	<target name="compile-ast">
+		<mkdir dir="${build.dir}/classes/test"/>
+    <compile srcdir="${common.dir}/contrib/antlrqueryparser/src/test" 
+        destdir="${build.dir}/classes/test">
+        <classpath refid="compile.classpath"/>
+        <include name="**/BuildAST.java"/>
+    </compile>
+	</target>
+	
+	<target name="compile" description="Compiles all the java classes" depends="generate-antlr">
+		<compile srcdir="src/java" 
+			destdir="${build.dir}/classes/java">
+        <classpath refid="compile.classpath"/>
+	      <include name="**/*.java"/>
+        <compilerarg line="-Xlint:-deprecation" />
+    </compile>
+	</target>
+	
+  <target name="compile-prerequisites" depends="">
+      
+      <!-- we are using some classes from the parser test framework
+           so we must compile them ourselves (not to depend on luck)
+           
+           But we'll put them into test so that it is not included
+           inside generated jars
+      --> 
+      <compile srcdir="${prop.solr.home}/lucene/queryparser/src/test" 
+          destdir="${build.dir}/classes/test">
+          <classpath refid="test.classpath"/>
+          <classpath refid="additional.classpath"/>
+          <include name="**/flexible/standard/**.java"/>
+      </compile>
+      
+  </target>
+
+
+	<target name="dot" depends="">
+		<generate-dot grammar-name="${aqp.grammar}"
+		            query="${aqp.query}"
+		            rule="${aqp.rule}"
+		            classpathref="compile.classpath"
+			        output-file="${aqp.dotfile}"
+		        />
+	</target>
+
+	
+	<target name="tree" depends="">
+		<generate-tree grammar-name="${aqp.grammar}"
+			query="${aqp.query}"
+			rule="${aqp.rule}"
+			classpathref="compile.classpath"/>
+	</target>
+
+	
+	<target name="display" depends="dot" >
+		<echo>${dotprop.dot_viewer} ${aqp.dotfile}</echo>
+		<exec executable="${dotprop.dot_viewer}" failifexecutionfails="true">
+			<arg line="${aqp.dotfile}"/>
+		</exec>
+	</target>
+
+	
+	<target name="view" description="Test the string, usage: ant -Dquery=string" depends="dot,tree,display">
+	</target>
+
+	<target name="try-dot" description="Like view, but regenerates the grammar first" depends="compile-all,dot" />
+	<target name="try-tree" description="Like view, but regenerates the grammar first" depends="compile-all,tree" />
+	<target name="try-view" description="Like view, but regenerates the grammar first" depends="compile-all,view" />
+
+	<target name="gunit" description="Run the gunit test suite, usage: ant -Dgrammar=name" 
+		depends="generate-antlr">
+		 
+		<run-gunit grammar-name="${aqp.grammar}" 
+			grammar-dir="${aqp.grammars.dir}" 
+			classpathref="compile.classpath"/>
+
+	</target>
+
+	
+  <target name="test" depends="default,compile-all,compile-prerequisites" >
+      <antcall target="common.test" inheritRefs="true"/>
+  </target>
+
+	
+	<target name="generate-html" description="Generates a html page for the grammar X (from X.gunit file)" 
+		depends="compile-all,generate-antlr" >
+	    
+		<echo>
+		      Generating graphs for the grammar ${aqp.grammar}
+			    Note: the ${dotprop.svg_generator} must exist and be executable
+			    You can fix the path in ${common.dir}/contrib/antlrqueryparser/build.properties
+		</echo>
+		<generate-html python-executable="${prop.python}"
+			  python-generator="${aqp.generate.py}"
+			  grammar-name="${aqp.grammar}"
+			  build-dir="${build.dir}"
+			  classpath="${toString:compile.classpath}"
+			  grammar-dir="${aqp.grammars.dir}"
+			  java-executable="${dotprop.java_executable}"
+			  dot-executable="${dotprop.svg_generator}"
+			  />
+	</target>
+
+	<target name="build-all"  depends="clean,default,compile-all,jar" />
+	
+
+	<!--
+	============================================================================================
+	                                           MACROS
+  ============================================================================================
+	//-->
+    
+	<import file="macros.xml" />
+
+</project>
+<?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+<project name="contrib-build" xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+	<echo>Building ${ant.project.name}...</echo>
+
+	<!-- TODO: adjust build.dir/dist.dir appropriately when a contrib project is run individually -->
+	<property name="build.dir" location="../../build/contrib/${ant.project.name}"/>
+	<property name="dist.dir" location="../../dist/contrib/${ant.project.name}"/>
+	<property name="maven.dist.dir" location="../../dist/maven"/>
+
+	<import file="../common-build.xml"/>
+	
+
+	<available property="contrib.has.tests" type="dir" file="src/test" />
+
+	<!-- if you extend the classpath refid in one contrib's build.xml (add JARs), use this as basis: -->
+	<path id="base.classpath">
+		<path refid="common.classpath"/>
+		<pathelement path="${project.classpath}"/>
+		<pathelement location="${prop.jcc_egg}/jcc/classes" />
+	</path>
+
+	<!-- default classpath refid, can be overridden by contrib's build.xml (use the above base.classpath as basis): -->
+	<path id="classpath" refid="base.classpath"/>
+
+	<path id="test.base.classpath">
+        <pathelement location="${prop.solr.home}/lucene/build/test-framework/classes/java"/>
+		<path refid="common.test.classpath" />
+		<pathelement location="${build.dir}/classes/java"/>
+        <path refid="classpath"/>		
+	</path>
+
+	<path id="test.classpath" refid="test.base.classpath"/>
+
+	<path id="junit.classpath">
+		<path refid="test.classpath"/>
+		<path refid="common.junit.classpath"/>
+		<pathelement location="${build.dir}/classes/test"/>
+	</path>
+
+
+	<target name="build-montysolr" unless="core.compiled">
+		<ant dir="${common.dir}" target="compile-test" inheritAll="false"/>
+		<!-- set the property for this ant execution to speed up later tasks depending on this -->
+		<property name="core.compiled" value="true"/>
+	</target>
+
+	<target name="init" depends="common.init,build-montysolr"/>
+	<target name="compile-test" depends="init,common.compile-test" if="contrib.has.tests">
+	</target>
+	<target name="test" depends="init,common.test" if="contrib.has.tests">
+	</target>
+	<target name="build-artifacts-and-tests" depends="jar, compile-test" />
+
+	<available 
+    type="file" 
+    file="pom.xml" 
+    property="pom.xml.present">
+	</available>
+
+	<target name="dist-maven" if="pom.xml.present" depends="compile-core, jar-src">
+		<sequential>
+			<m2-deploy>
+				<artifact-attachments>
+					<attach file="${build.dir}/${final.name}-src.jar"
+                  classifier="sources"/>
+					<attach file="${build.dir}/${final.name}-javadoc.jar"
+                  classifier="javadoc"/>
+				</artifact-attachments>
+			</m2-deploy>
+		</sequential>
+	</target>
+
+	<target name="javadocs" depends="compile-core">
+		<sequential>
+			<mkdir dir="${javadoc.dir}/contrib-${name}"/>
+			<invoke-javadoc
+         destdir="${javadoc.dir}/contrib-${name}"
+       	title="${Name} ${version} contrib-${name} API">
+				<sources>
+					<link href=""/>
+					<packageset dir="${src.dir}"/>
+				</sources>
+			</invoke-javadoc>
+			<jarify basedir="${javadoc.dir}/contrib-${name}" destfile="${build.dir}/${final.name}-javadoc.jar"/>
+		</sequential>
+	</target>
+
+	<target name="javadocs-index.html" description="Generate line for index.html of JavaDocs">
+		<echo file="${javadoc.dir}/index.html" append="true">
+			<![CDATA[
+  <li>
+			<a href="contrib-${name}/index.html">${name}</a>
+		</li>
+]]></echo>
+</target>
+
+<macrodef name="contrib-uptodate">
+	<attribute name="name"/>
+	<attribute name="property" default="@{name}.uptodate"/>
+	<attribute name="classpath.property" default="@{name}.jar"/>
+	<!-- set jarfile only, if the target jar file has no generic name, applies to analyzers with its common and smartcn subdir -->
+	<attribute name="jarfile" default="${common.dir}/build/contrib/@{name}/lucene-@{name}-${version}.jar"/>
+	<sequential>
+		<!--<echo message="Checking '@{jarfile}' against source folder '${common.dir}/contrib/@{name}/src/java'"/>-->
+		<property name="@{classpath.property}" location="@{jarfile}"/>
+		<uptodate property="@{property}" targetfile="@{jarfile}">
+			<srcfiles dir="${common.dir}/contrib/@{name}/src/java" includes="**/*.java"/>
+		</uptodate>
+	</sequential>
+</macrodef>
+</project>
+<?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+
+<project name="examples" default="default">
+
+	<description>
+    Examples for MontySolr
+    </description>
+
+	<import file="../contrib-build.xml" />
+
+	<condition property="example.name" value="adsabs">
+		<not>
+			<isset property="ename" />
+		</not>
+	</condition>
+	<property name="example.name" value="${ename}" />
+
+	<condition property="example.ignore-environment" value="true">
+		<not>
+			<isset property="ignore-environment" />
+		</not>
+	</condition>
+	<property name="example.ignore-environment" value="${ignore-environment}" />
+
+
+	<condition property="example.jvmargs" value="-d64 -Xmx1024m -Dmontysolr.max_workers=4 -Dmontysolr.max_threads=200">
+		<not>
+			<isset property="jvmargs" />
+		</not>
+	</condition>
+	<property name="example.jvmargs" value="${jvmargs}" />
+
+	<condition property="example.config" value="normal.properties">
+		<not>
+			<isset property="profile" />
+		</not>
+	</condition>
+	<property name="example.config" value="${profile}" />
+
+	<condition property="run.target" value="run-bare">
+		<not>
+			<isset property="target" />
+		</not>
+	</condition>
+	<property name="run.target" value="${target}" />
+
+
+	<!-- these will be used when running tests and command line montysolr
+         you can set them as:
+         export MONTYSOLR_JVMARGS=-Djava.util.logging.config.file=./example/etc/test.logging.properties
+
+         If you are using python c-extensions, make sure they are compatible with the
+         java - if your java starts in 64bit mode, also the extensions must be available in 64bit
+         By default, we run in 64bit mode: -d64
+     //-->
+	<property environment="env" />
+	<property name="subant.jvmargs" value="" />
+	<property name="subant.args" value="" />
+	<property name="subant.newenvironment" value="true" />
+	<property name="env.MONTYSOLR_JVMARGS" value="${subant.jvmargs}" />
+	<property name="env.MONTYSOLR_ARGS" value="${subant.args}" />
+	<property name="env.MONTYSOLR_NEWENVIRONMENT" value="${subant.newenvironment}" />
+	<property name="env.PYTHONPATH" value="${common.dir}/build/dist${path.separator}${common.dir}/src/python${path.separator}" />
+
+	<target name="init">
+		<exec executable="${python}" failonerror="true" outputproperty="example.webapp" logerror="true">
+			<arg value="-c" />
+			<arg value="import os;d='${basedir}/${example.name}';print os.path.exists(d+'/webapps/solr.war') and d+'/webapps/solr.war' or d+'/webapps'" />
+		</exec>
+	</target>
+
+	<target name="populate-classpath">
+		<path id="examples.classpath">
+			<!-- 
+    		   we include only the classpaths that are inside 
+    		   the example, so that it can run without anything 
+    		   else -->
+
+			<!-- example libs -->
+			<fileset dir="${build.dir}/${example.name}">
+				<include name="lib/**/*.jar" />
+				<include name="solr/lib/**/*.jar" />
+			</fileset>
+
+			<!-- location of JCC classes -->
+			<pathelement location="${prop.jcc_egg}/jcc/classes" />
+
+		</path>
+
+
+		<path id="old.examples.classpath">
+			<!-- all contrib compiled classes -->
+			<dirset dir="${common.dir}/build/contrib">
+				<include name="**/classes/java" />
+			</dirset>
+
+			<path refid="base.classpath" />
+
+			<!-- montysolr jars -->
+			<fileset dir="${common.dir}/lib">
+				<include name="**/*.jar" />
+			</fileset>
+
+			<!-- montysolr jars -->
+			<fileset dir="${common.dir}/build/jar">
+				<include name="**/*.jar" />
+			</fileset>
+
+			<!-- all contrib jars -->
+			<fileset dir="../">
+				<include name="**/lib/*.jar" />
+			</fileset>
+
+			<!-- examples compiled classes, if any -->
+			<pathelement location="${build.dir}/classes/java" />
+
+			<!-- jcc classpath -->
+			<pathelement location="${prop.jcc_egg}/jcc/classes" />
+
+			<!-- solr/dist jars -->
+			<fileset dir="${prop.solr.real.location}/dist">
+				<include name="**/*.jar" />
+			</fileset>
+
+			<!-- example libs -->
+			<fileset dir="${build.dir}">
+				<include name="${example.name}/lib/**/*.jar" />
+			</fileset>
+		</path>
+
+		<path id="test.classpath">
+
+			<path refid="examples.classpath" />
+			<path refid="common.test.classpath" />
+
+
+			<!-- all contrib test classes -->
+			<dirset dir="${common.dir}/build/contrib">
+				<include name="**/classes/test" />
+			</dirset>
+			
+			<pathelement location="${prop.jcc_egg}/jcc/classes" />
+		</path>
+		
+		<path id="classpath">
+			<path refid="common.test.classpath" />
+			<!-- SOLR/example/lib classes -->
+            <fileset dir="${prop.solr.home}/solr/example/lib">
+                <include name="*.jar" />
+            </fileset>
+		</path>
+		<echo>${classpath:toString}</echo>
+	</target>
+
+
+	<target name="default" depends="jar,build-all-examples">
+
+	</target>
+
+	<target name="build-all-examples" description="Assembles all examples">
+		<exec executable="${prop.ant}" failonerror="true">
+			<arg line="build-one -Dename=adsabs" />
+		</exec>
+	</target>
+
+	<target name="build-all" depends="jar">
+		<echo>
+    	    Does nothing, because build-all is called from the main build and at that time we don't have all jars for contribs yet.
+    	    Call build-all-examples instead 
+    	</echo>
+	</target>
+
+	<target name="build">
+		<echo>
+         Please use: ant build-one -Dename={name}
+         We have intentionally disabled the 'build' target to avoid confusion
+	   </echo>
+		<fail />
+	</target>
+
+	<target name="build-one" depends="jar">
+		<assemble-example example-name="${example.name}" montysolr-example="${basedir}/${example.name}" 
+			solr-example="${prop.solr.real.location}/example" />
+	    
+		<mkdir dir="${build.dir}/${example.name}/solr/lib" />
+	  <mkdir dir="${build.dir}/${example.name}/work" />
+		
+		<!-- put core jar into example/lib -->
+		<copy todir="${build.dir}/${example.name}/lib" flatten="true" overwrite="true" verbose="yes">
+			<fileset dir="${common.dir}/build">
+				<include name="montysolr*.jar" />
+			</fileset>
+		</copy>
+
+	  
+		<!-- put contrib jars into example/solr/lib -->
+		<copy todir="${build.dir}/${example.name}/solr/lib" flatten="true" overwrite="true" verbose="false">
+			<fileset dir="${common.dir}/build/contrib">
+				<include name="*/montysolr*.jar" />
+			</fileset>
+		</copy>
+
+		<!-- put contrib lib/jars into example/solr/lib -->
+		<copy todir="${build.dir}/${example.name}/solr/lib" flatten="true" overwrite="true">
+			<fileset dir="${common.dir}/contrib">
+				<include name="**/lib/*.jar" />
+			</fileset>
+		</copy>
+
+		<echo>Putting Python code together into: "${build.dir}/${example.name}/python</echo>
+		<copy todir="${build.dir}/${example.name}/python" flatten="false" overwrite="true">
+			<fileset dir="${common.dir}/src/python">
+				<include name="**/*.py" />
+			</fileset>
+		</copy>
+
+		<!-- gather and copy the python code to example/python -->
+		<mkdir dir="${build.dir}/${example.name}/python" />
+		<copy todir="${build.dir}/${example.name}/python" flatten="false" overwrite="true">
+			<fileset dir="${common.dir}/contrib">
+				<include name="**/src/python/**/*.py" />
+			</fileset>
+			<regexpmapper from=".*/src/python/(.*)" to="\1" />
+		</copy>
+
+		<!-- gather and copy the python wrappers to example/python -->
+		<mkdir dir="${build.dir}/${example.name}/python" />
+		<copy todir="${build.dir}/${example.name}/python" flatten="false" overwrite="true">
+			<fileset dir="${common.dir}/build/dist">
+				<include name="**" />
+			</fileset>
+		</copy>
+
+		<!-- set the python files not-readable so that i am not tempted to mess w/ them -->
+		<chmod perm="ugo-x">
+			<fileset dir="${build.dir}/${example.name}/python">
+				<include name="**" />
+			</fileset>
+		</chmod>
+
+	    
+		<!-- get external dependencies from solr and put them into example/solr/lib -->
+    <get-lucene-solr-package package="dataimporthandler" into="${build.dir}/${example.name}/solr/lib"/>
+    <get-lucene-solr-package package="sandbox" into="${build.dir}/${example.name}/solr/lib"/>
+	  <get-lucene-solr-package package="join" into="${build.dir}/${example.name}/solr/lib"/>
+		
+	    
+		<!-- generate startup file for montysolr from start.jar and the main montysolr -->
+		<jar destfile="${build.dir}/${example.name}/monty.jar" filesetmanifest="merge" >
+			
+			<zipgroupfileset dir="${build.dir}/${example.name}/lib" includes="montysolr-montysolr*.jar" />
+			<zipgroupfileset dir="${build.dir}/${example.name}" includes="start.jar" />
+		    
+			<manifest >
+                <attribute name="Main-Class" value="monty.solr.Start" />
+			</manifest>
+		</jar>
+		
+		
+		<!-- TODO: to remove this after we stop using MontySolrJettyRunner -->
+        <mkdir dir="${build.dir}/${example.name}/solr/lib/solr-extracted"/>
+        <copy todir="${build.dir}/${example.name}/solr/lib/solr-extracted" overwrite="false" flatten="true">
+            <fileset dir="${common.dir}/build/solr-download">
+                <include name="apache-solr*/solr/dist/montysolr-extracted/*.jar" />
+            </fileset>
+        </copy>
+		
+		<antcall target="populate-classpath" />
+		
+		<!-- generate the run.sh using default profile (even if that may be wrong for now) -->
+		<exec executable="${prop.ant}" failonerror="true" dir="${basedir}">
+			<arg line="-Dename=${example.name} -Dignore-environment=true -Dprofile=${example.config} -Dtarget=generate-run.sh" />
+			<arg value="run-configured" />
+		</exec>
+		
+	</target>
+
+
+	<target name="run" description="Run the example, usage: ant run -Dename={example-name}">
+		<exec executable="${prop.ant}" failonerror="true" dir="${basedir}">
+			<env key="MONTYSOLR_MAX_WORKERS" value="4" />
+			<env key="MONTYSOLR_JVMARGS" value="${example.jvmargs} ${env.MONTYSOLR_JVMARGS}" />
+			<env key="MONTYSOLR_ARGS" value="${env.MONTYSOLR_ARGS} --daemon" />
+			<arg line="-Dename=${example.name} -Dignore-environment=${example.ignore-environment}" />
+			<arg value="run-bare" />
+		</exec>
+	</target>
+
+
+
+	<target name="run-configured" description="Run the example with special configuration, usage: ant run-configured -Dename={example-name} -Dprofile={profile}.
+		If you only want to generate shell script,use: ant run-configured -Dename={example-name} -Dprofile={profile} -Dtarget=generate-run.sh">
+
+		<!-- i can't do ${example.name}.PYTHON without external lib
+		     eg. http://ant.apache.org/antlibs/props/index.html -->
+
+		<property prefix="xxx" file="${example.name}/${example.config}" />
+
+		<antcall target="populate-classpath" />
+		
+		<exec executable="${prop.ant}" failonerror="true">
+			<env key="PYTHONPATH" value="${xxx.PYTHONPATH}" />
+			<env key="MONTYSOLR_HANDLER" value="${xxx.MONTYSOLR_HANDLER}" />
+			<env key="MONTYSOLR_TARGETS" value="${xxx.MONTYSOLR_TARGETS}" />
+			<env key="MONTYSOLR_MAX_WORKERS" value="${xxx.MONTYSOLR_MAX_WORKERS}" />
+			<env key="MONTYSOLR_JVMARGS" value="${xxx.MONTYSOLR_JVMARGS}" />
+			<env key="MONTYSOLR_ARGS" value="${xxx.MONTYSOLR_ARGS}" />
+			<arg line="-Dename=${example.name} -Dignore-environment=false" />
+			<arg value="${run.target}" />
+		</exec>
+	</target>
+
+
+	<target name="run-bare" depends="populate-classpath,generate-run.sh">
+		<run-montysolr classpath="${prop.jcc_egg}" 
+			classpathref="examples.classpath" 
+			ignore-environment="${example.ignore-environment}" 
+			pythonpath="${env.PYTHONPATH}" 
+			webroot="${build.dir}/${example.name}/webapps/solr.war" 
+			solr-home-dir="${build.dir}/${example.name}/solr" 
+			solr-data-dir="${build.dir}/${example.name}/solr/data" 
+			jcc-classpath="${prop.jcc_egg}" 
+			jvmargs="${env.MONTYSOLR_JVMARGS}" 
+			arguments="${env.MONTYSOLR_ARGS}" 
+			basedir="${build.dir}/${example.name}" />
+	</target>
+
+	<target name="generate-run.sh" depends="populate-classpath">
+		<create-run.sh classpath="${prop.jcc_egg}" 
+			classpathref="examples.classpath" 
+			ignore-environment="${example.ignore-environment}" 
+			pythonpath="${env.PYTHONPATH}" 
+			webroot="${build.dir}/${example.name}/webapps/solr.war" 
+			solr-home-dir="${build.dir}/${example.name}/solr" 
+			solr-data-dir="${build.dir}/${example.name}/solr/data" 
+			jcc-classpath="${prop.jcc_egg}" 
+			jvmargs="${env.MONTYSOLR_JVMARGS}" 
+			arguments="${env.MONTYSOLR_ARGS}" 
+			basedir="${build.dir}/${example.name}" />
+		<echo>Start script generated at ${build.dir}/${example.name}/run.sh</echo>
+	</target>
+
+	<target name="test" depends="populate-classpath,common.test" />
+	<target name="compile-core" depends="populate-classpath,common.compile-core"/>
+	
+
+
+	<macrodef name="create-run.sh">
+	    <attribute name="classpath" />
+	    <attribute name="classpathref" />
+	    <attribute name="jvmargs" />
+	    <attribute name="webroot" />
+	    <attribute name="context" default="/solr" />
+	    <attribute name="arguments" default="" />
+	    <attribute name="solr-home-dir" />
+	    <attribute name="solr-data-dir" />
+	    <attribute name="jcc-classpath" default="${prop.jcc_egg}"/>
+	    <attribute name="ignore-environment" default="true" />
+	    <attribute name="montysolr-class" default="monty.solr.JettyRunner" />
+	    <attribute name="pythonpath" default="${build.dir}/${example.name}/python"/>
+	    <attribute name="basedir" default="${basedir}"/>
+	    <sequential>
+	        <echo file="@{basedir}/run.sh">#!/bin/bash
+	                
+	    #           MontySolr:
+	    #           ========
+	    #               
+	    #           basedir: @{basedir}
+	    #           ignore-environment: @{ignore-environment}
+	    #           classpathref: @{classpathref}
+	    #           classname: @{montysolr-class}
+
+	    JVMARGS=$1
+	    ARGS=$2
+	          
+	    export HOMEDIR=@@@          
+	    export PYTHONPATH=@{pythonpath}
+	    export MONTYSOLR_HANDLER=${env.MONTYSOLR_HANDLER}
+	    export MONTYSOLR_TARGETS=${env.MONTYSOLR_TARGETS}
+	    export MONTYSOLR_MAX_WORKERS=${env.MONTYSOLR_MAX_WORKERS}
+
+	    export JCC_CP="@{classpath}"
+	    export JAVA_CP="${toString:@{classpathref}}"            
+	    export CP="$JCC_CP${path.separator}$JAVA_CP"            
+	                
+	    java -cp $CP \
+	                    -Dsolr.solr.home=@{solr-home-dir} -Dsolr.data.dir=@{solr-data-dir} \
+	                    -Djava.library.path=@{jcc-classpath} \
+	                    @{jvmargs} $JVMARGS \
+	                    @{montysolr-class} \
+                        --webroot @{webroot} \
+                        --context @{context} \
+	                    @{arguments} $ARGS  &amp;
+
+	    pid=$!
+	    echo "MontySolr pid=$pid"
+	    echo "$pid" > "$HOMEDIR/montysolr.pid"
+	    trap "kill $pid" TERM
+	    trap "kill $pid" SIGINT
+	    wait $pid                           
+	                
+	                </echo>
+
+	        <replace file="@{basedir}/run.sh" token="@{basedir}" value="$HOMEDIR"/>
+	        <replace file="@{basedir}/run.sh" token="@@@" value="@{basedir}"/>
+	        <chmod file="@{basedir}/run.sh" perm="u+x" />
+
+	    </sequential>
+
+	</macrodef>
+
+	<macrodef name="run-montysolr">
+	    <attribute name="classpath" />
+	    <attribute name="classpathref" />
+	    <attribute name="jvmargs" />
+	    <attribute name="webroot" />
+	    <attribute name="context" default="/solr" />
+	    <attribute name="arguments" default="" />
+	    <attribute name="solr-home-dir" />
+	    <attribute name="solr-data-dir" />
+	    <attribute name="jcc-classpath" default="${prop.jcc_egg}"/>
+	    <attribute name="ignore-environment" default="true" />
+	    <attribute name="montysolr-class" default="monty.solr.JettyRunner" />
+	    <attribute name="pythonpath" default=""/>
+	    <attribute name="basedir" default="${basedir}"/>
+
+	    <sequential>
+	        <java classpath="@{classpath}"
+	                classpathref="@{classpathref}"
+	                fork="true"
+	                newenvironment="@{ignore-environment}"
+	                classname="@{montysolr-class}"
+	                dir="@{basedir}"
+	                >
+
+	            <env key="PYTHONPATH" path="@{pythonpath}" />
+	            <jvmarg line="-Dsolr.solr.home=@{solr-home-dir} -Dsolr.data.dir=@{solr-data-dir}"/>
+	            <jvmarg line="-Djava.library.path=@{jcc-classpath}"/>
+	            <jvmarg line="@{jvmargs}"/>
+	            <arg value="--webroot"/>
+	            <arg value="@{webroot}"/>
+	            <arg value="--context"/>
+	            <arg value="@{context}"/>
+	            <arg line="@{arguments}"/>
+	        </java>
+
+	    </sequential>
+	</macrodef>
+	
+	<macrodef name="assemble-example">
+	    <attribute name="montysolr-example"/>
+	    <attribute name="solr-example"/>
+	    <attribute name="example-name"/>
+	    <attribute name="build-dir" default="${build.dir}"/>
+	    <sequential>
+	        <delete dir="@{build-dir}/@{example-name}" failonerror="false"/>
+
+	        <mkdir dir="@{build-dir}/@{example-name}"/>
+
+	        <!-- first copy the montysolr files -->
+	        <copy todir="@{build-dir}/@{example-name}" overwrite="true">
+	            <fileset dir="@{montysolr-example}">
+	                <include name="**/**" />
+	            </fileset>
+	        </copy>
+
+	        <!-- then the remaining solr files -->
+	        <copy todir="@{build-dir}/@{example-name}" overwrite="false">
+	            <fileset dir="@{solr-example}">
+	                <include name="**/**" />
+	            </fileset>
+	        </copy>
+
+	        <echo>
+	                  Assembled @{example-name} at @{build-dir}/@{example-name}
+	               </echo>
+
+	    </sequential>
+	</macrodef>
+
+	
+</project><?xml version="1.0"?>
+
+<!--
+    Licensed to the Apache Software Foundation (ASF) under one or more
+    contributor license agreements.  See the NOTICE file distributed with
+    this work for additional information regarding copyright ownership.
+    The ASF licenses this file to You under the Apache License, Version 2.0
+    the "License"); you may not use this file except in compliance with
+    the License.  You may obtain a copy of the License at
+ 
+        http://www.apache.org/licenses/LICENSE-2.0
+ 
+    Unless required by applicable law or agreed to in writing, software
+    distributed under the License is distributed on an "AS IS" BASIS,
+    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+    See the License for the specific language governing permissions and
+    limitations under the License.
+ -->
+
+<project name="newseman" default="default">
+
+    <description>
+    Semantic analyzer for Lucene written in Python
+    </description>
+
+    <import file="../contrib-build.xml"/>
+	
+	
+	<path id="test.classpath">
+        <path refid="classpath"/>
+        <path refid="test.base.classpath"/>
+		<pathelement location="${prop.jcc_egg}/jcc/classes"/>
+    </path>
+	
+	<target name="test" depends="compile, common.test" />
+	
+	<target name="build-all"  depends="clean,default">
+	    
+    </target>
+
+</project>

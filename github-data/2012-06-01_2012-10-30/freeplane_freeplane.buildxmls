@@ -1,0 +1,1686 @@
+<project name="GlobalFreeplane" default="dist" basedir=".">
+
+	<target name="build">
+		<ant antfile="freeplane_framework/ant/build.xml" target="build" inheritAll="false" />
+	</target>
+
+	<target name="dist">
+		<ant antfile="freeplane_framework/ant/build.xml" target="dist" inheritAll="false" />
+	</target>
+	<target name="format-translation">
+		<ant antfile="JOrtho_0.4_freeplane/build.xml" target="format-translation" inheritAll="false" />
+		<ant antfile="freeplane_framework/ant/build.xml" target="format-translation" inheritAll="false" />
+	</target>
+
+	<target name="clean">
+		<ant antfile="freeplane_framework/ant/build.xml" target="clean" inheritAll="false" />
+
+		<ant antfile="freeplane_ant/build.xml" target="clean" inheritAll="false" />
+
+		<ant antfile="JOrtho_0.4_freeplane/build.xml" target="clean" inheritAll="false" />
+	</target>
+
+	<target name="cleandist" depends="clean, dist">
+	</target>
+
+	<target name="release" depends="clean, dist, tag-release" />
+
+	<target name="tag-release">
+		<property file="freeplane/viewer-resources/version.properties" />
+
+		<condition property="preview_suffix" value="-pre${minor}" else="">
+			<isset property="minor" />
+		</condition>
+
+		<condition property="tag.release" 
+				value="release-${freeplane_version}${preview_suffix}" 
+				else="${freeplane_version_status}-${freeplane_version}${preview_suffix}">
+			<equals arg1="${freeplane_version_status}" arg2="" />
+		</condition>
+
+		<echo>Press enter to tag '${tag.release}'</echo>
+		<input />
+
+		<echo>Running git tag -m '' ${tag.release}</echo>
+
+		<exec executable="git" failonerror="true">
+			<arg value="tag" />
+			<arg value="-m ''" />
+			<arg value="${tag.release}" />
+		</exec>
+	</target>
+
+	<target name="create-plugin">
+		<ant antfile="freeplane_framework/ant/build.xml" target="create-plugin" inheritAll="false" />
+	</target>
+</project>
+<project name="freeplane" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property file="viewer-resources/version.properties"/>
+	<property name="src" value="src" />
+	<property name="resources" value="resources" />
+	<property name="viewer-resources" value="viewer-resources" />
+	<property name="eolstyle" value="unix" />
+	<property name="root" value="." />
+	<property name="manifest" value="${root}/META-INF/OLD_MANIFEST.MF" />
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/signjar.properties" />
+	<property file="ant/ant.properties" />
+	<property name="freeplaneant.jar" value="${workspace}/freeplane_ant/dist/freeplaneant.jar" />
+	<property name="google.translator.jar" value="${workspace}/freeplane_framework/ant/lib/google-api-translate-java-0.92.jar" />
+	<property name="external.jars" value="${commons-lang.jar}:${commons-io.jar}:${commons-codec.jar}:${imgscalr.jar}:${forms.jar}:${SimplyHTML.jar}:${jortho.jar}:${idwgpl.jar}:${insubstantial.jars}" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+    <property name="dist.resources" value="${dist}/resources" />
+    <property name="dist.doc" value="${dist}/doc" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.core" />
+	<property name="freeplaneplugin.jar" value="${dist.osgi.dir}/org.freeplane.core.jar" />
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${external.jars}:${freeplanemac.jar}:${framework.jar}" />
+	<condition property="isMacOs">
+	      <os family="mac"/>
+	</condition>
+
+	<taskdef name="format-translation" classname="org.freeplane.ant.FormatTranslation" classpath="${freeplaneant.jar}" onerror="report" />
+	<taskdef name="check-translation" classname="org.freeplane.ant.FormatTranslationCheck" classpath="${freeplaneant.jar}" onerror="report" />
+
+	<target name="prepare_freeplaneant">
+		<ant antfile="${workspace}/freeplane_ant/build.xml" target="jar"
+			dir="${workspace}/freeplane_ant"  inheritAll="false" />
+	</target>
+
+	<target name="prepare_jortho" depends="prepare_freeplaneant">
+		<ant antfile="${workspace}/JOrtho_0.4_freeplane/build.xml" target="jar"
+			 dir="${workspace}/JOrtho_0.4_freeplane" inheritAll="false"/>
+		<copy
+			file="${workspace}/JOrtho_0.4_freeplane/dist/lib/jortho-0.4+fp1.1.1.jar"
+			tofile="lib/jortho.jar"
+			/>
+	</target>
+
+	<target name="localelist">
+		<!-- updates translations/locales.txt -->
+		<fileset id="resourcebundles" dir="${root}">
+			<include name="resources/translations/*.properties" />
+			<include name="viewer-resources/translations/*.properties" />
+		</fileset>
+		<pathconvert pathsep="${line.separator}" property="locales" refid="resourcebundles">
+			<mapper type="regexp" from=".*Resources_(.*)\.properties" to="\1"/>
+		</pathconvert>
+		<mkdir dir="${build}/translations" />
+		<echo file="${build}/translations/locales.txt">${locales}</echo>
+	</target>
+
+	<target name="build" depends="prepare_jortho,localelist,build-ui-xml">
+		<antcall target="check-translation" />
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}"
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+			<exclude name="org/freeplane/main/application/FreeplaneMain.java" />
+			<exclude name="**/osgi/**" />
+		</javac>
+		<!-- Starter should work with java 1.1, too as it checks the java version.-->
+		<delete failonerror="false" file="${build}/org/freeplane/main/application/FreeplaneMain.class"/>
+		<javac verbose="no" srcdir="${src}" destdir="${build}" classpath="${classpath}"
+			debug="${debug}" source="1.3" target="1.1" encoding="utf8">
+			<include name="org/freeplane/main/application/FreeplaneMain.java" />
+		</javac>
+	</target>
+
+	<target name="build-ui-xml">
+		<xslt in="${resources}/xml/mindmapmoderibbon.xml"
+		      style="${resources}/xslt/ribbons2menu.xsl"
+		      out="${resources}/xml/mindmapmodemenu.xml"/>
+	</target>
+
+	<target name="osgi_build" depends="build">
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}"
+			debug="${debug}"
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+			<include name="**/osgi/**" />
+			<exclude name="org/freeplane/main/osgi/Activator.java" />
+		</javac>
+		<delete failonerror="false" file="${build}/org/freeplane/main/osgi/Activator.class"/>
+		<javac verbose="no" srcdir="${src}" destdir="${build}" classpath="${classpath}"
+			debug="${debug}" source="1.3" target="1.2" encoding="utf8">
+			<include name="org/freeplane/main/osgi/Activator.java" />
+		</javac>
+	</target>
+
+	<target name="jar" depends="build">
+		<mkdir dir="${freeplane.dist.lib}" />
+		<jar jarfile="${freeplaneviewer.jar}">
+			<manifest>
+				<attribute name="Permissions" value="all-permissions"/>
+				<attribute name="Codebase" value="*"/>
+				<attribute name="Application-Name" value="Freeplane Viewer Applet"/>
+			</manifest>
+			<fileset dir="${build}">
+				<exclude name="**/*.jar" />
+				<exclude name="**/application/**" />
+				<exclude name="**/osgi/**" />
+				<exclude name="**/mindmapmode/**" />
+				<exclude name="**/filemode/**" />
+				<exclude name="**/ortho/**" />
+				<exclude name="**/core/resources/ui/**" />
+				<exclude name="translations/**" />
+			</fileset>
+			<fileset dir="${viewer-resources}">
+				<exclude name="**/appletMenu.mm" />
+			</fileset>
+		</jar>
+		<jar jarfile="${freeplaneeditor.jar}" manifest="${manifest}">
+			<fileset dir="${build}">
+				<include name="**/application/**" />
+				<include name="**/mindmapmode/**" />
+				<include name="**/ortho/**" />
+				<include name="**/filemode/**" />
+				<include name="**/core/resources/ui/**" />
+				<include name="translations/**" />
+				<exclude name="**/*.jar" />
+			</fileset>
+			<fileset dir="${resources}">
+				<exclude name="**/preferences.mm" />
+				<exclude name="**/browsemodemenu.mm" />
+				<exclude name="**/mindmapmodemenu.mm" />
+				<exclude name="**/filemodemenu.mm" />
+				<exclude name="**/stylemodemenu.mm" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="signjar" depends ="jar, signjar-tsa, signjar-no-tsa" if = "signjar.alias"/>
+
+	<target name="signjar-tsa" depends ="jar" if = "signjar.tsaurl">
+		<signjar jar="${freeplaneviewer.jar}"
+			alias="${signjar.alias}"
+			storepass="${signjar.storepass}" keypass="${signjar.keypass}"
+			tsaurl="${signjar.tsaurl}"/>
+	</target>
+
+	<target name="signjar-no-tsa" depends ="jar"  if = "signjar.alias" unless="signjar.tsaurl">
+		<signjar jar="${freeplaneviewer.jar}"
+			alias="${signjar.alias}"
+			storepass="${signjar.storepass}" keypass="${signjar.keypass}"/>
+	</target>
+
+	<target name="signjarinfo" depends ="jar" unless = "signjar.alias">
+		<echo>No ${workspace}/freeplane/ant/signjar.properties found</echo>
+		<echo>Applet not signed</echo>
+		<echo>See ${workspace}/freeplane/ant/signjar-example.properties for more info</echo>
+	</target>
+
+	<target name="buildmac" if="isMacOs">
+		<ant antfile="ant/build.xml" target="dist" dir="${workspace}/freeplane_mac" inheritall="false" />
+	</target>
+
+	<target name="osgi_jar" depends="signjar, osgi_build">
+		<jar jarfile="${freeplaneosgi.jar}">
+			<fileset dir="${build}">
+				<include name="**/osgi/**" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="dist" depends="jar, signjar, signjarinfo, buildmac">
+		<!-- third party libs -->
+		<mkdir dir="${freeplane.dist.lib}" />
+		<copy todir="${freeplane.dist.lib}">
+			<fileset dir="${freeplane.ext.lib}">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+        <mkdir dir="${dist.resources}" />
+        <copy todir="${dist.resources}">
+            <fileset dir="external-resources"/>
+        </copy>
+        <mkdir dir="${dist.doc}" />
+        <copy todir="${dist.doc}">
+            <fileset dir="doc"/>
+        </copy>
+	</target>
+
+	<target name="clean_dist" depends="clean, dist"/>
+
+	<!-- for maven integration -->
+	<!-- make sure you've installed maven properly - see http://maven.apache.org/ -->
+	<target name="maven-deps">
+		<exec executable="mvn.bat">
+		    <arg value="install:install-file"/>
+			<arg value="-DgroupId=org.freeplane"/>
+			<arg value="-DartifactId=freeplane-simplyHtml"/>
+			<arg value="-Dversion=${freeplane_version}"/>
+			<arg value="-Dpackaging=jar"/>
+			<arg value="-Dfile=lib/SimplyHTML.jar"/>
+		</exec>
+		<exec executable="mvn.bat">
+		    <arg value="install:install-file"/>
+			<arg value="-DgroupId=org.freeplane"/>
+			<arg value="-DartifactId=freeplane-jortho"/>
+			<arg value="-Dversion=${freeplane_version}"/>
+			<arg value="-Dpackaging=jar"/>
+			<arg value="-Dfile=lib/jortho.jar"/>
+		</exec>
+		<exec executable="mvn.bat">
+		    <arg value="install:install-file"/>
+			<arg value="-DgroupId=com.jgoodies"/>
+			<arg value="-DartifactId=forms"/>
+			<arg value="-Dversion=1.0.5"/>
+			<arg value="-Dpackaging=jar"/>
+			<arg value="-Dfile=lib/forms-1.2.1.jar"/>
+		</exec>
+	</target>
+
+
+
+	<target name="osgi_dist" depends="osgi_jar, dist">
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${dist}">
+				<include name="lib/**" />
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="osgi_dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="check-translation">
+		<check-translation dir="${root}/resources/translations" includes="*.properties" eolstyle="${eolstyle}" />
+		<check-translation dir="${root}/viewer-resources/translations" includes="*.properties" eolstyle="${eolstyle}" />
+	</target>
+	<target name="format-translation">
+		<format-translation dir="${root}/resources/translations" includes="*.properties" eolstyle="${eolstyle}" />
+		<format-translation dir="${root}/viewer-resources/translations" includes="*.properties" eolstyle="${eolstyle}" />
+	</target>
+	<target name="format-translation-force">
+		<format-translation dir="${root}/resources/translations" writeifunchanged="true" includes="*de.properties" eolstyle="${eolstyle}" />
+		<format-translation dir="${root}/viewer-resources/translations" writeifunchanged="true" includes="*xx.properties" eolstyle="${eolstyle}" />
+	</target>
+	<target name="translate">
+		<translator translationsdir="${root}/resources/translations"
+			    sourcefile="${root}/viewer-resources/translations/Resources_en.properties" includes="*.properties" />
+		<antcall target="format-translation" />
+	</target>
+
+	<target name="clean">
+		<delete dir="${build}" quiet="true" />
+		<delete dir="${dist}" quiet="true" />
+		<delete file="lib/jortho.jar" />
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~" />
+			<fileset dir="${resources}">
+				<include name="**/mindmapmodemenu.xml" />
+			</fileset>
+		</delete>
+	</target>
+
+</project>
+
+<project name="freeplane_ant" default="compile" basedir=".">
+  <property name="src" location="src" />
+  <property name="lib" location="lib" />
+  <property name="bin" location="bin" />
+  <property name="template" location="template" />
+  <property name="dist" location="dist" />
+  <property name="debug" value="on" />
+  <property name="java_source_version" value="1.5" />
+  <property name="java_target_version" value="1.5" />
+  <property name="jar" value="${dist}/freeplaneant.jar" />
+
+  <target name="compile">
+    <mkdir dir="${bin}" />
+    <javac srcdir="${src}" destdir="${bin}" debug="${debug}" 
+    	source="${java_source_version}" target="${java_target_version}" />
+  </target>
+
+  <target name="jar" depends="compile">
+    <mkdir dir="${dist}" />
+    <jar jarfile="${jar}">
+      <fileset dir="${bin}">
+        <exclude name="**/*.jar" />
+        <exclude name="**/*Test.class" />
+      </fileset>
+      <fileset dir="${template}"/>
+    </jar>
+  </target>
+
+  <target name="test" depends="jar">
+    <ant dir="test" target="test" />
+  </target>
+
+  <target name="clean">
+    <!-- would fail unless freeplaneant.jar exists:
+	 <ant dir="test" target="clean" />
+    -->
+    <delete dir="test/sorted" quiet="true" />
+    <delete dir="test/bin" quiet="true" />
+    <delete dir="test/log" quiet="true" />
+    <delete dir="test/freeplane_plugin_latex" quiet="true" />
+    <delete dir="test/freeplane_plugin_helloworld" quiet="true" />
+    <delete dir="${bin}" quiet="true" />
+    <delete dir="${dist}" quiet="true" />
+  </target>
+</project>
+<project name="freeplane_ant" default="test" basedir=".">
+  <property name="root" location=".." />
+  <property name="freeplane.dir" location="../.." />
+  <property name="src" location="src" />
+  <property name="bin" location="bin" />
+  <property name="test.logdir" location="log" />
+  <property name="jar" value="${root}/dist/freeplaneant.jar" />
+  <property name="junit.jar" value="${root}/lib/junit.jar" />
+  <property name="classpath" value="${junit.jar}:${jar}" />
+
+  <taskdef name="format-translation" classname="org.freeplane.ant.FormatTranslation" classpath="${jar}"/>
+  <taskdef name="check-translation" classname="org.freeplane.ant.FormatTranslationCheck" classpath="${jar}"/>
+  <taskdef name="create-plugin" classname="org.freeplane.ant.CreatePlugin" classpath="${jar}"/>
+
+  <target name="compile-junit">
+    <mkdir dir="${bin}" />
+    <javac srcdir="${src}" destdir="${bin}" debug="${debug}" classpath="${classpath}" />
+  </target>
+
+  <target name="run-junit" depends="compile-junit">
+    <delete dir="${test.logdir}"/>
+    <mkdir dir="${test.logdir}" />
+    <junit printsummary="yes" haltonfailure="off">
+      <classpath>
+	<pathelement path="${classpath}:bin"/>
+      </classpath>
+      <formatter type="xml"/>
+      <batchtest todir="${test.logdir}">
+	<fileset dir="${bin}">
+	  <include name="**/*Test.class"/>
+	</fileset>
+      </batchtest>
+    </junit>
+  </target>
+  
+  <target name="check">
+    <check-translation dir="unsorted" includes="*.properties" />
+  </target>
+
+   <target name="format">
+    <format-translation dir="unsorted" includes="*.properties" outputDir="sorted" />
+  </target>
+
+  <target name="check-sorted">
+    <check-translation dir="sorted" includes="*.properties" />
+  </target>
+
+  <target name="create-plugin">
+    <create-plugin />
+  </target>
+
+  <target name="create-plugin-batch">
+    <copy todir="./freeplane_plugin_latex">
+      <fileset dir="${freeplane.dir}/freeplane_plugin_latex">
+	<exclude name="**/dist/**" />
+	<exclude name="**/build/**" />
+	<exclude name="**/lib/**" />
+      </fileset>
+    </copy>
+    <create-plugin baseDir="." pluginname="helloworld" hasAction="true" />
+  </target>
+
+  <target name="clean">
+    <delete dir="sorted" quiet="true" />
+    <delete dir="${bin}" quiet="true" />
+    <delete dir="${test.log}" quiet="true" />
+    <delete dir="freeplane_plugin_latex" quiet="true" />
+    <delete dir="freeplane_plugin_helloworld" quiet="true" />
+  </target>
+
+  <target name="test" depends="run-junit">
+    <antcall target="format" />
+    <antcall target="check-sorted" />
+    <delete dir="freeplane_plugin_helloworld" quiet="true" />
+    <antcall target="create-plugin-batch" />
+  </target>
+</project>
+<project name="freeplane" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property file="${workspace}/freeplane/viewer-resources/version.properties" />
+	<property file="ant/ant.properties" />
+	<property name="freeplaneant.jar" value="${workspace}/freeplane_ant/dist/freeplaneant.jar" />
+	<property name="root" value="." />
+	<property name="build" value="${root}/build" />
+	<property name="build4mac" value="${root}/build4mac" />
+	<property name="build.plugins" value="${build}/plugins" />
+	<property name="dist" value="${root}/dist" />
+	<property name="macappfullpath" value="${build4mac}/Freeplane.app" />
+
+	<property name="launcher_src" value="src" />
+	<property name="launcher_manifest" value="${root}/META-INF/LAUNCHER_MANIFEST.MF" />
+	<property name="launcher_build" value="${root}/launcher_build" />
+	<property name="launcher_classpath" value="${framework.jar}" />
+
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+
+	<condition property="freeplane_version_status_suffix" value="" else="-${freeplane_version_status}">
+		<equals arg1="${freeplane_version_status}" arg2=""/>
+	</condition>
+
+	<condition property="ver" value="${freeplane_version}${freeplane_version_status_suffix}_pre${minor}" else="${freeplane_version}${freeplane_version_status_suffix}">
+		<isset property="minor" />
+	</condition>
+
+	<property name="license" value="license.txt" />
+	<property name="readme_src" value="readme.txt" />
+	<property name="build.resources" value="${build}/resources" />
+	<property name="build.doc" value="${build}/doc" />
+	<property name="build.scripts" value="${build}/scripts" />
+	<property name="script" value="${root}/script" />
+
+	<property name="skip_workspace" value="true" />
+
+	<!-- Mac OS X -->
+	<condition property="isMacOs">
+		<os family="mac"/>
+	</condition>
+
+	<property name="mac-jarbundler" value = "${root}/mac-jarbundler"/>
+	<property name="jarbundler.jar" value = "jarbundler-2.1.0.jar"/>
+	<taskdef name="jarbundler" onerror="report"
+			 classpath="${mac-jarbundler}/${jarbundler.jar}"
+			 classname="net.sourceforge.jarbundler.JarBundler" />
+	<taskdef name="create-plugin" onerror="report"
+			 classpath="${freeplaneant.jar}"
+			 classname="org.freeplane.ant.CreatePlugin"/>
+
+	<target name="makePlugin">
+		<ant antfile="ant/build.xml" target="${anttarget}" dir="${workspace}/${plugindir}" inheritall="false" />
+		<mkdir dir="${build}/${targetdir}/${pluginname}" />
+		<copy todir="${build}/${targetdir}/${pluginname}">
+			<fileset dir="${workspace}/${plugindir}/dist/${pluginname}" />
+		</copy>
+	</target>
+
+
+	<target name="build_core">
+		<echo>Freeplane Version = ${ver}.</echo>
+
+		<mkdir dir="${build}" />
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="osgi_dist"/>
+			<param name="targetdir" value="core"/>
+			<param name="plugindir" value="freeplane"/>
+			<param name="pluginname" value="org.freeplane.core"/>
+		</antcall>
+	</target>
+
+	<target name="build_help" unless="skip_help">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_help"/>
+			<param name="pluginname" value="org.freeplane.plugin.help"/>
+		</antcall>
+	</target>
+
+	<target name="build_latex" unless="skip_latex">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_latex"/>
+			<param name="pluginname" value="org.freeplane.plugin.latex"/>
+		</antcall>
+	</target>
+
+	<target name="build_svg" unless="skip_svg">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_svg"/>
+			<param name="pluginname" value="org.freeplane.plugin.svg"/>
+		</antcall>
+	</target>
+
+	<target name="build_script" unless="skip_script">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_script"/>
+			<param name="pluginname" value="org.freeplane.plugin.script"/>
+		</antcall>
+	</target>
+
+	<target name="build_script_api" unless="skip_script">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="api"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_script"/>
+			<param name="pluginname" value="org.freeplane.plugin.script"/>
+		</antcall>
+	</target>
+
+	<target name="build_formula" unless="skip_formula">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_formula"/>
+			<param name="pluginname" value="org.freeplane.plugin.formula"/>
+		</antcall>
+	</target>
+
+	<target name="build_bugreport" unless="skip_bugreport">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_bugreport"/>
+			<param name="pluginname" value="org.freeplane.plugin.bugreport"/>
+		</antcall>
+	</target>
+
+	<target name="build_openmaps" unless="skip_openmaps">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist" />
+			<param name="targetdir" value="plugins" />
+			<param name="plugindir" value="freeplane_plugin_openmaps" />
+			<param name="pluginname" value="org.freeplane.plugin.openmaps"/>
+		</antcall>
+	</target>
+
+	<target name="build_workspace" unless="skip_workspace">
+		<antcall target="makePlugin" inheritall="false">
+			<param name="anttarget" value="dist"/>
+			<param name="targetdir" value="plugins"/>
+			<param name="plugindir" value="freeplane_plugin_workspace"/>
+			<param name="pluginname" value="org.freeplane.plugin.workspace"/>
+		</antcall>
+	</target>
+
+	<target name="build_launcher" depends="build_core">
+		<mkdir dir="${launcher_build}" />
+		<javac srcdir="${launcher_src}" destdir="${launcher_build}" classpath="${launcher_classpath}" 
+			debug="${debug}" source="${java_source_version}" target="${java_target_version}" encoding="utf8"/>
+		<jar jarfile="${freeplanelauncher.jar}" manifest="${launcher_manifest}">
+			<fileset dir="${launcher_build}">
+				<include name="**" />
+			</fileset>
+		</jar>
+
+		<copy todir="${build}">
+			<fileset dir="${script}" />
+			<fileset file="${framework.jar}" />
+			<fileset file="${freeplanelauncher.jar}" />
+			<fileset file="windows-icons/freeplaneIcons.dll" />
+			<fileset dir="launch4j" includes="*.exe" />
+			<fileset dir="launch4j" includes="*.ini" />
+		</copy>
+		<chmod file="${build}/freeplane.sh" perm="ugo+rx" />
+	</target>
+
+	<target name="build" depends="build_core, build_latex, build_svg, build_script, build_formula, build_bugreport, build_openmaps, build_workspace, build_launcher, git_version_info">
+		<mkdir dir="${build.resources}" />
+		<copy todir="${build.resources}">
+			<fileset dir="${workspace}/freeplane/dist/resources" />
+			<fileset file="${dist}/gitinfo.properties"/>
+		</copy>
+		<mkdir dir="${build.doc}" />
+		<copy todir="${build.doc}">
+			<fileset dir="${workspace}/freeplane/dist/doc" />
+		</copy>
+		<mkdir dir="${build.scripts}" />
+		<copy todir="${build.scripts}">
+			<fileset dir="${workspace}/freeplane_plugin_script/scripts" />
+		</copy>
+
+	</target>
+
+	<target name="javadoc" depends="build_script_api">
+		<mkdir dir="${build.doc}" />
+		<copy todir="${build.doc}">
+			<fileset dir="${workspace}/freeplane_plugin_script/dist/doc" />
+		</copy>
+	</target>
+
+	<target name="mkdistdir">
+		<mkdir dir="${build}" />
+		<mkdir dir="${dist}" />
+	</target>
+
+
+	<target name="rungit" depends="mkdistdir">
+		<delete file="${build}/gitinfo.txt" quiet="true"/>
+		<delete file="${dist}/git.properties" quiet="true"/>
+		<exec dir="${build}" executable="git" output="${build}/gitinfo.txt"
+			failifexecutionfails="false" failonerror="false" logError="true"
+			resultproperty="gitresult">
+			<arg value='log'/>
+			<arg value='--pretty=format:git-revision=%h_%an_%ai'/>
+			<arg value='-n1'/>
+		</exec>
+		<condition property="gitok" value="">
+			<equals arg1="${gitresult}" arg2="0"/>
+		</condition>
+	</target>
+
+	<target name="git_version_info" depends="rungit" unless="giterror">
+		<native2ascii src="${build}" dest="${dist}" includes="gitinfo.txt" ext=".properties"/>
+		<replaceregexp file="${dist}/gitinfo.properties" flags="g" byline="false" match="[^\w=-]" replace="" />
+		<property file="${dist}/gitinfo.properties"/>
+		<exec dir="${build}" executable="git" output="${build}/gitinfo.txt" append="true"
+            failifexecutionfails="false" failonerror="false" logError="true">
+			<arg value='branch'/>
+		</exec>
+	</target>
+
+	<target name="binzip" depends="build">
+		<zip destfile="${dist}/freeplane_bin-${ver}.zip" compress="true">
+			<zipfileset dir="${build}" prefix="freeplane-${ver}">
+				<exclude name="freeplane.sh"/>
+			</zipfileset>
+			<zipfileset file="${build}/freeplane.sh" filemode="775" prefix="freeplane-${ver}"/>
+			<zipfileset dir="${root}" prefix="freeplane-${ver}">
+				<include name="${license}" />
+			</zipfileset>
+		</zip>
+	</target>
+
+	<target name="srczip" depends="mkdistdir, git_version_info">
+		<tempfile property="src.temp.dir" destDir="${java.io.tmpdir}" prefix="build-src" />
+		<mkdir dir="${src.temp.dir}" />
+		<copy todir="${src.temp.dir}" overwrite="true">
+			<fileset dir="${workspace}">
+				<include name="build.xml" />
+				<include name="freeplane/**" />
+				<include name="freeplane_plugin*/**" />
+				<include name="freeplane_ant/**" />
+				<include name="freeplane_mac/**" />
+				<include name="freeplane_framework/**" />
+				<include name="freeplane_devresources/**" />
+				<include name="JOrtho_0.4_freeplane/**" />
+				<include name="build.xml" />
+				<exclude name=".*/**" />
+				<exclude name="**/~*" />
+				<exclude name="**/signjar.properties" />
+				<exclude name="**/backups/**" />
+				<exclude name="bin/**" />
+				<exclude name="build/**" />
+				<exclude name="dist/**" />
+				<exclude name="*/bin/**" />
+				<exclude name="*/build/**" />
+				<exclude name="*/launcher_build/**" />
+				<exclude name="*/build-nodehighlighter/**" />
+				<exclude name="*/build4mac/**" />
+				<exclude name="*/dist/**" />
+				<exclude name="**/.backup/**" />
+				<exclude name="**/backups/**" />
+				<exclude name="JOrtho_0.4_freeplane/src/dictionary_*.ortho" />
+				<exclude name="freeplane_framework/windows-icons/Objects/**" />
+				<exclude name="freeplane_framework/windows-icons/*.layout" />
+				<exclude name="freeplane_framework/windows-icons/Makefile.win" />
+
+				<!-- these are generated using ribbons2menu.xsl! -->
+				<exclude name="freeplane/resources/xml/mindmapmodemenu.xml" />
+
+			</fileset>
+		</copy>
+		<!-- fix crlf->lf so that the Linux package patches apply, no matter whether this is
+	         built on Windows or UNIX -->
+		<echo>Normalizing line endings to LF in ${src.temp.dir}</echo>
+		<fixcrlf srcDir="${src.temp.dir}" eol="lf" eof="asis" fixlast="false">
+			<include name="**/*.java" />
+			<include name="**/*.xml" />
+			<include name="**/*.xsl" />
+			<include name="**/*.mm" />
+			<include name="**/*.MF" />
+			<include name="**/*.properties" />
+		</fixcrlf>
+		<tar destfile="${dist}/freeplane_src-${ver}.tar.gz" compression="gzip" longfile="gnu">
+			<tarfileset prefix="freeplane-${ver}" dir="${src.temp.dir}" mode="664">
+				<include name="**" />
+			</tarfileset>
+			<tarfileset prefix="freeplane-${ver}" dir="${root}" mode="664">
+				<include name="${license}" />
+				<include name="${readme_src}" />
+			</tarfileset>
+		</tar>
+		<!-- build the srcpure tar file with the normalized files 
+	         (this is used for linux packages)
+	    -->
+		<tar destfile="${dist}/freeplane_srcpure-${ver}.tar.gz" compression="gzip" longfile="gnu">
+			<tarfileset prefix="freeplane-${ver}" dir="${src.temp.dir}" mode="664">
+				<!-- this file is built from latex.flex using jflex! -->
+				<exclude name="freeplane_plugin_script/src-jsyntaxpane/jsyntaxpane/lexers/LaTeXLexer.java" />
+				<!-- these license files are in separate packages! -->
+				<exclude name="freeplane_plugin_openmaps/lib/Gpl.txt" />
+				<exclude name="freeplane_plugin_latex/lib/COPYING" />
+				<exclude name="freeplane_plugin_latex/lib/LICENSE" />
+				<!-- the flash files don't have a source in the freeplane-distrib,
+		             which is a problem for Debian,
+		             see http://bugs.debian.org/cgi-bin/bugreport.cgi?bug=736106 
+		             (the source is here: https://github.com/freeplane/misc/tree/master/flash-browser)
+		        -->
+				<exclude name="freeplane/resources/flash/visorFreeplane.swf" />
+				<exclude name="freeplane/resources/flash/flashobject.js" />
+				<!-- windows stuff -->
+				<exclude name="**/*.exe" />
+				<exclude name="**/*.res" />
+				<exclude name="**/*.jar" />
+				<exclude name="**/*.dll" />
+				<exclude name="**/*JavaApplicationStub*" />
+			</tarfileset>
+			<tarfileset prefix="freeplane-${ver}" dir="${root}" mode="664">
+				<include name="${license}" />
+				<include name="${readme_src}" />
+			</tarfileset>
+		</tar>
+		<delete dir="${src.temp.dir}" />
+	</target>
+
+	<target name="installer" depends="build, mkdistdir">
+		<exec osfamily="windows" dir="${workspace}/freeplane_framework/windows-installer" executable="iscc.exe" failifexecutionfails="false" failonerror="true">
+			<arg line="/Q Freeplane_without_Java.iss" />
+		</exec>
+	</target>
+
+	<target name="portableinstaller" depends="build, mkdistdir">
+		<property name="workingdir" value="${root}/temp/FreeplanePortable" />
+		<delete quiet="true" includeemptydirs="false">
+			<fileset dir="${workingdir}/.." />
+		</delete>
+		<mkdir dir="${workingdir}/App/Freeplane" />
+		<copy todir="${workingdir}">
+			<fileset dir="${root}/windows-portable" />
+		</copy>
+		<mkdir dir="${workingdir}/Other/Source" />
+		<copy tofile="${workingdir}/Other/Source/EULA.txt">
+			<fileset file="${workspace}/freeplane/resources/license.txt" />
+		</copy>
+		<copy tofile="${workingdir}/App/AppInfo/appicon.ico">
+			<fileset file="launch4j/Freeplane_app.ico" />
+		</copy>
+
+		<copy todir="${workingdir}/App/Freeplane">
+			<fileset dir="${build}">
+				<exclude name="*.bat" />
+				<exclude name="*.ini" />
+				<exclude name="*.sh" />
+			</fileset>
+		</copy>
+		<copy file="${root}/portableApps/portable.ini"  
+			tofile="${workingdir}/App/Freeplane/freeplane.l4j.ini"/>
+
+		<copy file="${root}/portableApps/portable.ini"  
+			tofile="${workingdir}/App/Freeplane/freeplaneConsole.l4j.ini"/>
+
+		<dirname property="workingdir.path" file="${workingdir}/file" />
+		<exec osfamily="windows" executable="PortableApps.comInstaller.exe" failifexecutionfails="false" failonerror="true">
+			<arg line="${workingdir.path}" />
+		</exec>
+		<move todir="${dist}">
+			<fileset dir="${workingdir}/..">
+				<include name="*.paf.exe" />
+			</fileset>
+		</move>
+		<!--
+		<mkdir dir="${workingdir}/App/Freeplane/resources/images" />
+		<copy file="${root}/portableApps/Splash.png"  
+			tofile="${workingdir}/App/Freeplane/resources/images/Freeplane_splash.png"/>
+		<exec osfamily="windows" executable="PortableApps.comInstaller.exe" failifexecutionfails="false" failonerror="true">
+			<arg line="${workingdir.path}" />
+		</exec>
+		<move todir="${dist}">
+			<mapper type="glob" from="*.paf.exe" to="*-Test.paf.exe"/>
+			<fileset dir="${workingdir}/..">
+				<include name="*.paf.exe" />
+			</fileset>
+		</move>
+-->
+		<delete quiet="true" includeemptydirs="true">
+			<fileset dir="${workingdir}/.." />
+		</delete>
+
+	</target>
+
+	<!-- Mac OS X -->
+	<target name="macosxapp" depends="build">
+
+		<property name="macpluginsdir" value="plugins" />
+		<!-- !! TODO: Delete this unused property, and also delete its use in below in the jarbundler vmoptions field
+            Disabled "command-line" parameters because the "$1" syntax is probably incorrect here:
+    <property name="macparams" value="-Dorg.freeplane.param1=$1 -Dorg.freeplane.param2=$2 -Dorg.freeplane.param3=$3 -Dorg.freeplane.param4=$4" />
+    -->
+		<property name="macdefines" value="-Dorg.knopflerfish.framework.bundlestorage=memory -Dorg.freeplane.globalresourcedir=./resources -Dorg.knopflerfish.gosg.jars=reference:file:./core/" />
+
+		<!-- uncomment to start remote debug session for the app
+	<property name="debugparams" value="-Xdebug -Xrunjdwp:transport=dt_socket,address=localhost:8000"/>
+	-->
+
+		<condition property="debugparams" else="">
+			<isset property="debugparams"/>
+		</condition>
+
+		<!-- Delete any existing Freeplane.app (it's a directory) -->
+		<mkdir dir="${build4mac}"/>
+		<delete dir="${build4mac}/Freeplane.app"/>
+		<jarbundler dir="${build4mac}"
+                name="Freeplane"
+                mainclass="org.knopflerfish.framework.Main"
+                version="${ver}"
+                infostring="Freeplane ${ver}"
+                shortname="Freeplane"
+                bundleid="org.freeplane.core"
+                jvmversion="1.2+"
+                vmoptions="${debugparams} -Xmx512m ${macdefines}"
+                arguments="-xargs ./props.xargs -xargs ./init.xargs"
+                jar="${build}/framework.jar"
+                icon="${mac-jarbundler}/freeplane.icns"
+                stubfile="${mac-jarbundler}/FreeplaneJavaApplicationStub"
+                signature="FP"
+                >
+			<!-- For OSGI we want the entire build/ tree except WIndows-related stuff
+             Commented out to allow testing jar=framework.jar
+      <jarfileset dir="${macosgidir}">
+        <exclude name="**/*.bat" />
+        <exclude name="**/*.exe" />
+      </jarfileset>
+      -->
+
+			<!-- Commenting out the document icon until we get an appropriate image
+                    iconfile="${mac-jarbundler}/Banner.icns"
+      -->
+			<documenttype name="Mindmap"
+                    extensions="mm"
+                    ostypes="MM"
+                    iconfile="${mac-jarbundler}/freeplanedoc.icns"
+                    role="Editor"/>
+		</jarbundler>
+		<chmod file="${macappfullpath}/Contents/MacOS/FreeplaneJavaApplicationStub" perm="ugo+rx" />
+		<!-- Patch the Info.plist file created by JarBundler, to work with Knopflerfish OSGI
+           Courtesy of Volker who supplied the logic for this <replace> subtask
+           Allows Freeplane to start when double-clicking on Freeplane.app in Finder
+           Sets the WorkingDirectory to $JAVAROOT
+              Found this idea in a post on Knopflerfish's SF site:
+                http://sourceforge.net/tracker/index.php?func=detail&aid=1651148&group_id=82798&atid=567241
+                The downloadable example code has problems but inspired the solution
+    -->
+		<echo message="Adding WorkingDirectory to Info.plist" />
+		<property name="dist_macos_info" location="${macappfullpath}/Contents/Info.plist"/>
+		<xslt style="${mac-jarbundler}/mac_info_plist.xslt"
+			in ="${dist_macos_info}"
+			out="${dist_macos_info}2"/>
+		<move file="${dist_macos_info}2"
+			  tofile="${dist_macos_info}"/>
+		<!-- Done. -->
+
+		<!-- Copy the entire build/ tree except WIndows-related stuff
+          Also exclude the OSGI framework.jar which is copied by the jarbundler task
+          Doing this separately to allow specifying jar=framework.jar in the jarbundler task
+            jarbundler allows either jar= or jarfileset but not both
+            Copying after the jarbundler task which creates the Freeplane.app directory
+              JarBundler may erase the directory if it already exists
+                This is documented in their change log
+            !! TODO: Test restoring the jarfileset inside jarbundler
+                       Comment out this copy task, and delete it if jarfileset works
+    -->
+		<property name="macjavafullpath" value="${macappfullpath}/Contents/Resources/Java"/>
+		<copy todir="${macjavafullpath}">
+			<fileset dir="${build}">
+				<exclude name="**/*.bat" />
+				<exclude name="**/*.exe" />
+				<exclude name="**/framework.jar" />
+			</fileset >
+		</copy>
+
+		<!-- Restore the eXecutable permission flags on the Unix script -->
+		<echo message="Setting eXecutable permissions on ${macappfullpath}/Contents/Resources/Java/freeplane.sh" />
+		<chmod file="${macappfullpath}/Contents/Resources/Java/freeplane.sh" perm="ugo+rx" />
+	</target>
+
+	<target name="zip4mac" depends="git_version_info, macosxapp">
+		<zip destfile="${dist}/freeplane_macos_bin-${ver}.zip" compress="true">
+			<zipfileset dir="${build4mac}" prefix="freeplane-${ver}">
+				<exclude name="**/FreeplaneJavaApplicationStub" />
+			</zipfileset>
+			<zipfileset file="${macappfullpath}/Contents/MacOS/FreeplaneJavaApplicationStub" filemode="775"
+            	prefix="freeplane-${ver}/Freeplane.app/Contents/MacOS"/>
+		</zip>
+	</target>
+	<target name="dmg4mac"  depends="git_version_info, macosxapp" if="isMacOs" >
+		<exec executable="hdiutil">
+			<arg line="create -srcfolder ${macappfullpath} ${dist}/freeplane_app-${ver}.dmg"/>
+		</exec>
+	</target>
+
+	<target name="renameDistFiles" if="minor">
+		<move todir="${dist}" includeemptydirs="false">
+			<fileset dir="${dist}">
+				<include name="*${freeplane_version}.*"/>
+			</fileset>
+			<mapper type="regexp" from="^(.*[-_])${freeplane_version}(\..*)$" to="\1${ver}\2"/>
+		</move>
+	</target>
+
+
+	<target name="dist" depends="copyDistFiles, renameDistFiles">
+		<checksum>
+			<fileset dir="${dist}">
+				<include name="*.dmg"/>
+				<include name="*.zip"/>
+				<include name="*.gz"/>
+				<include name="*.exe"/>
+			</fileset>
+		</checksum>
+	</target>
+
+	<target name="copyDistFiles" depends="git_version_info, binzip, srczip, installer, portableinstaller, zip4mac, dmg4mac, javadoc">
+		<copy file="${workspace}/freeplane/doc/history_en.txt"
+			todir="${dist}" />
+		<copy file="${build}/gitinfo.txt"
+			tofile="${dist}/gitinfo-${ver}.txt"
+			failonerror="false"/>
+		<copy file="${workspace}/freeplane_plugin_script/dist/script-api.zip"
+			tofile="${dist}/script-api-${ver}.zip"
+			failonerror="false"/>
+	</target>
+
+	<target name="cleandist" depends="clean,dist">
+	</target>
+
+	<target name="check-translation">
+		<ant antfile="ant/build.xml" target="check-translation" dir="${workspace}/freeplane" />
+	</target>
+	<target name="format-translation">
+		<ant antfile="ant/build.xml" target="format-translation" dir="${workspace}/freeplane" />
+	</target>
+	<target name="format-translation-force">
+		<ant antfile="ant/build.xml" target="format-translation-force" dir="${workspace}/freeplane" />
+	</target>
+	<target name="create-plugin">
+		<create-plugin />
+	</target>
+	<target name="test">
+		<ant antfile="build.xml" target="test" dir="${workspace}/freeplane_ant" inheritall="false" />
+		<ant antfile="ant/build.xml" target="test" dir="${workspace}/freeplane_plugin_script" inheritall="false" />
+		<ant antfile="ant/build.xml" target="test" dir="${workspace}/freeplane_uitest" inheritall="false" />
+	</target>
+
+	<target name="clean">
+		<delete quiet="true" includeemptydirs="true">
+			<fileset dir="${build}" />
+			<fileset dir="${launcher_build}" />
+			<fileset dir="${build4mac}" />
+			<fileset dir="${dist}" />
+		</delete>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_help"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_svg"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_latex"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_script"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_formula"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_bugreport"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+			  dir="${workspace}/freeplane_plugin_openmaps"/>
+		<ant antfile="ant/build.xml" target="clean" inheritall="false"
+              dir="${workspace}/freeplane_plugin_workspace"/>
+	</target>
+
+</project>
+
+<project name="freeplane_mac" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property name="build" value="build" />
+	<property name="dist" value="dist" />
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}"/>
+
+	<target name="build">
+		<mkdir dir="${build}"/>
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="${workspace}/freeplane/lib/freeplanemac.jar" update="false" >
+			<fileset dir="${build}"/>
+		</jar>
+	</target>
+
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_script" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name = "root" value = "."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${forms.jar}:${SimplyHTML.jar}" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.bugreport" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.bugreport.jar"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_formula" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="root" value="."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property name="xslt.base" value="${workspace}/freeplane/resources/xslt" />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.formula" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.formula.jar"/>
+	<property name="src.pluginclass" value="${src}/org/freeplane/plugin/formula/"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}:${freeplanescript.jar}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+			<fileset dir="${src}">
+				<include name="**/*.xml"/>
+				<include name="**/*.properties"/>
+				<exclude name="**/preferences.mm" />
+			</fileset>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_help" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="resources" value="resources" />
+	<property name="root" value="."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${forms.jar}:${SimplyHTML.jar}" />
+	<property name="build" value="${root}/build" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${build}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.help" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.help.jar"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}:${jhall.jar}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+			<fileset dir="${resources}"/>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_latex" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="root" value="."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />
+	<property name="xslt.base" value="${workspace}/freeplane/resources/xslt" />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${forms.jar}:${SimplyHTML.jar}:${jlatexmath.jar}" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.latex" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.latex.jar"/>
+	<property name="src.pluginclass" value="${src}/org/freeplane/plugin/latex/"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}"
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+			<fileset dir="${src}">
+              <include name="**/*.xml"/>
+              <include name="**/*.properties"/>
+              <exclude name="**/preferences.mm" />
+			</fileset>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+
+</project>
+
+<project name="freeplane_openmaps" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="root" value="."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${forms.jar}:${SimplyHTML.jar}:${JMapViewer.jar}" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.openmaps" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.openmaps.jar"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_script" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="root" value="." />
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />
+	<property name="xslt.base" value="${workspace}/freeplane/resources/xslt" />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${commons-io.jar}:${forms.jar}:${SimplyHTML.jar}:${groovy.jar}" />
+	<property name="dist.osgi.dir" value="dist/org.freeplane.plugin.script" />
+	<property name="freeplaneplugin.jar" value="dist/org.freeplane.plugin.script.jar" />
+	<property name="src.pluginclass" value="${src}/org/freeplane/plugin/script/"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}:${jsyntaxpane.jar}" />
+	<property name="apidocdir" value="dist/doc/api" />
+
+	<target name="build">
+		<mkdir dir="build" />
+		<javac srcdir="src" destdir="build" classpath="${classpath}" debug="${debug}" source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+			<exclude name="**/*Test.*" />
+		</javac>
+		<javac srcdir="src-jsyntaxpane" destdir="build" classpath="${classpath}" debug="${debug}" source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="build" />
+			<fileset dir="resources-jsyntaxpane" />
+			<fileset dir="src">
+				<include name="**/*.xml" />
+				<include name="**/*.properties" />
+				<exclude name="**/preferences.mm" />
+			</fileset>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true" />
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**" />
+			</fileset>
+		</copy>
+		<copy todir="dist/scripts">
+			<fileset dir="${root}/scripts">
+				<include name="**/*" />
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}" />
+		<delete file="lib/plugin.jar" quiet="true" />
+	</target>
+
+	<target name="api">
+		<mkdir dir="${apidocdir}" />
+		<javadoc destdir="${apidocdir}" overview="src/overview.html" access="public" classpath="${classpath}:build">
+			<sourcefiles>
+				<fileset dir="${root}">
+					<include name="**/Proxy.java" />
+					<include name="**/Convertible.java" />
+					<include name="**/FreeplaneScriptBaseClass.java" />
+					<include name="**/ScriptUtils.java" />
+				</fileset>
+				<fileset dir="${workspace}/freeplane">
+					<include name="**/UITools.java" />
+					<include name="**/TextUtils.java" />
+					<include name="**/FreeplaneVersion.java" />
+					<include name="**/HtmlUtils.java" />
+					<include name="**/LogUtils.java" />
+					<include name="**/MenuUtils.java" />
+				</fileset>
+			</sourcefiles>
+		</javadoc>
+		<zip destfile="dist/script-api.zip" basedir="dist/doc/api" />
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="test">
+		<junit>
+			<classpath path="${classpath}:${workspace}/freeplane_ant/lib/junit.jar:${workspace}/freeplane_uitest/bin" />
+			<formatter type="brief" usefile="false" />
+			<batchtest>
+				<fileset dir="${workspace}/freeplane_uitest/bin" includes="**/*Test.class" excludes="**/FreeplaneFirstTest.class" />
+			</batchtest>
+		</junit>
+		<fail message="test failed" if="test.failure" />
+	</target>
+
+	<target name="clean">
+		<delete dir="build" quiet="true" />
+		<delete dir="build-nodehighlighter" quiet="true" />
+		<delete dir="dist" quiet="true" />
+		<delete>
+			<fileset defaultexcludes="no" dir="src" includes="**/*~" />
+		</delete>
+		<delete file="lib/jsyntaxpane/nodehighlighter.jar" quiet="true"/>
+	</target>
+
+</project>
+
+<project name="freeplane_plugin_script_test" default="test" basedir="..">
+	<property name="workspace" location=".." />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<target name="test">
+		<junit>
+			<classpath path="${classpath}:${workspace}/freeplane_ant/lib/junit.jar:${workspace}/freeplane_uitest/bin" />
+			<formatter type="brief" usefile="false" />
+			<batchtest>
+				<fileset dir="bin" includes="**/*Test.class" />
+			</batchtest>
+		</junit>
+		<fail message="test failed" if="test.failure" />
+	</target>
+</project>
+<project name="freeplane_svg" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name = "root" value = "."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons-lang.jar}:${forms.jar}:${SimplyHTML.jar}:${batik.jars}:${js.jar}:${pdf.jars}:${xml.jars}" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.svg" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.svg.jar"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_uitest" default="buildext" basedir="..">
+	<target name="buildext" >
+		<java fork="yes" dir="lib"
+			classname="org.uispec4j.extension.ExtensionGenerator"
+			classpath="ant/asm-3.1.jar:ant/asm-util-3.1.jar:lib/uispec4j-2.4-jdk16.jar"
+		>
+			<arg value="uispecjext.jar"/>
+			<arg value="Node:org.freeplane.uispec4j.framework.Node"/>
+		</java>
+	</target>
+</project>
+<project name="freeplane_workspace" default="dist" basedir="..">
+	<property name="workspace" location=".." />
+	<property name="src" value="src" />
+	<property name="resources" value="resources" />	
+	<property name="root" value="."/>
+	<property name="osgimanifest" value="${root}/META-INF/MANIFEST.MF" />	
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="external.jars" value="${commons_io.jar}:${insubstantial.jars}" />
+	<property name="build" value="${root}/build" />
+	<property name="build" value="${root}/build" />
+	<property name="dist" value="${root}/dist" />
+	<property name="dist.osgi.dir" value="${dist}/org.freeplane.plugin.workspace" />
+	<property name="freeplaneplugin.jar" value="${dist}/org.freeplane.plugin.workspace.jar"/>
+	<property name="debug" value="on" />
+	<property name="java_source_version" value="1.5" />
+	<property name="java_target_version" value="1.5" />
+	<property name="build.compiler" value="modern" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}:${jhall.jar}:${plugin.jar}:${jgoodies.jar}"/>
+
+	<target name="build">
+		<mkdir dir="${build}" />
+		<javac srcdir="${src}" destdir="${build}" classpath="${classpath}" debug="${debug}" 
+			source="${java_source_version}" target="${java_target_version}" encoding="utf8">
+		</javac>
+	</target>
+
+
+	<target name="dist" depends="build">
+		<jar jarfile="lib/plugin.jar">
+			<fileset dir="${build}"/>
+			<fileset dir="${resources}"/>
+			<fileset dir="${src}">
+                <include name="**/*.xml"/>
+                <include name="**/*.properties"/>
+            </fileset>
+		</jar>
+		<delete dir="${dist.osgi.dir}" quiet="true"/>
+		<mkdir dir="${dist.osgi.dir}" />
+		<copy todir="${dist.osgi.dir}">
+			<fileset dir="${root}">
+				<include name="lib/**"/>
+			</fileset>
+		</copy>
+		<mkdir dir="${dist.osgi.dir}/META-INF" />
+		<copy tofile="${dist.osgi.dir}/META-INF/MANIFEST.MF" file="${osgimanifest}"/>
+		<delete file="lib/plugin.jar" quiet="true"/>
+	</target>
+
+	<target name="osgi_dist_as_jar" depends="dist">
+		<jar jarfile="${freeplaneplugin.jar}">
+			<fileset dir="${dist.osgi.dir}">
+				<include name="**" />
+			</fileset>
+		</jar>
+	</target>
+	
+	<target name="clean">
+		<delete dir="${build}"  quiet="true"/>
+		<delete dir="${dist}"  quiet="true"/>
+		<delete>
+			<fileset defaultexcludes="no" dir="${src}" includes="**/*~"/>
+		</delete>
+	</target>
+	
+</project>
+
+<project name="freeplane_uitest" default="test" basedir="..">
+	<property name="workspace" location=".." />
+	<property file="${workspace}/freeplane_framework/ant/ant.properties" />
+	<property file="${workspace}/freeplane/ant/ant.properties" />
+	<property file="ant/ant.properties" />
+	<property name="classpath" value="${framework.jar}:${freeplane.jars}:${external.jars}:${jsyntaxpane.jar}"/>
+	<target name="test">
+		<junit>
+			<classpath path="${classpath}:${workspace}/freeplane_ant/lib/junit.jar:${workspace}/freeplane_uitest/bin" />
+			<formatter type="brief" usefile="false" />
+			<batchtest>
+				<fileset dir="bin"
+					includes="**/*Test.class"
+					excludes="**/FreeplaneFirstTest.class" />
+			</batchtest>
+		</junit>
+		<fail message="test failed" if="test.failure" />
+	</target>
+</project>

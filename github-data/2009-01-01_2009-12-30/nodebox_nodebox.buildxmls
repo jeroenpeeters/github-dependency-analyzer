@@ -1,0 +1,344 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox" default="run" basedir="." xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+    <description>Builds and tests NodeBox.</description>
+
+    <path id="maven-ant-tasks.classpath" path="lib/maven-ant-tasks-2.1.3.jar"/>
+    <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+             uri="antlib:org.apache.maven.artifact.ant"
+             classpathref="maven-ant-tasks.classpath"/>
+
+    <target name="properties">
+        <property file="build.properties"/>
+        <property file="version.properties"/>
+        <fail unless="nodebox.version" message="File version.properties should specify nodebox.version."/>
+        <property name="src" value="src/main/java"/>
+        <property name="res" value="res"/>
+        <property name="resources" value="src/main/resources"/>
+        <property name="test" value="src/test/java"/>
+        <property name="lib" value="lib"/>
+        <property name="libraries" value="libraries"/>
+        <property name="examples" value="examples"/>
+        <property name="bin" value="bin"/>
+        <property name="build" value="build"/>
+        <property name="build.prod" location="${build}/prod"/>
+        <property name="build.test" location="${build}/test"/>
+        <property name="build.doc" location="${build}/doc"/>
+        <property name="dist" value="dist"/>
+        <property name="dist.mac" value="${dist}/mac"/>
+        <property name="dist.windows" value="${dist}/windows"/>
+        <property name="dist.windows.nodebox" value="${dist.windows}/NodeBox"/>
+        <property name="dist.windows.nodebox.jre" value="${dist.windows.nodebox}/jre"/>
+        <property name="dist.windows.nodebox.examples" value="${dist.windows.nodebox}/examples"/>
+        <property name="apple.appstub"
+                  location="/System/Library/Frameworks/JavaVM.framework/Resources/MacOS/JavaApplicationStub"/>
+        <property name="mac.application" location="${dist.mac}/${ant.project.name}.app/"/>
+        <property name="mac.application.contents" location="${mac.application}/Contents"/>
+        <property name="mac.application.macos" location="${mac.application.contents}/MacOS"/>
+        <property name="mac.application.macos.stub" location="${mac.application.macos}/${ant.project.name}"/>
+        <property name="mac.application.resources" location="${mac.application.contents}/Resources"/>
+        <property name="mac.application.resources.java" location="${mac.application.resources}/Java"/>
+        <property name="mac.application.examples" location="${mac.application.resources.java}/examples"/>
+        <property name="mac.application.plugins" location="${mac.application.resources.java}/plugins"/>
+        <property name="mac.application.lib" location="${mac.application.resources.java}/lib"/>
+        <property name="mac.application.libraries" location="${mac.application.resources.java}/libraries"/>
+        <property name="mac.application.res" location="${mac.application.resources.java}/res"/>
+        <property name="mac.application.bin" location="${mac.application.resources.java}/bin"/>
+        <property name="dist.windows.nodebox.lib" location="${dist.windows.nodebox}/lib"/>
+        <property name="dist.windows.nodebox.res" location="${dist.windows.nodebox}/res"/>
+        <property name="dist.windows.nodebox.libraries" location="${dist.windows.nodebox}/libraries"/>
+        <property name="dist.windows.nodebox.bin" location="${dist.windows.nodebox}/bin"/>
+        <property name="reports" value="reports"/>
+
+        <!-- Determine the platform family: windows, mac or linux. -->
+        <condition property="platform.windows" value="true">
+            <os family="windows"/>
+        </condition>
+        <condition property="platform.mac" value="true">
+            <equals arg1="${os.name}" arg2="Mac OS X"/>
+        </condition>
+        <condition property="platform.linux" value="true">
+            <equals arg1="${os.name}" arg2="Linux"/>
+        </condition>
+        <condition property="platform" value="mac">
+            <isset property="platform.mac"/>
+        </condition>
+        <condition property="platform" value="windows">
+            <isset property="platform.windows"/>
+        </condition>
+        <condition property="platform" value="linux">
+            <isset property="platform.linux"/>
+        </condition>
+
+        <property name="platform.dir" location="platform/${platform}"/>
+        <property name="platform.src" location="${platform.dir}/src"/>
+        <property name="platform.lib" location="${platform.dir}/lib"/>
+        <property name="platform.res" location="${platform.dir}/res"/>
+        <property name="platform.bin" location="${platform.dir}/bin"/>
+
+        <artifact:pom id="maven.project" file="pom.xml"/>
+        <artifact:dependencies filesetId="maven.fileset" pathId="maven.runtime.classpath" pomRefId="maven.project"
+                               usescope="runtime"/>
+        <artifact:dependencies pathId="maven.test.classpath" pomRefId="maven.project" usescope="test"/>
+
+        <path id="compile.classpath">
+            <path refid="maven.runtime.classpath"/>
+        </path>
+        <path id="runtime.classpath">
+            <path refid="compile.classpath"/>
+            <pathelement location="${build.prod}"/>
+        </path>
+        <path id="test.classpath">
+            <path refid="runtime.classpath"/>
+            <path refid="maven.test.classpath"/>
+            <pathelement location="${build.test}"/>
+        </path>
+    </target>
+
+    <target name="init" depends="properties">
+        <mkdir dir="${build.prod}"/>
+        <mkdir dir="${build.test}"/>
+        <mkdir dir="${build.doc}"/>
+        <mkdir dir="${dist}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac destdir="${build.prod}" source="1.6" target="1.6" includeantruntime="false" deprecation="yes">
+            <src path="${src}"/>
+            <classpath refid="compile.classpath"/>
+            <compilerarg value="-Xlint:unchecked"/>
+        </javac>
+        <copy todir="${build.prod}">
+            <fileset dir="${resources}"/>
+        </copy>
+    </target>
+
+    <target name="compile-tests" depends="compile">
+        <javac srcdir="${test}" destdir="${build.test}" source="1.6" target="1.6" includeantruntime="false"
+               deprecation="yes">
+            <classpath refid="test.classpath"/>
+            <compilerarg value="-Xlint:unchecked"/>
+        </javac>
+    </target>
+
+    <target name="test" depends="compile-tests">
+        <mkdir dir="${reports}"/>
+        <junit haltonfailure="false">
+            <classpath refid="test.classpath"/>
+            <formatter type="xml"/>
+            <batchtest todir="${reports}">
+                <fileset dir="${build.test}" includes="**/*Test.class"/>
+            </batchtest>
+        </junit>
+    </target>
+
+    <target name="generate-test-reports" depends="test">
+        <mkdir dir="${reports}"/>
+        <junitreport todir="${reports}">
+            <fileset dir="${reports}">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report format="frames" todir="${reports}"/>
+        </junitreport>
+    </target>
+
+    <target name="jar" depends="compile">
+        <mkdir dir="${dist}/lib"/>
+        <jar jarfile="${dist}/lib/nodebox.jar" basedir="${build.prod}"/>
+    </target>
+
+    <target name="nodeboxlibs" depends="init">
+        <zip zipfile="${dist}/lib/nodeboxlibs.zip" basedir="src/main/python"/>
+    </target>
+
+    <target name="archives" depends="jar,nodeboxlibs"/>
+
+    <target name="dist-win" depends="archives">
+        <!-- Check JRE -->
+        <available file="${windows.jre}/bin/javaw.exe" property="windows.javaw.exists"/>
+        <fail unless="windows.javaw.exists"
+              message="JRE not found. Please set the location of Java JRE in build.properties."/>
+        <!-- Check NSIS -->
+        <available file="${windows.nsis}/makensis.exe" property="windows.nsis.exists"/>
+        <fail unless="windows.nsis.exists"
+              message="NSIS not found. Please install NSIS and set the location in build.properties."/>
+
+        <mkdir dir="${dist.windows}"/>
+        <mkdir dir="${dist.windows.nodebox}"/>
+        <mkdir dir="${dist.windows.nodebox.examples}"/>
+        <mkdir dir="${dist.windows.nodebox.jre}"/>
+        <mkdir dir="${dist.windows.nodebox.lib}"/>
+        <mkdir dir="${dist.windows.nodebox.res}"/>
+        <mkdir dir="${dist.windows.nodebox.libraries}"/>
+        <mkdir dir="${dist.windows.nodebox.bin}"/>
+        <!-- Copy version number -->
+        <copy file="version.properties" todir="${dist.windows.nodebox}"/>
+        <!-- Copy library and program archives-->
+        <copy todir="${dist.windows.nodebox.lib}">
+            <fileset refid="maven.fileset"/>
+            <mapper type="flatten"/>
+            <file file="${lib}/python.zip"/>
+            <fileset dir="${dist}/lib">
+                <include name="*.jar"/>
+                <include name="*.zip"/>
+            </fileset>
+        </copy>
+        <copy todir="${dist.windows.nodebox.res}">
+            <fileset dir="${res}"/>
+        </copy>
+        <copy todir="${dist.windows.nodebox.libraries}">
+            <fileset dir="${libraries}"/>
+        </copy>
+        <copy todir="${dist.windows.nodebox.examples}">
+            <fileset dir="${examples}"/>
+        </copy>
+        <copy todir="${dist.windows.nodebox.bin}">
+            <fileset dir="${platform.bin}"/>
+        </copy>
+        <copy todir="${dist.windows.nodebox.jre}">
+            <fileset dir="${windows.jre}"/>
+        </copy>
+        <pathconvert property="dist.windows.classpath">
+            <path refid="runtime.classpath"/>
+            <path path="${dist}/lib/nodebox.jar"/>
+            <chainedmapper>
+                <flattenmapper/>
+                <globmapper from="*.jar" to="lib\\*.jar"/>
+            </chainedmapper>
+        </pathconvert>
+        <replace file="makelauncher.nsi" token="@@CLASSPATH@@" value="${dist.windows.classpath}"/>
+        <taskdef name="nsis" classname="net.sf.nsisant.Task">
+            <classpath location="${lib}/nsisant-1.2.jar"/>
+        </taskdef>
+        <nsis script="makelauncher.nsi" path="${windows.nsis}">
+            <define name="CLASSPATH" value="${dist.windows.classpath}"/>
+        </nsis>
+        <nsis script="makeinstaller.nsi" path="${windows.nsis}">
+            <define name="APPVERSION" value="${nodebox.version}"/>
+        </nsis>
+    </target>
+
+    <target name="dist-mac" depends="archives" description="Make a double-clickable Mac OS X application">
+        <mkdir dir="${dist.mac}"/>
+        <mkdir dir="${mac.application.resources.java}"/>
+        <mkdir dir="${mac.application.examples}"/>
+        <mkdir dir="${mac.application.macos}"/>
+        <mkdir dir="${mac.application.lib}"/>
+        <mkdir dir="${mac.application.plugins}"/>
+        <mkdir dir="${mac.application.libraries}"/>
+        <mkdir dir="${mac.application.res}"/>
+        <!-- Copy library and program archives-->
+        <copy todir="${mac.application.lib}">
+            <fileset refid="maven.fileset"/>
+            <mapper type="flatten"/>
+            <file file="${lib}/python.zip"/>
+            <fileset dir="${dist}/lib">
+                <include name="*.jar"/>
+                <include name="*.zip"/>
+            </fileset>
+        </copy>
+        <!-- Copy resources-->
+        <copy todir="${mac.application.res}">
+            <fileset dir="${res}"/>
+        </copy>
+        <exec executable="cp">
+            <arg line="-p -R ${platform.bin} ${mac.application.resources.java}"/>
+        </exec>
+
+        <!-- Copy examples -->
+        <copy todir="${mac.application.examples}">
+            <fileset dir="${examples}"/>
+        </copy>
+
+        <!-- Copy bundled libraries -->
+        <copy todir="${mac.application.libraries}">
+            <fileset dir="${libraries}"/>
+        </copy>
+
+        <!-- Copy application stub -->
+        <copy file="${apple.appstub}" toFile="${mac.application.macos}/${ant.project.name}"/>
+        <!-- fix stub permissions -->
+        <chmod file="${mac.application.macos}/${ant.project.name}" perm="755"/>
+        <!-- copy additional Mac contents -->
+        <copy todir="${mac.application.contents}">
+            <fileset dir="${platform.res}"/>
+        </copy>
+        <!-- Replace version number -->
+        <replace file="${mac.application.contents}/Info.plist" token="@@VERSION@@" value="${nodebox.version}"/>
+        <!-- Replace class path -->
+        <pathconvert property="mac.application.classpath">
+            <path refid="runtime.classpath"/>
+            <path path="${dist}/lib/nodebox.jar"/>
+            <chainedmapper>
+                <flattenmapper/>
+                <globmapper from="*.jar" to="$APP_PACKAGE/Contents/Resources/Java/lib/*.jar"/>
+            </chainedmapper>
+        </pathconvert>
+        <replace file="${mac.application.contents}/Info.plist" token="@@CLASSPATH@@"
+                 value="${mac.application.classpath}"/>
+        <!-- Copy version number -->
+        <copy file="version.properties" todir="${mac.application.resources.java}"/>
+    </target>
+
+    <target name="dist-mac-signed" depends="dist-mac" description="Make a signed OS X application">
+        <!-- We get the current user.name (the full name) from Git -->
+        <exec executable="git" outputproperty="apple.developer.name">
+            <arg line="config --get user.name"/>
+        </exec>
+        <exec executable="codesign">
+            <arg line="-s 'Mac Developer: ${apple.developer.name}' -f -vvv ${mac.application}"/>
+        </exec>
+    </target>
+
+    <target name="zip-mac" depends="dist-mac-signed" description="Make ZIP file of the application.">
+        <zip destfile="${dist}/NodeBox-${nodebox.version}.zip" level="9">
+            <zipfileset filemode="755" dir="${dist.mac}" includes="${ant.project.name}.app/**/*"/>
+        </zip>
+    </target>
+
+    <!-- Install target, for building the actual product -->
+    <target name="install" depends="dist-mac" description="Create application">
+    </target>
+
+    <target name="bindir-unix" depends="properties" unless="platform.windows">
+        <exec executable="cp">
+            <arg line="-p -R ${platform.bin} ."/>
+        </exec>
+    </target>
+    <target name="bindir-win" depends="properties" if="platform.windows">
+        <mkdir dir="${bin}"/>
+        <copy todir="${bin}">
+            <fileset dir="${platform.bin}"/>
+        </copy>
+    </target>
+    <target name="bindir" depends="bindir-unix,bindir-win"/>
+    <target name="run" depends="compile,bindir">
+        <java classname="nodebox.client.Application" fork="true">
+            <classpath refid="runtime.classpath"/>
+        </java>
+    </target>
+
+    <target name="run-mac" depends="install" description="Run the double-clickable application">
+        <!-- Use the exec task to open the application -->
+        <exec dir="${dist.mac}" executable="/usr/bin/open" os="Mac OS X">
+            <arg line="${ant.project.name}.app"/>
+        </exec>
+    </target>
+
+    <target name="javadoc" depends="properties" description="Generates API documentation">
+        <javadoc destdir="${build.doc}">
+            <packageset dir="${src}">
+                <include name="nodebox/node/**"/>
+                <include name="nodebox/graphics/**"/>
+                <include name="nodebox/util/**"/>
+                <include name="nodebox/handle/**"/>
+            </packageset>
+            <doctitle><![CDATA[<h1>NodeBox</h1>]]></doctitle>
+        </javadoc>
+    </target>
+
+    <target name="clean" depends="properties">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+        <delete dir="${reports}"/>
+    </target>
+</project>

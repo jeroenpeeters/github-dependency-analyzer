@@ -1,0 +1,132 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+
+apply plugin: 'java'
+apply plugin: 'idea'
+
+defaultTasks 'clean', 'build', 'maketar', 'makeapp'
+
+version = new Date().format('yyyyMMdd')
+
+project.ext.mainClassName = 'com.tomczarniecki.s3.Main'
+project.ext.applicationName = "${project.name}-${version}"
+
+repositories {
+  mavenCentral()
+}
+
+configurations.all {
+  exclude(group: 'commons-logging')
+}
+
+configurations.testCompile {
+  exclude(module: 'hamcrest-core')
+}
+
+dependencies {
+  compile 'joda-time:joda-time:2.1'
+  compile 'org.slf4j:slf4j-simple:1.6.6'
+  compile 'org.slf4j:jcl-over-slf4j:1.6.6'
+
+  compile 'commons-io:commons-io:2.4'
+  compile 'commons-cli:commons-cli:1.2'
+  compile 'commons-lang:commons-lang:2.6'
+
+  compile 'com.jgoodies:forms:1.2.1'
+  compile 'com.jgoodies:looks:2.2.2'
+
+  compile 'com.amazonaws:aws-java-sdk:1.3.26'
+
+  testCompile 'junit:junit:4.10'
+  testCompile 'org.mockito:mockito-core:1.9.0'
+  testCompile 'org.hamcrest:hamcrest-all:1.1'
+  testCompile 'com.googlecode.windowlicker:windowlicker-swing:r268'
+}
+
+task(run, type: JavaExec, dependsOn: 'classes') {
+  classpath = sourceSets.main.runtimeClasspath
+  main = project.ext.mainClassName
+}
+
+jar {
+  archiveName = 'main.jar'
+  manifest {
+    attributes(
+        'Main-Class': project.ext.mainClassName,
+        'Implementation-Title': project.name,
+        'Implementation-Version': version
+    )
+  }
+}
+
+task(maketar, dependsOn: 'jar') << {
+  def self = project
+  ant {
+    taskdef(name: 'onejar', classname: 'com.simontuffs.onejar.ant.OneJarTask') {
+      classpath { fileset(dir: 'etc/one-jar') }
+    }
+    onejar(destfile: "${jar.destinationDir}/${self.name}.jar") {
+      manifest {
+        attribute(name: 'Implementation-Title', value: self.name)
+        attribute(name: 'Implementation-Version', value: self.version)
+      }
+      main(jar: jar.archivePath)
+      lib {
+        configurations.compile.addToAntBuilder(ant, 'fileset', FileCollection.AntType.FileSet)
+      }
+      fileset(dir: self.projectDir) {
+        include(name: 'LICENSE*')
+      }
+    }
+    mkdir(dir: self.distsDir)
+    tar(destfile: "${self.distsDir}/${self.ext.applicationName}.tar.gz", compression: 'gzip') {
+      tarfileset(prefix: self.ext.applicationName, dir: jar.destinationDir) {
+        include(name: "${self.name}.jar")
+      }
+      tarfileset(prefix: self.ext.applicationName, dir: "${self.projectDir}/etc", filemode: '755') {
+        include(name: '*.sh')
+      }
+      tarfileset(prefix: self.ext.applicationName, dir: self.projectDir) {
+        include(name: 'LICENSE*')
+        include(name: 'README*')
+      }
+    }
+  }
+}
+
+task(makeapp, dependsOn: 'jar') << {
+  def appDir = "${buildDir}/${project.name}"
+  def self = project
+  ant {
+    taskdef(name: 'jarbundler', classname: 'net.sourceforge.jarbundler.JarBundler') {
+      classpath { fileset(dir: 'etc/jarbundler') }
+    }
+    mkdir(dir: appDir)
+    jarbundler(dir: appDir, name: self.name, mainclass: self.ext.mainClassName, icon: 'etc/zim.icns', jvmversion: '1.5+', version: self.version) {
+      configurations.compile.addToAntBuilder(ant, 'jarfileset', FileCollection.AntType.FileSet)
+      jarfileset(dir: jar.destinationDir, includes: jar.archiveName)
+    }
+    copy(todir: appDir) {
+      fileset(dir: self.projectDir) {
+        include(name: 'LICENSE*')
+        include(name: 'README*')
+      }
+    }
+    mkdir(dir: self.distsDir)
+    exec(executable: 'hdiutil', failonerror: 'yes') {
+      arg(value: 'create')
+      arg(value: '-srcfolder')
+      arg(value: appDir)
+      arg(value: "${self.distsDir}/${self.ext.applicationName}.dmg")
+    }
+  }
+}
+
+makeapp.onlyIf {
+  Os.isFamily(Os.FAMILY_MAC)
+}
+
+/*
+task(wrapper, type: Wrapper) {
+  gradleVersion = '1.2'
+}
+*/

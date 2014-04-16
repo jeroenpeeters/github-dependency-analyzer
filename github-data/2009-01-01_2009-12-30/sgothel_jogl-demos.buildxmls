@@ -1,0 +1,599 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+   - Ant build for the JOGL demos. This build has been tested with ANT 1.5.3.
+   -
+   - In order for this build to succeed the resulting jar files from this build
+   - (jogl-demos.jar, jogl-demos-data.jar, .., jogl-demos-util.jar) must not be on
+   - the CLASSPATH.
+   -
+   - This build requires that the jogl project has been checked out into a sibling
+   - directory to the jogl-demos top-level directory and that the jogl.jar has been
+   - built into its build directory.
+   -->
+<project name="JOGL.demos" default="all">
+
+    <!-- This is the version of jogl-demos you are building -->
+
+    <property name="project.root"  value=".." />
+
+    <condition property="rootrel.build" value="build">
+      <not>
+          <isset property="rootrel.build"/>
+      </not>
+    </condition>
+    <property name="build" location="${project.root}/${rootrel.build}" />
+
+    <property name="gluegen.root"  value="${project.root}/../gluegen" />
+    <property name="gluegen.build" value="${gluegen.root}/${rootrel.build}" />
+    <!-- Pull in GlueGen cpptasks build file -->
+    <import file="${gluegen.root}/make/gluegen-cpptasks.xml" />
+    <import file="${gluegen.root}/make/jogamp-archivetasks.xml" />
+    <import file="${gluegen.root}/make/jogamp-env.xml" />
+
+    <property name="jogl.root"     value="${project.root}/../jogl" />
+    <property name="jogl.build"    value="${jogl.root}/${rootrel.build}" />
+
+    <property name="joal.root"     value="${project.root}/../joal" />
+    <property name="joal.build"    value="${joal.root}/${rootrel.build}" />
+
+    <property name="jogl-demos.build.number" value="manual-build"/>
+    <property name="jogl-demos.build.branch" value="master"/>
+    <property name="jogl-demos.build.commit" value="manual"/>
+
+    <!-- 
+       - Make sure that jogl-demos.jar is not on the CLASSPATH; this can
+       - cause builds to fail since if this Java process has the jar file
+       - open we can not overwrite it.
+      -->
+    <target name="test.for.jogl-demos.jar">
+        <available property="jogl-demos.jar.on.class.path" classname="demos.gears.Gears" />
+    </target>
+    <target name="java.class.path.validate" depends="test.for.jogl-demos.jar" if="jogl-demos.jar.on.class.path">
+        <fail>
+        
+    ******************************************************************
+    ** Your CLASSPATH environment variable appears to be set (some  **
+    ** JOGL demos' classes are currently visible to the build.)     **
+    ** This can cause the build to fail. Please unset your          **
+    ** CLASSPATH variable and restart the build.                    **
+    ******************************************************************
+        </fail>
+    </target>
+
+    <target name="setup.gles">
+        <condition property="isGLES">
+          <or>
+            <isset property="jogl.es" />
+          </or>
+        </condition>
+    </target>
+
+    <target name="setup.cg.excludes" unless="jogl.cg">
+        <property name="jogl.cg.excludes" value="demos/cg/**,demos/hdr/CgPipeline.java,demos/hdr/shaders/cg/**" />
+    </target>
+
+    <target name="skip.cg.excludes" if="jogl.cg">
+        <property name="jogl.cg.excludes" value="" />
+    </target>
+
+    <target name="init.swt">
+        <condition property="jogl.swt.excludes"
+                   value="demos/swt/**">
+            <or>
+                <equals arg1="${user.swt.jar}" arg2="" />
+                <not>
+                    <isset property="user.swt.jar" />
+                </not>
+            </or>
+        </condition> 
+        <property name="swt.jar"            value="${user.swt.jar}"/>
+    </target>
+
+    <target name="init" depends="jogamp.env.init,gluegen.cpptasks.detect.os,java.class.path.validate,setup.gles,setup.cg.excludes,skip.cg.excludes,init.swt">
+        <property name="jogl-demos.build.id" value="${version.timestamp}"/>
+        <property name="jogl-demos.version"  value="${jogamp.version.base}-${version.timestamp}" />
+
+        <property name="gluegen-rt.jar"      value="${gluegen.build}/gluegen-rt.jar" />
+        <property name="jogl-all.jar"        value="${jogl.build}/jar/jogl-all.jar" />
+        <property name="jogl-cg.jar"         value="${jogl.build}/jar/atomic/jogl-cg.jar" />
+        <property name="joal.jar"            value="${joal.build}/jar/joal.jar" />
+        <property name="simple-xml.jar"      value="${project.root}/lib/simple-xml-1.1.1.jar" />
+        <property name="classes"             value="${build}/classes" />
+        <property name="src"                 value="${project.root}/src" />
+        <property name="javadoc"             value="${project.root}/javadoc" />
+        <!-- property name="javadoc.link" value="http://java.sun.com/j2se/1.4.2/docs/api/" /-->
+        <!--property name="javadoc.link" value="http://download.oracle.com/javase/1.5.0/docs/api/" /-->
+        <property name="javadoc.link"        value="http://docs.oracle.com/javase/6/docs/api/" />
+        <property name="javadoc.link.jogl"   value="${jogl.root}/javadoc-public/" />
+        <property name="jogl-demos.jar"      value="${build}/jogl-demos.jar" />
+        <property name="jogl-demos-util.jar" value="${build}/jogl-demos-util.jar" />
+        <property name="jogl-demos-data.jar" value="${build}/jogl-demos-data.jar" />
+        <property name="jogl-demos-dualDepthPeeling.jar" value="${build}/jogl-demos-dualDepthPeeling.jar" />
+        <property name="jogl-demos-tennis.jar" value="${build}/jogl-demos-tennis.jar" />
+        <property name="archive.name"        value="jogl-demos-${jogl-demos.version}-${os.and.arch}" />
+        <property name="archive"             value="${build}/${archive.name}" />
+
+        <property name="jogl.redbook.excludes" value="redbook/**" />
+
+        <copy file="${project.root}/manifest.mf"
+            tofile="${build}/manifest.mf"
+            overwrite="true">
+            <filterset>
+                <filter token="VERSION" value="${jogamp.version}"/>
+                <filter token="BUILD_VERSION" value="${jogl-demos.version}"/>
+                <filter token="SCM_BRANCH" value="${jogl-demos.build.branch}"/>
+                <filter token="SCM_COMMIT" value="${jogl-demos.build.commit}"/>
+                <filter token="BASEVERSION" value="${jogamp.version.base}"/>
+                <filter token="JAR_CODEBASE_TAG" value="${jogamp.jar.codebase}"/>
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="nurbs" if="jogl.nurbs">
+        <javac destdir="${classes}" 
+               includeAntRuntime="false"
+               includes="demos/nurbs/**" 
+               memoryMaximumSize="${javac.memorymax}"
+               encoding="UTF-8"
+               source="${target.sourcelevel}" 
+               target="${target.targetlevel}" 
+               bootclasspath="${target.rt.jar}"
+               debug="${javacdebug}" debuglevel="${javacdebuglevel}">
+            <src path="${src}" />
+            <classpath refid="jogl-demos.classpath" />
+        </javac>
+	<!-- Copy icons to output dir -->
+        <copy todir="${build}">
+            <fileset dir="${src}">
+                <include name="demos/nurbs/icons/*.png" />
+            </fileset>
+        </copy>
+	<!-- Copy dependent libraries to output dir -->
+        <copy file="../lib/simple-xml-1.1.1.jar" todir="${build}" />
+        <copy file="../lib/stax-api-1.0.1.jar" todir="${build}" />
+        <copy file="../lib/stax-1.2.0.jar" todir="${build}" />
+    </target>
+
+    <target name="redbook-javac">
+        <javac destdir="${classes}" 
+               includeantruntime="false"
+               memoryMaximumSize="${javac.memorymax}"
+               encoding="UTF-8"
+               source="${target.sourcelevel}" 
+               target="${target.targetlevel}" 
+               bootclasspath="${target.rt.jar}"
+               debug="${javacdebug}" debuglevel="${javacdebuglevel}">
+            <src path="${src}/redbook/src" />
+            <classpath refid="jogl-demos.classpath" />
+        </javac>
+    </target>
+
+    <target name="all-desktop" unless="isGLES">
+        <mkdir dir="${classes}" />
+        <path id="jogl-demos.classpath">
+            <pathelement location="${jogl-all.jar}" />
+            <pathelement location="${jogl-cg.jar}" />
+            <pathelement location="${joal.jar}" />
+            <pathelement location="${gluegen-rt.jar}" />
+            <pathelement location="${simple-xml.jar}" />
+            <pathelement location="${swt.jar}" />
+        </path>
+        <javac destdir="${classes}" 
+               excludes="${jogl.cg.excludes},demos/nurbs/**,${jogl.swt.excludes},jbullet/**,${jogl.redbook.excludes}" 
+               includeantruntime="false"
+               memoryMaximumSize="${javac.memorymax}"
+               encoding="UTF-8"
+               source="${target.sourcelevel}" 
+               target="${target.targetlevel}" 
+               bootclasspath="${target.rt.jar}"
+               debug="${javacdebug}" debuglevel="${javacdebuglevel}">
+            <src path="${src}" />
+            <classpath refid="jogl-demos.classpath" />
+        </javac>
+        <antcall target="redbook-javac" inheritrefs="true" />
+        <antcall target="nurbs" inheritrefs="true" />
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos.jar}">
+            <fileset dir="${classes}">
+                <exclude name="gleem/**" />
+                <exclude name="demos/util/**" />
+                <exclude name="demos/dualDepthPeeling/**" />
+                <exclude name="demos/tennis/**" />
+            </fileset>
+            <fileset dir="${src}">
+                <include name="demos/cg/**/*.cg" />
+            </fileset>
+            <fileset dir="${src}">
+                <include name="demos/hdr/shaders/**/*.cg" />
+                <include name="demos/hdr/shaders/**/*.arbvp1" />
+                <include name="demos/hdr/shaders/**/*.arbfp1" />
+                <include name="demos/es1/bump/*.brs" />
+                <include name="demos/es2/shader/**" />
+                <include name="demos/es2/perftst/shader/**" />
+                <include name="demos/es2/perftst/data/**" />
+                <include name="demos/es2/openmax/shader/**" />
+            </fileset>
+            <!-- Avoid requiring dependence on huge jogl-demos-data.jar for
+                 particle engine demo -->
+            <fileset dir="${src}">
+                <include name="demos/particles/engine/images/*.jpg" />
+            </fileset>
+        </jar>
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos-util.jar}">
+            <fileset dir="${classes}">
+                <include name="gleem/**" />
+                <include name="demos/util/**" />
+            </fileset>
+        </jar>
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos-data.jar}">
+            <fileset dir="${src}">
+                <include name="demos/data/**" />
+                <exclude name="demos/data/models/dragon.obj" />
+                <exclude name="demos/data/tennis/**" />
+            </fileset>
+            <fileset dir="${classes}">
+                <include name="demos/data/**" />
+            </fileset>
+        </jar>
+        <!-- due to size or usability .. create self packaged jars (code + data) -->
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos-dualDepthPeeling.jar}">
+            <fileset dir="${classes}">
+                <include name="demos/dualDepthPeeling/**" />
+            </fileset>
+            <fileset dir="${src}">
+                <include name="demos/dualDepthPeeling/shader/*" />
+            </fileset>
+            <fileset dir="${src}">
+                <include name="demos/data/models/dragon.obj" />
+            </fileset>
+            <fileset dir="${classes}">
+                <include name="demos/data/**" />
+            </fileset>
+        </jar>
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos-tennis.jar}">
+            <fileset dir="${classes}">
+                <include name="demos/tennis/**" />
+            </fileset>
+            <!--fileset dir="${src}">
+                <include name="demos/tennis/shader/*" />
+            </fileset!-->
+            <fileset dir="${src}">
+                <include name="demos/data/tennis/**" />
+            </fileset>
+            <fileset dir="${classes}">
+                <include name="demos/data/**" />
+            </fileset>
+        </jar>
+    </target>
+
+    <target name="all-gles" if="isGLES">
+        <echo message="classes destdir ${classes}" />
+        <mkdir dir="${classes}" />
+        <path id="jogl-demos.classpath">
+            <pathelement location="${jogl-all.jar}" />
+            <pathelement location="${jogl-cg.jar}" />
+            <pathelement location="${gluegen-rt.jar}" />
+        </path>
+        <javac destdir="${classes}" 
+               includes="demos/GLInfo*,demos/es1/**,demos/es2/**" 
+               includeantruntime="false"
+               memoryMaximumSize="${javac.memorymax}"
+               encoding="UTF-8"
+               source="${target.sourcelevel}" 
+               target="${target.targetlevel}" 
+               bootclasspath="${target.rt.jar}"
+               debug="${javacdebug}" debuglevel="${javacdebuglevel}">
+            <src path="${src}" />
+            <classpath refid="jogl-demos.classpath" />
+        </javac>
+        <jar manifest="${build}/manifest.mf" destfile="${jogl-demos.jar}">
+            <fileset dir="${classes}">
+                <include name="**" />
+            </fileset>
+            <fileset dir="${src}">
+                <include name="demos/es1/bump/*.brs" />
+                <include name="demos/es2/shader/**" />
+                <include name="demos/es2/perftst/shader/**" />
+                <include name="demos/es2/perftst/data/**" />
+                <include name="demos/es2/openmax/shader/**" />
+            </fileset>
+        </jar>
+    </target>
+
+    <target name="all" depends="init, all-desktop, all-gles, tag.build, developer-zip-archive" />
+
+    <target name="all.ide" depends="init, all-desktop, all-gles" />
+
+    <target name="tag.build" depends="init">
+        <copy file="${jogl.build}/artifact.properties" todir="${build}" overwrite="true"/>
+        <echo message='jogl-demos.build.number=${jogl-demos.build.number}${line.separator}' file="${build}/artifact.properties" append="true"/>
+        <echo message='jogl-demos.build.id=${jogl-demos.build.id}${line.separator}'         file="${build}/artifact.properties" append="true"/>
+        <echo message='jogl-demos.build.branch=${jogl-demos.build.branch}${line.separator}' file="${build}/artifact.properties" append="true"/>
+        <echo message='jogl-demos.build.commit=${jogl-demos.build.commit}${line.separator}' file="${build}/artifact.properties" append="true"/>
+    </target>
+
+    <target name="javadoc" depends="init">
+        <mkdir dir="${javadoc}" />
+        <javadoc destdir="${javadoc}" 
+                 windowtitle="JOGL Demos"
+                 encoding="UTF-8"
+                 source="${target.sourcelevel}"
+                 maxmemory="${javac.memorymax}" >
+            <packageset dir="${src}">
+                <exclude name="demos/cg/**" />
+            </packageset>
+            <link href="${javadoc.link}" />
+            <!-- FIXME: this doesn't work -->
+            <link href="${javadoc.link.jogl}" />
+        </javadoc>
+    </target>    
+
+    <target name="clean" depends="init">
+        <delete includeEmptyDirs="true" quiet="true">
+            <fileset dir="${build}" />
+            <fileset dir="../javadoc" />
+        </delete>
+    </target>
+
+    <!-- ================================================================== -->
+    <!--
+       - Build the binary zip archive for developers.
+       - This must be called on one target.
+      -->
+
+    <target name="developer-zip-archive" depends="init" if="build.archiveon">
+        <delete includeEmptyDirs="true" quiet="true" dir="${archive}" failonerror="false" />
+        <mkdir dir="${archive}" />
+        <copy file="${build}/artifact.properties" todir="${archive}"/>
+        <mkdir dir="${archive}/jar" />
+        <copy todir="${archive}/jar">
+            <fileset dir="${build}" includes="jogl-demos*.jar"/>
+        </copy>
+        <mkdir dir="${archive}/jnlp-files" />
+        <copy todir="${archive}/jnlp-files">
+            <fileset dir="${project.root}/jnlp-files" includes="*" />
+        </copy>
+        <mkdir dir="${archive}/www" />
+        <copy todir="${archive}/www">
+            <fileset dir="${project.root}/www" includes="*" excludes="*.7z"/>
+        </copy>
+        <archive.7z destfile="${build}/${archive.name}.7z"
+             basedir="${build}"
+             includes="${archive.name}/**" />
+        <!-- Clean up after ourselves -->
+        <delete includeEmptyDirs="true" quiet="true" dir="${archive}" failonerror="false" />
+    </target>
+
+ </project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="javabullet" default="default" basedir=".">
+    <description>Builds, tests, and runs the project javabullet.</description>
+    <import file="nbproject/build-impl.xml"/>
+
+    <import file="nbproject/profiler-build-impl.xml"/>    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="javabullet-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	
+	<target name="-do-jar-without-manifest">
+		<!-- jbullet.jar -->
+		<jar destfile="dist/jbullet.jar" basedir="build/classes" excludes="**/*.java,**/*.form,javabullet/demos/**"/>
+		
+		<!-- jbullet-demos.jar -->
+		<jar destfile="dist/jbullet-demos.jar" basedir="build/classes" includes="javabullet/demos/**" excludes="**/*.java,**/*.form,**/*.diff"/>
+	</target>
+	
+	<target name="webstart" depends="jar">
+		<mkdir dir="dist/webstart"/>
+		<copy todir="dist/webstart">
+			<fileset file="dist/jbullet.jar"/>
+			<fileset file="dist/jbullet-demos.jar"/>
+			<fileset dir="lib/vecmath" includes="**/*.jar"/>
+			<fileset dir="lib/jogl" includes="**/*.jar"/>
+		</copy>
+		
+		<input message="keyPass" addproperty="keypass"/>
+		<input message="storePass" addproperty="storepass" defaultvalue="${keypass}"/>
+			
+		<signjar keystore="keystore" alias="jezek2" keypass="${keypass}" storepass="${storepass}">
+			<fileset dir="dist/webstart">
+				<include name="*.jar"/>
+			</fileset>
+		</signjar>
+	</target>
+
+	<target name="applet" depends="jar">
+		<!-- jbullet-applet.jar -->
+		<jar destfile="dist/jbullet-applet.jar">
+			<zipfileset src="dist/jbullet.jar" excludes="META-INF/**" filemode="644" dirmode="755"/>
+			<zipfileset src="dist/jbullet-demos.jar" excludes="META-INF/**" filemode="644" dirmode="755"/>
+			<zipfileset src="lib/vecmath/vecmath.jar" excludes="META-INF/**" filemode="644" dirmode="755"/>
+			<zipfileset src="lib/swing-layout/swing-layout-1.0.3.jar" excludes="META-INF/**" filemode="644" dirmode="755"/>
+		</jar>
+	</target>
+	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<project name="redbook" default="default" basedir=".">
+    <description>Builds, tests, and runs the project redbook.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <import file="nbproject/build-jogl-template-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="JavaApplication3-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+
+    <!--
+
+    This is a predefined -post-jar target to trigger the jogl-template specific
+    part of the build build.
+    
+    Feel free to customize this targets as long as you preserve the dependency
+    on -jogl-template-post-jar.
+    
+    If you need to do some work _before_ the -jogl-template-post-jar target is
+    called, use
+    -->
+    <target name="-post-init" depends="-check-if-jogl-downloaded,-download-jogl-dist" >
+    </target>
+
+    <target name="-download-jogl-dist" unless="jogl.dist.present">
+
+        <fail unless="natives.platform" message="please set the 'natives.platform' property in nbproject/project.properties or in nbproject/private/private.properties" />
+
+        <echo message="lay back and relax, I am downloading jogl..."/>
+        <copy todir="jogl-dist" flatten="true" verbose="true">
+            <resources>
+                <url url="${jogl.webres}/jogl-2.0-webstart.zip"/>
+                <url url="${jogl.webres}/nativewindow-2.0-webstart.zip"/>
+                <url url="${jogl.webres}/newt-2.0-webstart.zip"/>
+                <url url="${jogl.webres}/gluegen-rt-2.0-webstart.zip"/>
+                <url url="${jogl.webres}/jogl-2.0-docs.zip"/>
+            </resources>
+        </copy>
+        <echo message="done"/>
+
+        <antcall target="jogl-template-deploy-jogl" inheritall="true"/>
+    </target>
+
+    <target name="-check-if-jogl-downloaded">
+        <mkdir dir="jogl-dist"/>
+        <available file="jogl-dist/jogl-2.0-webstart.zip" property="jogl.dist.present"/>
+    </target>
+
+    <target name="-post-jar" depends="-jogl-template-post-jar">
+    </target>
+
+    <!--
+    This is a predefined jnlp target to trigger the jogl-template specific
+    patches to the file generated by netbeans webstart support.
+    -->
+    <target name="jnlp" depends="-jogl-template-jnlp">
+    </target>
+    
+    <!--
+    This is a predefined -post-clean target to trigger the jogl-template specific
+    cleanup of the projects build.
+    -->
+    <target name="-post-clean" depends="-jogl-template-post-clean">
+    </target>
+    
+</project>

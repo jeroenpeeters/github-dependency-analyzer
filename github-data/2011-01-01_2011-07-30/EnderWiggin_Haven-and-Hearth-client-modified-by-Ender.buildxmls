@@ -1,0 +1,121 @@
+<?xml version="1.0" ?>
+
+<project name="haven" default="deftgt">
+  <target name="build-env">
+    <mkdir dir="build" />
+    <mkdir dir="build/classes" />
+    <available property="has-res-jar" file="build/haven-res.jar" />
+    <available property="has-buildinfo" file="build/classes/buildinfo" />
+    <available property="unpacked-lib" file="build/classes-lib" />
+  </target>
+  
+  <target name="buildinfo" depends="build-env" unless="has-buildinfo">
+    <exec executable="git" outputproperty="gitrev" failifexecutionfails="false">
+      <arg line="rev-parse HEAD" />
+    </exec>
+    <echo file="build/classes/buildinfo" xml:space="default">
+      git-rev = ${gitrev}
+    </echo>
+  </target>
+	
+  <target name="resources">
+	  	<exec executable="java" failifexecutionfails="false">
+	  	  <arg line="-jar resources/LayerUtil.jar -re resources/src resources/compiled/res" />
+	  	</exec>
+  	
+  		<jar destfile="build/client-res.jar" update="true">
+  			<fileset dir="resources/compiled" />
+  		</jar>
+  </target>
+
+  <target name="haven-client" depends="build-env">
+    <javac srcdir="src" destdir="build/classes" debug="on"
+	   source="1.5" target="1.5" includeantruntime="no">
+      <classpath>
+	<pathelement path="lib/jogl.jar" />
+	<pathelement path="lib/gluegen-rt.jar" />
+	<pathelement path="lib/jnlp.jar" />
+	<pathelement path="lib/jorbis.jar" />
+	<pathelement path="lib/jogg.jar" />
+      </classpath>
+      <compilerarg value="-Xlint:unchecked" />
+      <!-- <compilerarg value="-Xbarda" /> -->
+    </javac>
+    <copy todir="build/classes/haven" file="etc/ressrv.crt" />
+    <copy todir="build/classes/haven" file="etc/authsrv.crt" />
+    <copy todir="build/classes/haven" file="etc/res-preload" />
+    <copy todir="build/classes/haven" file="etc/res-bgload" />
+    <copy todir="build/classes/haven" file="etc/icon.png" />
+    <mkdir dir="build/res" />
+    <copy todir="build" >
+	<fileset file="fep.conf"/>
+	<fileset file="curio.conf"/>
+	<fileset file="craft.conf"/>
+	<fileset file="highlight.conf"/>
+	<fileset file="changelog.txt"/>
+    </copy>
+  </target>
+  
+  <target name="appletview" depends="build-env">
+    <copy file="etc/applet.html" todir="build" />
+  </target>
+
+  <target name="lib-classes" depends="build-env" unless="unpacked-lib">
+    <mkdir dir="build/classes-lib" />
+    <unjar src="lib/jogg.jar" dest="build/classes-lib">
+      <patternset excludes="META-INF/**" />
+    </unjar>
+    <unjar src="lib/jorbis.jar" dest="build/classes-lib">
+      <patternset excludes="META-INF/**" />
+    </unjar>
+  </target>
+
+  <target name="jar" depends="haven-client,buildinfo,lib-classes,resources">
+    <jar destfile="build/haven.jar" update="true">
+      <fileset dir="build/classes" excludes="*.class"/>
+      <fileset dir="build/classes-lib" />
+      <manifest>
+	<attribute name="Main-Class" value="haven.MainFrame" />
+	<attribute name="Class-Path" value="jogl.jar gluegen-rt.jar client-res.jar haven-res.jar" />
+      </manifest>
+    </jar>
+    <chmod file="build/haven.jar" perm="a+x" />
+  </target>
+  
+  <target name="res-jar" depends="build-env" unless="has-res-jar">
+    <get src="http://www.havenandhearth.com/java/haven-res.jar" dest="lib/haven-res.jar"
+	 usetimestamp="true" />
+  </target>
+  
+  <target name="jars" depends="build-env, jar, res-jar">
+    <copy todir="build">
+      <fileset dir="lib">
+	<include name="jogl.jar" />
+	<include name="gluegen-rt.jar" />
+	<include name="haven-res.jar" />
+      </fileset>
+    </copy>
+  </target>
+  
+  <target name="deftgt" depends="jars, appletview" />
+
+  <target name="run" depends="jars">
+    <java jar="build/haven.jar" fork="true" />
+  </target>
+  
+  <target name="clean">
+    <delete dir="build/classes" />
+    <delete dir="build/classes-lib" />
+  </target>
+  
+  <target name="profile" depends="jars">
+    <nbprofiledirect>
+    </nbprofiledirect>
+      <java fork="true" jar="build/haven.jar">
+        <jvmarg value="${profiler.info.jvmargs.agent}" />
+        <sysproperty key="haven.dbtext" value="on" />
+        <sysproperty key="haven.defserv" value="sh.seatribe.se" />
+        <sysproperty key="haven.resdir" value="/home/fredrik/src/haven/res" />
+      </java>
+  </target>
+</project>

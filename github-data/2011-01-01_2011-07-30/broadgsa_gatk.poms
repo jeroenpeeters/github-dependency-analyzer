@@ -1,0 +1,3380 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    This pom is the aggregator for all sting/gatk poms
+    See also:
+      http://maven.apache.org/pom.html#Inheritance_v
+      http://maven.apache.org/guides/introduction/introduction-to-the-pom.html#Project_Inheritance_vs_Project_Aggregation
+      http://stackoverflow.com/questions/1992213/maven-parent-pom-vs-modules-pom
+    -->
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-root</artifactId>
+        <version>3.1</version>
+        <relativePath>public/sting-root</relativePath>
+    </parent>
+
+    <artifactId>sting-aggregator</artifactId>
+    <packaging>pom</packaging>
+    <name>Sting Aggregator</name>
+
+    <modules>
+        <module>public</module>
+        <!-- private & protected optionally enabled as profiles -->
+    </modules>
+
+    <properties>
+        <sting.basedir>${project.basedir}</sting.basedir>
+        <resource.bundle.path>StingText.properties</resource.bundle.path>
+        <resource.bundle.skip>false</resource.bundle.skip>
+        <!-- TODO: Need a better a way to say "don't include hidden" by default -->
+        <gatkdocs.include.hidden>-build-timestamp "${maven.build.timestamp}"</gatkdocs.include.hidden>
+
+        <!--
+        Phases of the build that may be disabled to speed up compilation.
+        -->
+        <sting.jar.phase>package</sting.jar.phase>
+        <sting.generate-resources.phase>generate-resources</sting.generate-resources.phase>
+        <sting.process-resources.phase>process-resources</sting.process-resources.phase>
+        <sting.process-test-resources.phase>process-test-resources</sting.process-test-resources.phase>
+
+        <!--
+        Package tests ensure the consistency of the packaged / shaded jars.
+        It runs the tests where the monolithic jar is the only dependency on the classpath.
+        -->
+        <sting.packagecommittests.skipped>true</sting.packagecommittests.skipped>
+        <sting.packageunittests.skipped>${sting.packagecommittests.skipped}</sting.packageunittests.skipped>
+        <sting.packageintegrationtests.skipped>${sting.packagecommittests.skipped}</sting.packageintegrationtests.skipped>
+        <sting.packagequeuetests.skipped>${sting.packagecommittests.skipped}</sting.packagequeuetests.skipped>
+        <sting.packagelargescaletests.skipped>true</sting.packagelargescaletests.skipped>
+        <sting.packageknowledgebasetests.skipped>true</sting.packageknowledgebasetests.skipped>
+
+        <!--
+        Serial tests use the test jars to run tests, such that all tests are run from a single TestNG invocation.
+        This is different that the invoker, that runs the test classes from the filesystem, but pointing at the packaged JAR files.
+        TODO: Currently, all tests run within each package, since packages already collect dependencies for shading an uber jar.
+        TODO: Should there be another level up of tests, possibly running "all tests" via this aggregator level?
+        TODO: If that require the aggregator to be dependent on the child dependencies, perhaps a better approach might be another monolithic test project.
+        -->
+        <sting.serialcommittests.skipped>true</sting.serialcommittests.skipped>
+        <sting.serialunittests.skipped>${sting.serialcommittests.skipped}</sting.serialunittests.skipped>
+        <sting.serialintegrationtests.skipped>${sting.serialcommittests.skipped}</sting.serialintegrationtests.skipped>
+        <sting.serialqueuetests.skipped>${sting.serialcommittests.skipped}</sting.serialqueuetests.skipped>
+        <sting.seriallargescaletests.skipped>true</sting.seriallargescaletests.skipped>
+        <sting.serialknowledgebasetests.skipped>true</sting.serialknowledgebasetests.skipped>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>com.sun</groupId>
+            <artifactId>tools</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <!-- Plugin configuration -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <configuration>
+                        <filesets>
+                            <!--
+                            TODO: Once GATKDoclet stops hard coding paths, we remove this and leave
+                            TODO: it to the standard maven conventions to clean up for us
+                            -->
+                            <fileset>
+                                <directory>gatkdocs</directory>
+                            </fileset>
+                            <fileset>
+                                <directory>${basedir}</directory>
+                                <includes>
+                                    <include>javadoc.sh</include>
+                                    <include>options</include>
+                                    <include>packages</include>
+                                </includes>
+                            </fileset>
+                            <!--
+                            Shade dumps this temp file in basedir, with no good way to reconfigure.
+                            https://jira.codehaus.org/browse/MSHADE-145
+                            -->
+                            <fileset>
+                                <directory>${basedir}</directory>
+                                <includes>
+                                    <include>dependency-reduced-pom.xml</include>
+                                </includes>
+                            </fileset>
+                        </filesets>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>unpack-direct-dependencies</id>
+                            <goals>
+                                <goal>unpack-dependencies</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <excludeTransitive>true</excludeTransitive>
+                                <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                                <includeTypes>jar</includeTypes>
+                                <excludeScope>system</excludeScope>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <!-- TODO: Change the ResourceBundleExtractorDoclet to not require log4j.properties file -->
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>default-resources</id>
+                            <goals>
+                                <goal>resources</goal>
+                            </goals>
+                            <phase>${sting.process-resources.phase}</phase>
+                        </execution>
+                        <execution>
+                            <id>default-testResources</id>
+                            <goals>
+                                <goal>testResources</goal>
+                            </goals>
+                            <phase>${sting.process-test-resources.phase}</phase>
+                        </execution>
+                        <execution>
+                            <id>copy-resource-bundle-log4j</id>
+                            <goals>
+                                <goal>copy-resources</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <outputDirectory>${project.reporting.outputDirectory}/apidocs</outputDirectory>
+                                <resources>
+                                    <resource>
+                                        <directory>${sting.basedir}/sting-utils/src/main/config/org/broadinstitute/sting/utils/help</directory>
+                                    </resource>
+                                </resources>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>extract-resource-bundle</id>
+                            <goals>
+                                <goal>javadoc</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <!-- Allow skipping for "fasttest" -->
+                                <skip>${resource.bundle.skip}</skip>
+                                <doclet>org.broadinstitute.sting.utils.help.ResourceBundleExtractorDoclet</doclet>
+                                <!-- Required as doclet uses reflection to access classes for documentation, instead of source java-->
+                                <docletPath>${project.build.outputDirectory}</docletPath>
+                                <docletArtifact>
+                                    <groupId>${project.groupId}</groupId>
+                                    <!-- TODO: THIS IS SUPPOSED TO BE STING-UTILS! -->
+                                    <artifactId>gatk-framework</artifactId>
+                                    <version>${project.version}</version>
+                                </docletArtifact>
+                                <maxmemory>2g</maxmemory>
+                                <useStandardDocletOptions>false</useStandardDocletOptions>
+                                <quiet>true</quiet>
+                                <additionalparam>-build-timestamp "${maven.build.timestamp}" -absolute-version ${build.version} -out ${project.build.outputDirectory}/${resource.bundle.path}</additionalparam>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <configuration>
+                        <proc>none</proc>
+                        <annotationProcessors>
+                            <annotationProcessor>com.google.java.contract.core.apt.AnnotationProcessor</annotationProcessor>
+                        </annotationProcessors>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>default-compile</id>
+                            <phase>none</phase>
+                        </execution>
+                        <execution>
+                            <id>default-testCompile</id>
+                            <phase>none</phase>
+                        </execution>
+                        <!--
+                        Explicit package-info creation to match existing ant output.
+                        -->
+                        <execution>
+                            <id>compile-package-info</id>
+                            <goals>
+                                <goal>compile</goal>
+                            </goals>
+                            <phase>compile</phase>
+                            <configuration>
+                                <compilerArgs>
+                                    <arg>-Xpkginfo:always</arg>
+                                </compilerArgs>
+                                <includes>
+                                    <include>**/package-info.java</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                        <!--
+                        TODO: Currently disabled in build.xml. Here as well.
+                        <execution>
+                            <id>compile-annotations</id>
+                            <phase>compile</phase>
+                            <goals>
+                                <goal>compile</goal>
+                            </goals>
+                            <configuration>
+                                <proc>only</proc>
+                            </configuration>
+                        </execution>
+                        -->
+                        <execution>
+                            <id>compile-java</id>
+                            <goals>
+                                <goal>compile</goal>
+                            </goals>
+                            <phase>compile</phase>
+                            <configuration>
+                                <!--
+                                Package info is supposed to be in source:
+                                    http://maven.apache.org/plugins/maven-javadoc-plugin/examples/javadoc-resources.html
+                                But maven-compile-plugin doesn't auto exclude these:
+                                    https://jira.codehaus.org/browse/MCOMPILER-205?page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel&focusedCommentId=326505#comment-326505
+                                So, explicitly exclude them
+                                -->
+                                <excludes>
+                                    <exclude>**/package-info.java</exclude>
+                                </excludes>
+                            </configuration>
+                        </execution>
+                        <!--
+                        TODO: Currently disabled in build.xml. Here as well.
+                        <execution>
+                            <id>testCompile-annotations</id>
+                            <phase>test-compile</phase>
+                            <goals>
+                                <goal>testCompile</goal>
+                            </goals>
+                            <configuration>
+                                <proc>only</proc>
+                            </configuration>
+                        </execution>
+                        -->
+                        <execution>
+                            <id>testCompile-java</id>
+                            <goals>
+                                <goal>testCompile</goal>
+                            </goals>
+                            <phase>test-compile</phase>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.scala-tools</groupId>
+                    <artifactId>maven-scala-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>compile</goal>
+                                <goal>testCompile</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>default-jar</id>
+                            <phase>${sting.jar.phase}</phase>
+                        </execution>
+                        <execution>
+                            <id>test-jar</id>
+                            <goals>
+                                <goal>test-jar</goal>
+                            </goals>
+                            <phase>${sting.jar.phase}</phase>
+                            <configuration>
+                                <skipIfEmpty>true</skipIfEmpty>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>sting-executable</id>
+                            <goals>
+                                <goal>shade</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <minimizeJar>true</minimizeJar>
+                                <artifactSet>
+                                    <excludes>
+                                        <exclude>org.broadinstitute.sting:gsalib:tar.gz:*</exclude>
+                                        <exclude>org.broadinstitute.sting:*:tar.bz2:example-resources</exclude>
+                                    </excludes>
+                                </artifactSet>
+                                <filters>
+                                    <!--
+                                    NOTE: Removing cofoja's annotation service to allow "javac -cp GenomeAnalysisTK.jar ..." without
+                                    needing an additional -proc:none argument. Using *:* to catch shaded GATK in Queue package.
+                                    -->
+                                    <filter>
+                                        <artifact>*:*</artifact>
+                                        <excludes>
+                                            <exclude>META-INF/services/javax.annotation.processing.Processor</exclude>
+                                        </excludes>
+                                    </filter>
+                                </filters>
+                                <transformers>
+                                    <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                        <manifestEntries>
+                                            <Main-Class>${app.main.class}</Main-Class>
+                                        </manifestEntries>
+                                    </transformer>
+                                    <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                        <resource>${resource.bundle.path}</resource>
+                                    </transformer>
+                                </transformers>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>example-resources</id>
+                            <goals>
+                                <goal>single</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <descriptors>
+                                    <descriptor>src/main/assembly/example-resources.xml</descriptor>
+                                </descriptors>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>binary-dist</id>
+                            <goals>
+                                <goal>single</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <descriptors>
+                                    <descriptor>src/main/assembly/binary-dist.xml</descriptor>
+                                </descriptors>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- TODO: Remove temporary symbolic link creation, after fixing test paths to use local resources. -->
+                <plugin>
+                    <groupId>com.pyx4j</groupId>
+                    <artifactId>maven-junction-plugin</artifactId>
+                    <executions>
+                        <execution>
+                            <id>link-public-testdata</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/public/testdata</dst>
+                                        <src>${sting.basedir}/public/gatk-framework/src/test/resources</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>unlink-public-testdata</id>
+                            <goals>
+                                <goal>unlink</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/public/testdata</dst>
+                                        <src>${sting.basedir}/public/gatk-framework/src/test/resources</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>link-private-testdata</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/private/testdata</dst>
+                                        <src>${sting.basedir}/private/gatk-private/src/test/resources</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>unlink-private-testdata</id>
+                            <goals>
+                                <goal>unlink</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/private/testdata</dst>
+                                        <src>${sting.basedir}/private/gatk-private/src/test/resources</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>link-public-qscript</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/public/scala/qscript</dst>
+                                        <src>${sting.basedir}/public/queue-framework/src/main/qscripts</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>unlink-public-qscript</id>
+                            <goals>
+                                <goal>unlink</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/public/scala/qscript</dst>
+                                        <src>${sting.basedir}/public/queue-framework/src/main/qscripts</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>link-private-qscript</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/private/scala/qscript</dst>
+                                        <src>${sting.basedir}/private/queue-private/src/main/qscripts</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>unlink-private-qscript</id>
+                            <goals>
+                                <goal>unlink</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${basedir}/private/scala/qscript</dst>
+                                        <src>${sting.basedir}/private/queue-private/src/main/qscripts</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>link-binary-jar</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${sting.basedir}/target/${sting.binary-dist.name}.${project.packaging}</dst>
+                                        <src>${project.build.directory}/${project.build.finalName}.${project.packaging}</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>link-git-release</id>
+                            <goals>
+                                <goal>link</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <links>
+                                    <link>
+                                        <dst>${project.build.directory}/${sting.binary-dist.name}-${build.version}.tar.bz2</dst>
+                                        <src>${project.build.directory}/${project.build.finalName}-binary-dist.tar.bz2</src>
+                                    </link>
+                                </links>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-invoker-plugin</artifactId>
+                    <configuration>
+                        <skipInvocation>true</skipInvocation>
+                        <debug>false</debug>
+                        <pom>${sting.basedir}/public/package-tests/pom.xml</pom>
+                        <noLog>true</noLog>
+                        <streamLogs>true</streamLogs>
+                        <localRepositoryPath>${sting.basedir}/${maven.repo.local}</localRepositoryPath>
+                        <properties>
+                            <test>${test}</test>
+                            <it.test>${it.test}</it.test>
+                            <skip>false</skip>
+                            <maven.test.skip>false</maven.test.skip>
+                            <sting.packagetests.artifactId>${sting.packagetests.artifactId}</sting.packagetests.artifactId>
+                            <sting.packagetests.testClasses>${project.build.testOutputDirectory}</sting.packagetests.testClasses>
+                            <sting.packagetests.basedir>${project.basedir}</sting.packagetests.basedir>
+                            <sting.queuetests.run>${sting.queuetests.run}</sting.queuetests.run>
+                            <maven.surefire.debug>${maven.surefire.debug}</maven.surefire.debug>
+                            <maven.failsafe.debug>${maven.failsafe.debug}</maven.failsafe.debug>
+                        </properties>
+                        <!--
+                        To allow using separated integration-test and verify, each execution must use a separate reportsDirectory.
+
+                        Otherwise, when an empty "pipeline test" later runs on an IntegrationTest class,
+                        it overwrites the results of the previous invocation always with a zero exit status.
+
+                        Mixing in the test name into the reportsDirectory also avoids collisions, when different maven jobs run tests in parallel.
+
+                        Similarly generating unique failsafe summary reports to avoid collisions.
+                        -->
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>package-unittests</id>
+                            <goals>
+                                <goal>run</goal>
+                            </goals>
+                            <configuration>
+                                <goals>
+                                    <goal>test</goal>
+                                </goals>
+                                <reportsDirectory>${project.build.directory}/invoker-reports/unit/${test}</reportsDirectory>
+                                <skipInvocation>${sting.packageunittests.skipped}</skipInvocation>
+                                <properties>
+                                    <unittests.profile.enabled>true</unittests.profile.enabled>
+                                    <sting.packageunittests.skipped>${sting.packageunittests.skipped}</sting.packageunittests.skipped>
+                                </properties>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>package-integrationtests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <configuration>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <reportsDirectory>${project.build.directory}/invoker-reports/integration/${it.test}</reportsDirectory>
+                                <skipInvocation>${sting.packageintegrationtests.skipped}</skipInvocation>
+                                <properties>
+                                    <integrationtests.profile.enabled>true</integrationtests.profile.enabled>
+                                    <sting.packageintegrationtests.skipped>${sting.packageintegrationtests.skipped}</sting.packageintegrationtests.skipped>
+                                </properties>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>package-queuetests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <configuration>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <reportsDirectory>${project.build.directory}/invoker-reports/queuetest/${it.test}</reportsDirectory>
+                                <skipInvocation>${sting.packagequeuetests.skipped}</skipInvocation>
+                                <properties>
+                                    <integrationtests.profile.enabled>true</integrationtests.profile.enabled>
+                                    <sting.packagequeuetests.skipped>${sting.packagequeuetests.skipped}</sting.packagequeuetests.skipped>
+                                </properties>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>package-largescaletests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <configuration>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <reportsDirectory>${project.build.directory}/invoker-reports/largescale/${it.test}</reportsDirectory>
+                                <skipInvocation>${sting.packagelargescaletests.skipped}</skipInvocation>
+                                <properties>
+                                    <integrationtests.profile.enabled>true</integrationtests.profile.enabled>
+                                    <sting.packagelargescaletests.skipped>${sting.packagelargescaletests.skipped}</sting.packagelargescaletests.skipped>
+                                </properties>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>package-knowledgebasetests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <configuration>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <reportsDirectory>${project.build.directory}/invoker-reports/knowledgebase/${it.test}</reportsDirectory>
+                                <skipInvocation>${sting.packageknowledgebasetests.skipped}</skipInvocation>
+                                <properties>
+                                    <integrationtests.profile.enabled>true</integrationtests.profile.enabled>
+                                    <sting.packageknowledgebasetests.skipped>${sting.packageknowledgebasetests.skipped}</sting.packageknowledgebasetests.skipped>
+                                </properties>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>2.5</version>
+                    <executions>
+                        <execution>
+                            <id>install-package</id>
+                            <goals>
+                                <goal>install-file</goal>
+                            </goals>
+                            <phase>none</phase>
+                            <configuration>
+                                <generatePom>true</generatePom>
+                                <groupId>${project.groupId}</groupId>
+                                <artifactId>${project.artifactId}</artifactId>
+                                <version>${project.version}</version>
+                                <packaging>${project.packaging}</packaging>
+                                <file>${project.build.directory}/${project.build.finalName}.${project.packaging}</file>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <!-- Invoke plugins that always run -->
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.pyx4j</groupId>
+                <artifactId>maven-junction-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>link-public-testdata</id>
+                        <phase>process-test-resources</phase>
+                    </execution>
+                    <execution>
+                        <id>unlink-public-testdata</id>
+                        <phase>clean</phase>
+                    </execution>
+                    <execution>
+                        <id>link-public-qscript</id>
+                        <phase>process-test-resources</phase>
+                    </execution>
+                    <execution>
+                        <id>unlink-public-qscript</id>
+                        <phase>clean</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-clean-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.google.code.sortpom</groupId>
+                <artifactId>maven-sortpom-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>package-tests</id>
+                        <goals>
+                            <goal>sort</goal>
+                        </goals>
+                        <phase>verify</phase>
+                        <inherited>false</inherited>
+                        <configuration>
+                            <pomFile>public/package-tests/pom.xml</pomFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <reporting>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.9.1</version>
+                <reportSets>
+                    <!-- By not specifying an id, shut off all default javadocs from mvn site -->
+                    <reportSet>
+                        <reports />
+                    </reportSet>
+                    <reportSet>
+                        <id>generate-gatk-docs</id>
+                        <reports>
+                            <report>aggregate</report>
+                        </reports>
+                        <!-- Only generate the GATK Docs across the parent aggregation, not the children too. -->
+                        <inherited>false</inherited>
+                        <configuration>
+                            <doclet>org.broadinstitute.sting.utils.help.GATKDoclet</doclet>
+                            <docletArtifact>
+                                <groupId>${project.groupId}</groupId>
+                                <artifactId>gatk-package</artifactId>
+                                <version>${project.version}</version>
+                            </docletArtifact>
+                            <useStandardDocletOptions>false</useStandardDocletOptions>
+                            <quiet>true</quiet>
+                            <show>private</show>
+                            <additionalparam>-build-timestamp "${maven.build.timestamp}" -absolute-version ${build.version} ${gatkdocs.include.hidden} -settings-dir ${sting.basedir}/settings/helpTemplates -destination-dir ${project.build.directory}/gatkdocs</additionalparam>
+                        </configuration>
+                    </reportSet>
+                </reportSets>
+            </plugin>
+        </plugins>
+    </reporting>
+
+    <profiles>
+        <!-- Optionally include protected -->
+        <profile>
+            <id>protected</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/protected/pom.xml</exists>
+                </file>
+            </activation>
+            <modules>
+                <module>protected</module>
+            </modules>
+        </profile>
+
+        <!-- Optionally include private -->
+        <profile>
+            <id>private</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/private/pom.xml</exists>
+                </file>
+            </activation>
+            <modules>
+                <module>private</module>
+            </modules>
+            <build>
+                <plugins>
+                    <!-- TODO: All tests require access to private. For now. -->
+                    <plugin>
+                        <groupId>com.pyx4j</groupId>
+                        <artifactId>maven-junction-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>link-private-testdata</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-testdata</id>
+                                <phase>clean</phase>
+                            </execution>
+                            <execution>
+                                <id>link-private-qscript</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-qscript</id>
+                                <phase>clean</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <!-- Collection of properties for use during package testing -->
+        <profile>
+            <id>packagetests-enabled</id>
+            <activation>
+                <property>
+                    <name>sting.packagetests.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <maven.javadoc.skip>true</maven.javadoc.skip>
+                <sting.generate-gatk-extensions.skipped>true</sting.generate-gatk-extensions.skipped>
+                <sting.jar.phase>none</sting.jar.phase>
+                <sting.generate-resources.phase>none</sting.generate-resources.phase>
+                <sting.process-resources.phase>none</sting.process-resources.phase>
+                <sting.process-test-resources.phase>none</sting.process-test-resources.phase>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-root</artifactId>
+        <version>2.8-SNAPSHOT</version>
+        <relativePath>../../public/sting-root</relativePath>
+    </parent>
+
+    <artifactId>VectorPairHMM</artifactId>
+    <packaging>pom</packaging>
+    <name>Vectorized PairHMM native libraries</name>
+
+    <description>Builds a GNU/Linux x86_64 library of VectorPairHMM using icc (Intel C++ compiler). During install, copies it into sting-utils. Neither tested nor expected to work on any other platform.</description>
+
+    <properties>
+        <sourceEncoding>UTF-8</sourceEncoding>
+        <project.build.sourceEncoding>${sourceEncoding}</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>${sourceEncoding}</project.reporting.outputEncoding>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting-utils.basedir>${sting.basedir}/public/sting-utils</sting-utils.basedir>
+        <!-- Where to place the library in sting-utils -->
+        <pairhmm.resources.directory>${sting-utils.basedir}/src/main/resources/org/broadinstitute/sting/utils/pairhmm</pairhmm.resources.directory>
+    </properties>
+    <build>
+        <plugins>
+            <!-- Print out the architecture - works only on GNU/Linux x86_64 systems -->
+            <!-- Neither tested nor expected to work on any other platform. -->
+            <!-- Requires icc (Intel C++ compiler) to be in your PATH. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>display-info</goal>
+                        </goals>
+                        <phase>validate</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Run make -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <phase>compile</phase>
+                        <configuration>
+                            <executable>make</executable>
+                            <workingDirectory>src/main/c++</workingDirectory>
+                            <environmentVariables>
+                                <JRE_HOME>${java.home}</JRE_HOME>
+                                <OUTPUT_DIR>${project.build.directory}</OUTPUT_DIR>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Don't actually install this artifact into the user's repo -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- Copy the built library into sting-utils -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-install</id>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <phase>install</phase>
+                        <configuration>
+                            <outputDirectory>${pairhmm.resources.directory}</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>${project.build.directory}</directory>
+                                    <includes>
+                                        <include>**/*</include>
+                                    </includes>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- pom.xml cleanup, always sort according to the definitions in sting-root -->
+            <plugin>
+                <groupId>com.google.code.sortpom</groupId>
+                <artifactId>maven-sortpom-plugin</artifactId>
+                <configuration>
+                    <createBackupFile>false</createBackupFile>
+                    <predefinedSortOrder>custom_1</predefinedSortOrder>
+                    <lineSeparator>\n</lineSeparator>
+                    <encoding>${sourceEncoding}</encoding>
+                    <keepBlankLines>true</keepBlankLines>
+                    <sortDependencies>scope</sortDependencies>
+                    <nrOfIndentSpace>4</nrOfIndentSpace>
+                    <expandEmptyElements>false</expandEmptyElements>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!-- Properties for your assembly -->
+    <groupId>org.mycompany.app</groupId>
+    <artifactId>external-example</artifactId>
+    <packaging>jar</packaging>
+    <version>1.0-SNAPSHOT</version>
+    <name>GATK External Example</name>
+
+    <properties>
+        <sting.version>3.1</sting.version>
+        <!--
+        sting.basedir property must point to your checkout of Sting/GATK until we can get all the
+        dependencies out of the committed sting repo and into central.
+        The installed pom for sting-root looks for this property.
+        Alternatively, one can install all the sting files into their local ~/.m2/repository repo.
+        http://maven.apache.org/plugins/maven-install-plugin/examples/custom-pom-installation.html
+        -->
+        <sting.basedir>../..</sting.basedir>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <maven.build.timestamp.format>yyyy/MM/dd HH:mm:ss</maven.build.timestamp.format>
+
+        <!-- NOTE: Currently the testing infrastructure for walkers does not support running outside the Broad. -->
+        <sting.committests.skipped>true</sting.committests.skipped>
+        <sting.unittests.skipped>${sting.committests.skipped}</sting.unittests.skipped>
+        <sting.integrationtests.skipped>${sting.committests.skipped}</sting.integrationtests.skipped>
+
+        <!-- This flag is used by the package tests to disable re-shading -->
+        <sting.shade.phase>package</sting.shade.phase>
+    </properties>
+
+    <repositories>
+        <repository>
+            <id>sting.public.repo.local</id>
+            <name>Sting Public Local Repository</name>
+            <url>file:${sting.basedir}/public/repo</url>
+        </repository>
+    </repositories>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.broadinstitute.sting</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${sting.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.broadinstitute.sting</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${sting.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <version>6.8</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- Copy test resources to your classes directory -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <version>2.8</version>
+                <executions>
+                    <execution>
+                        <id>unpack</id>
+                        <phase>process-resources</phase>
+                        <goals>
+                            <goal>unpack</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.broadinstitute.sting</groupId>
+                                    <artifactId>gatk-framework</artifactId>
+                                    <version>${sting.version}</version>
+                                    <classifier>example-resources</classifier>
+                                    <type>tar.bz2</type>
+                                    <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Generate help text -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.9.1</version>
+                <executions>
+                    <execution>
+                        <id>extract-resource-bundle</id>
+                        <goals>
+                            <goal>javadoc</goal>
+                        </goals>
+                        <phase>prepare-package</phase>
+                        <configuration>
+                            <doclet>org.broadinstitute.sting.utils.help.ResourceBundleExtractorDoclet</doclet>
+                            <!-- Required as doclet uses reflection to access classes for documentation, instead of source java-->
+                            <docletPath>${project.build.outputDirectory}</docletPath>
+                            <docletArtifact>
+                                <groupId>org.broadinstitute.sting</groupId>
+                                <!-- TODO: THIS IS SUPPOSED TO BE STING-UTILS! -->
+                                <artifactId>gatk-framework</artifactId>
+                                <version>${sting.version}</version>
+                            </docletArtifact>
+                            <maxmemory>2g</maxmemory>
+                            <useStandardDocletOptions>false</useStandardDocletOptions>
+                            <quiet>true</quiet>
+                            <additionalparam>-build-timestamp "${maven.build.timestamp}" -absolute-version "${project.version}" -out ${project.build.outputDirectory}/StingText.properties</additionalparam>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Create packaged jar, containing only your walker and required classes -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>2.1</version>
+                <executions>
+                    <execution>
+                        <phase>${sting.shade.phase}</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <minimizeJar>true</minimizeJar>
+                            <!-- Explicitly include classes loaded via reflection from artifacts below -->
+                            <filters>
+                                <filter>
+                                    <artifact>commons-logging:commons-logging</artifact>
+                                    <includes>
+                                        <include>**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.broad:tribble</artifact>
+                                    <includes>
+                                        <include>**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.broadinstitute:variant</artifact>
+                                    <includes>
+                                        <include>**</include>
+                                    </includes>
+                                </filter>
+                            </filters>
+                            <!-- Stop shade from trying to unzip these indirect dependencies -->
+                            <artifactSet>
+                                <excludes>
+                                    <exclude>org.broadinstitute.sting:gsalib:tar.gz:*</exclude>
+                                    <exclude>org.broadinstitute.sting:*:tar.bz2:example-resources</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <transformers>
+                                <!-- Set the main class to the GATK -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>org.broadinstitute.sting.gatk.CommandLineGATK</mainClass>
+                                </transformer>
+                                <!-- Include and append to the existing gatk help text in StingText.properties -->
+                                <transformer implementation="org.apache.maven.plugins.shade.resource.AppendingTransformer">
+                                    <resource>StingText.properties</resource>
+                                </transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- surefire runs fast, small (aka unit) tests -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.16</version>
+                <configuration>
+                    <!-- See explicit executions below -->
+                    <skip>true</skip>
+                    <failIfNoTests>false</failIfNoTests>
+                    <!-- Pass various system properties -->
+                    <systemPropertyVariables>
+                        <java.io.tmpdir>${java.io.tmpdir}</java.io.tmpdir>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <!-- Disable maven default execution -->
+                    <execution>
+                        <id>default-test</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>unit-tests</id>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <skip>${sting.unittests.skipped}</skip>
+                            <includes>
+                                <include>**/*UnitTest.class</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- failsafe runs all other tests that may take longer, and may require pre/post test setup and teardown -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>2.16</version>
+                <configuration>
+                    <!-- See explicit executions below -->
+                    <skip>true</skip>
+                    <failIfNoTests>false</failIfNoTests>
+                    <!-- Pass various system properties -->
+                    <systemPropertyVariables>
+                        <java.io.tmpdir>${java.io.tmpdir}</java.io.tmpdir>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>integration-tests</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <!-- run integration tests -->
+                        <configuration>
+                            <skip>${sting.integrationtests.skipped}</skip>
+                            <includes>
+                                <include>**/*IntegrationTest.class</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>packagetests-enabled</id>
+            <activation>
+                <property>
+                    <name>sting.packagetests.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <sting.shade.phase>none</sting.shade.phase>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>gatk-framework</artifactId>
+    <packaging>jar</packaging>
+    <name>GATK Framework</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting.packagetests.artifactId>gatk-package</sting.packagetests.artifactId>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>sting-utils</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.caliper</groupId>
+            <artifactId>caliper</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>example-resources</id>
+                        <phase>${sting.generate-resources.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-resource-bundle-log4j</id>
+                        <phase>prepare-package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>extract-resource-bundle</id>
+                        <phase>prepare-package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-invoker-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>package-unittests</id>
+                    </execution>
+                    <execution>
+                        <id>package-integrationtests</id>
+                    </execution>
+                    <execution>
+                        <id>package-largescaletests</id>
+                    </execution>
+                    <execution>
+                        <id>package-knowledgebasetests</id>
+                    </execution>
+                    <execution>
+                        <id>package-queuetests</id>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>private</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../private/gatk-private/pom.xml</exists>
+                </file>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- TODO: All tests require access to private. For now. -->
+                    <plugin>
+                        <groupId>com.pyx4j</groupId>
+                        <artifactId>maven-junction-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>link-private-testdata</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-testdata</id>
+                                <phase>clean</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>gatk-package</artifactId>
+    <packaging>jar</packaging>
+    <name>GATK Package</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting.unpack.phase>prepare-package</sting.unpack.phase>
+        <sting.shade.phase>package</sting.shade.phase>
+        <app.main.class>org.broadinstitute.sting.gatk.CommandLineGATK</app.main.class>
+        <sting.binary-dist.name>GenomeAnalysisTK</sting.binary-dist.name>
+    </properties>
+
+    <dependencies>
+        <!-- Package everything in org.broadinstitute.sting -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Tribble codecs -->
+        <dependency>
+            <groupId>org.broad</groupId>
+            <artifactId>tribble</artifactId>
+        </dependency>
+        <!-- The variant package (VCF, BCF, and VariantContext) -->
+        <dependency>
+            <groupId>org.broadinstitute</groupId>
+            <artifactId>variant</artifactId>
+        </dependency>
+        <!-- Workaround - depend on the logger impl required by JEXL -->
+        <dependency>
+            <groupId>commons-logging</groupId>
+            <artifactId>commons-logging</artifactId>
+        </dependency>
+        <!-- Workaround - depend on commons-httpclient to prevent shade from eliminating IgnoreCookiesSpec class -->
+        <dependency>
+            <groupId>commons-httpclient</groupId>
+            <artifactId>commons-httpclient</artifactId>
+        </dependency>
+        <!-- Required for binary-dist assembly, excluded by shade -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <classifier>example-resources</classifier>
+            <type>tar.bz2</type>
+        </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.caliper</groupId>
+            <artifactId>caliper</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unit-tests</id>
+                        <configuration>
+                            <skip>${sting.serialunittests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>integration-tests</id>
+                        <configuration>
+                            <skip>${sting.serialintegrationtests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>queue-tests</id>
+                        <configuration>
+                            <skip>${sting.serialqueuetests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>large-scale-tests</id>
+                        <configuration>
+                            <skip>${sting.seriallargescaletests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>knowledge-base-tests</id>
+                        <configuration>
+                            <skip>${sting.serialknowledgebasetests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-direct-dependencies</id>
+                        <phase>${sting.unpack.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>sting-executable</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>binary-dist</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>com.pyx4j</groupId>
+                <artifactId>maven-junction-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>link-binary-jar</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                    <execution>
+                        <id>link-git-release</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-install</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>install-package</id>
+                        <phase>install</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>protected</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../protected/gatk-protected/pom.xml</exists>
+                </file>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-protected</artifactId>
+                    <version>${project.version}</version>
+                    <optional>true</optional>
+                </dependency>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-protected</artifactId>
+                    <version>${project.version}</version>
+                    <type>test-jar</type>
+                    <scope>test</scope>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>private</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../private/gatk-private/pom.xml</exists>
+                </file>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-private</artifactId>
+                    <version>${project.version}</version>
+                    <optional>true</optional>
+                </dependency>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-private</artifactId>
+                    <version>${project.version}</version>
+                    <type>test-jar</type>
+                    <scope>test</scope>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <!-- TODO: All tests require access to private. For now. -->
+                    <plugin>
+                        <groupId>com.pyx4j</groupId>
+                        <artifactId>maven-junction-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>link-private-testdata</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-testdata</id>
+                                <phase>clean</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>packagetests-enabled</id>
+            <activation>
+                <property>
+                    <name>sting.packagetests.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <sting.unpack.phase>none</sting.unpack.phase>
+                <sting.shade.phase>none</sting.shade.phase>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>gatk-queue-extgen</artifactId>
+    <packaging>jar</packaging>
+    <name>Queue GATK ExtGen</name>
+    <description>Queue GATK Extensions Generator</description>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>gsalib</artifactId>
+    <packaging>pom</packaging>
+    <name>Sting GSALib</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <gsalib.packagedir>org/broadinstitute/sting/utils/R</gsalib.packagedir>
+        <gsalib.filename>gsalib.tar.gz</gsalib.filename>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>gsalib-assembly</id>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <phase>${sting.generate-resources.phase}</phase>
+                        <configuration>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptors>
+                                <descriptor>src/assembly/gsalib.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    Run during package testing by the maven invoker plugin in the sting-aggregator /pom.xml
+    -->
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-root</artifactId>
+        <version>3.1</version>
+        <relativePath>../sting-root</relativePath>
+    </parent>
+
+    <artifactId>sting-package-tests</artifactId>
+    <packaging>pom</packaging>
+    <name>Sting Package Tests</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting.packageunittests.skipped>true</sting.packageunittests.skipped>
+        <sting.packageintegrationtests.skipped>true</sting.packageintegrationtests.skipped>
+        <sting.packagequeuetests.skipped>true</sting.packagequeuetests.skipped>
+        <sting.packagelargescaletests.skipped>true</sting.packagelargescaletests.skipped>
+        <sting.packageknowledgebasetests.skipped>true</sting.packageknowledgebasetests.skipped>
+    </properties>
+
+    <!-- Dependency configuration (versions, etc.) -->
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>${sting.packagetests.artifactId}</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+
+        <!--
+            For com.sun.javadoc
+            See also: http://sunnytalkstech.blogspot.in/2011/08/maven-dependency-for-toolsjar-in-jdk7.html
+            -->
+        <dependency>
+            <groupId>com.sun</groupId>
+            <artifactId>tools</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.code.cofoja</groupId>
+            <artifactId>cofoja</artifactId>
+        </dependency>
+
+        <!--
+        gatk-framework test-jar added for BaseTest
+
+        TODO: Currently the <exclusion> isn't working 100%, so switched to using additionalClasspathElements
+
+        TODO: Uncomment below to use the explicitly bad "exclude *" to really test correct packaging,
+        TODO: until we can separate BaseTest and other utilities into their own sting-test-utils artifact.
+        TODO: We only want the classes in the packaged jars tested, not the classes within the dependency jars too.
+        See also:
+          http://stackoverflow.com/questions/547805/how-to-exclude-all-transitive-dependencies-of-a-maven-dependency
+          http://maven.apache.org/plugins/maven-jar-plugin/usage.html#The_preferred_way
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+
+            <exclusions>
+                <exclusion>
+                    <groupId>*</groupId>
+                    <artifactId>*</artifactId>
+                </exclusion>
+            </exclusions>
+
+        </dependency>
+        -->
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.caliper</groupId>
+            <artifactId>caliper</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <directory>${sting.packagetests.basedir}/target</directory>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>unittests</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <property>
+                    <name>unittests.profile.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <!-- Plugin configuration -->
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-surefire-plugin</artifactId>
+                        <configuration>
+                            <basedir>${sting.packagetests.basedir}</basedir>
+                            <workingDirectory>${sting.packagetests.basedir}</workingDirectory>
+                            <classesDirectory>${project.build.outputDirectory}/ignored_by_package_test</classesDirectory>
+                            <testClassesDirectory>${sting.packagetests.testClasses}</testClassesDirectory>
+                            <!-- TODO: Using additionalClasspathElement while debugging exclusion issue above -->
+                            <additionalClasspathElements>
+                                <additionalClasspathElement>${sting.basedir}/public/gatk-framework/target/gatk-framework-${project.version}-tests.jar</additionalClasspathElement>
+                            </additionalClasspathElements>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>unit-tests</id>
+                                <goals>
+                                    <goal>test</goal>
+                                </goals>
+                                <configuration>
+                                    <skip>${sting.packageunittests.skipped}</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>integrationtests</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <property>
+                    <name>integrationtests.profile.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <!-- Plugin configuration -->
+                <plugins>
+                    <plugin>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-failsafe-plugin</artifactId>
+                        <configuration>
+                            <basedir>${sting.packagetests.basedir}</basedir>
+                            <workingDirectory>${sting.packagetests.basedir}</workingDirectory>
+                            <classesDirectory>${project.build.outputDirectory}/ignored_by_package_test</classesDirectory>
+                            <testClassesDirectory>${sting.packagetests.testClasses}</testClassesDirectory>
+                            <!-- TODO: Using additionalClasspathElement while debugging exclusion issue above -->
+                            <additionalClasspathElements>
+                                <additionalClasspathElement>${sting.basedir}/public/gatk-framework/target/gatk-framework-${project.version}-tests.jar</additionalClasspathElement>
+                            </additionalClasspathElements>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <id>integration-tests</id>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <!-- run integration tests -->
+                                <configuration>
+                                    <skip>${sting.packageintegrationtests.skipped}</skip>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>queue-tests</id>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <!-- run queue dry run tests -->
+                                <configuration>
+                                    <skip>${sting.packagequeuetests.skipped}</skip>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>large-scale-tests</id>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <!-- run large scale tests -->
+                                <configuration>
+                                    <skip>${sting.packagelargescaletests.skipped}</skip>
+                                </configuration>
+                            </execution>
+                            <execution>
+                                <id>knowledge-base-tests</id>
+                                <goals>
+                                    <goal>verify</goal>
+                                </goals>
+                                <!-- run knowledge base tests -->
+                                <configuration>
+                                    <skip>${sting.packageknowledgebasetests.skipped}</skip>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-root</artifactId>
+        <version>3.1</version>
+        <relativePath>sting-root</relativePath>
+    </parent>
+
+    <artifactId>sting-public</artifactId>
+    <packaging>pom</packaging>
+    <name>Sting Public</name>
+
+    <modules>
+        <module>sting-root</module>
+        <module>gsalib</module>
+        <module>sting-utils</module>
+        <module>gatk-framework</module>
+        <module>gatk-package</module>
+        <!--       <module>external-example</module>  -->
+        <!-- queue optionally enabled as profiles -->
+    </modules>
+
+    <properties>
+        <sting.basedir>${project.basedir}/..</sting.basedir>
+    </properties>
+
+    <profiles>
+        <!-- Allow queue to be disabled. -->
+        <profile>
+            <id>queue</id>
+            <activation>
+                <property>
+                    <name>!disable.queue</name>
+                </property>
+            </activation>
+            <modules>
+                <module>gatk-queue-extgen</module>
+                <module>queue-framework</module>
+                <module>queue-package</module>
+            </modules>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>queue-framework</artifactId>
+    <packaging>jar</packaging>
+    <name>Queue Framework</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <gatk.extensions.sources>${project.build.directory}/generated-sources/gatk-extensions</gatk.extensions.sources>
+        <sting.generate-gatk-extensions.skipped>false</sting.generate-gatk-extensions.skipped>
+        <sting.packagetests.artifactId>queue-package</sting.packagetests.artifactId>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.sf.jgrapht</groupId>
+            <artifactId>jgrapht</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-email</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>javax.mail</groupId>
+            <artifactId>mail</artifactId>
+        </dependency>
+        <!--
+        extgen dependency only applies to the exec:exec,
+        not the artifact, but don't know another way to include
+        the artifact *only* in the <classpath/> of exec.
+        See https://jira.codehaus.org/browse/MEXEC-111
+
+        Perhaps extgen should be wrapped in a maven plugin?
+        -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-queue-extgen</artifactId>
+            <version>${project.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!--
+        NOTE: Because exec-maven-plugin is used, this aggregator dependency
+        will cause mvn compile to not work. Use mvn test-compile for now.
+
+        See:
+          http://stackoverflow.com/questions/4786881/why-is-test-jar-dependency-required-for-mvn-compile
+          http://jira.codehaus.org/browse/MEXEC-91
+        -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!--
+            See note above about exec plugin breaking mvn compile
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>generate-gatk-extensions</id>
+                        <goals>
+                            <goal>exec</goal>
+                        </goals>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <skip>${sting.generate-gatk-extensions.skipped}</skip>
+                            <executable>java</executable>
+                            <arguments>
+                                <argument>-classpath</argument>
+                                <classpath />
+                                <argument>org.broadinstitute.sting.queue.extensions.gatk.GATKExtensionsGenerator</argument>
+                                <argument>-l</argument>
+                                <argument>WARN</argument>
+                                <argument>-outDir</argument>
+                                <argument>${gatk.extensions.sources}</argument>
+                            </arguments>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>add-gatk-extensions</id>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <phase>generate-sources</phase>
+                        <configuration>
+                            <sources>
+                                <source>${gatk.extensions.sources}</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>example-resources</id>
+                        <phase>${sting.generate-resources.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.scala-tools</groupId>
+                <artifactId>maven-scala-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <groupId>com.pyx4j</groupId>
+                <artifactId>maven-junction-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>link-public-qscript</id>
+                        <phase>process-test-resources</phase>
+                    </execution>
+                    <execution>
+                        <id>unlink-public-qscript</id>
+                        <phase>clean</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-resource-bundle-log4j</id>
+                        <phase>prepare-package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>extract-resource-bundle</id>
+                        <phase>prepare-package</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-invoker-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>package-unittests</id>
+                    </execution>
+                    <execution>
+                        <id>package-integrationtests</id>
+                    </execution>
+                    <execution>
+                        <id>package-largescaletests</id>
+                    </execution>
+                    <execution>
+                        <id>package-knowledgebasetests</id>
+                    </execution>
+                    <execution>
+                        <id>package-queuetests</id>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>protected</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../protected/gatk-protected/pom.xml</exists>
+                </file>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-protected</artifactId>
+                    <version>${project.version}</version>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+        </profile>
+        <profile>
+            <id>private</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../private/gatk-private/pom.xml</exists>
+                </file>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>gatk-private</artifactId>
+                    <version>${project.version}</version>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <!-- TODO: All tests require access to private. For now. -->
+                    <plugin>
+                        <groupId>com.pyx4j</groupId>
+                        <artifactId>maven-junction-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>link-private-testdata</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-testdata</id>
+                                <phase>clean</phase>
+                            </execution>
+                            <execution>
+                                <id>link-private-qscript</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-qscript</id>
+                                <phase>clean</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>queue-package</artifactId>
+    <packaging>jar</packaging>
+    <name>Queue Package</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting.unpack.phase>prepare-package</sting.unpack.phase>
+        <sting.shade.phase>package</sting.shade.phase>
+        <sting.binary-dist.name>Queue</sting.binary-dist.name>
+        <app.main.class>org.broadinstitute.sting.queue.QCommandLine</app.main.class>
+    </properties>
+
+    <dependencies>
+        <!-- Queue -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>queue-framework</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-package</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <!-- Scala -->
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-library</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.scala-lang</groupId>
+            <artifactId>scala-compiler</artifactId>
+        </dependency>
+        <!-- Picard -->
+        <dependency>
+            <groupId>net.sf</groupId>
+            <artifactId>picard</artifactId>
+        </dependency>
+        <!-- JavaMail -->
+        <dependency>
+            <groupId>javax.mail</groupId>
+            <artifactId>mail</artifactId>
+        </dependency>
+        <!-- JNA, including embedded native libraries -->
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+        </dependency>
+        <!-- Contracts for Java -->
+        <dependency>
+            <groupId>com.google.code.cofoja</groupId>
+            <artifactId>cofoja</artifactId>
+        </dependency>
+        <!-- snpEff -->
+        <dependency>
+            <groupId>net.sf.snpeff</groupId>
+            <artifactId>snpeff</artifactId>
+        </dependency>
+        <!-- Workaround - depend on commons-httpclient to prevent shade from eliminating IgnoreCookiesSpec class -->
+        <dependency>
+            <groupId>commons-httpclient</groupId>
+            <artifactId>commons-httpclient</artifactId>
+        </dependency>
+        <!-- Required for binary-dist assembly, excluded by shade -->
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <classifier>example-resources</classifier>
+            <type>tar.bz2</type>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>queue-framework</artifactId>
+            <version>${project.version}</version>
+            <classifier>example-resources</classifier>
+            <type>tar.bz2</type>
+        </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>queue-framework</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gatk-framework</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.caliper</groupId>
+            <artifactId>caliper</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unit-tests</id>
+                        <configuration>
+                            <skip>${sting.serialunittests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>integration-tests</id>
+                        <configuration>
+                            <skip>${sting.serialintegrationtests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>queue-tests</id>
+                        <configuration>
+                            <skip>${sting.serialqueuetests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>large-scale-tests</id>
+                        <configuration>
+                            <skip>${sting.seriallargescaletests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>knowledge-base-tests</id>
+                        <configuration>
+                            <skip>${sting.serialknowledgebasetests.skipped}</skip>
+                            <dependenciesToScan>
+                                <scan>org.broadinstitute.sting:.*</scan>
+                            </dependenciesToScan>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>unpack-direct-dependencies</id>
+                        <phase>${sting.unpack.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>sting-executable</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>binary-dist</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>com.pyx4j</groupId>
+                <artifactId>maven-junction-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>link-binary-jar</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                    <execution>
+                        <id>link-git-release</id>
+                        <phase>${sting.shade.phase}</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-install</id>
+                        <phase>none</phase>
+                    </execution>
+                    <execution>
+                        <id>install-package</id>
+                        <phase>install</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>private</id>
+            <activation>
+                <file>
+                    <exists>${basedir}/../../private/queue-private/pom.xml</exists>
+                </file>
+            </activation>
+            <dependencies>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>queue-private</artifactId>
+                    <version>${project.version}</version>
+                    <optional>true</optional>
+                </dependency>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>queue-private</artifactId>
+                    <version>${project.version}</version>
+                    <type>test-jar</type>
+                    <scope>test</scope>
+                    <optional>true</optional>
+                </dependency>
+            </dependencies>
+            <build>
+                <plugins>
+                    <!-- TODO: All tests require access to private. For now. -->
+                    <plugin>
+                        <groupId>com.pyx4j</groupId>
+                        <artifactId>maven-junction-plugin</artifactId>
+                        <executions>
+                            <execution>
+                                <id>link-private-testdata</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-testdata</id>
+                                <phase>clean</phase>
+                            </execution>
+                            <execution>
+                                <id>link-private-qscript</id>
+                                <phase>process-test-resources</phase>
+                            </execution>
+                            <execution>
+                                <id>unlink-private-qscript</id>
+                                <phase>clean</phase>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        <profile>
+            <id>packagetests-enabled</id>
+            <activation>
+                <property>
+                    <name>sting.packagetests.enabled</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <properties>
+                <sting.unpack.phase>none</sting.unpack.phase>
+                <sting.shade.phase>none</sting.shade.phase>
+            </properties>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+    This pom is parent for all sting/gatk poms
+    See also:
+      http://maven.apache.org/pom.html#Inheritance_v
+      http://maven.apache.org/guides/introduction/introduction-to-the-pom.html#Project_Inheritance_vs_Project_Aggregation
+      http://stackoverflow.com/questions/1992213/maven-parent-pom-vs-modules-pom
+    -->
+
+    <groupId>org.broadinstitute.sting</groupId>
+    <artifactId>sting-root</artifactId>
+    <version>3.1</version>
+    <packaging>pom</packaging>
+    <name>Sting Root</name>
+
+    <prerequisites>
+        <maven>3.0.4</maven>
+    </prerequisites>
+
+    <properties>
+        <sourceEncoding>UTF-8</sourceEncoding>
+        <project.build.sourceEncoding>${sourceEncoding}</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>${sourceEncoding}</project.reporting.outputEncoding>
+        <maven.compiler.source>1.7</maven.compiler.source>
+        <maven.compiler.target>1.7</maven.compiler.target>
+        <maven.build.timestamp.format>yyyy/MM/dd HH:mm:ss</maven.build.timestamp.format>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <sting.committests.skipped>true</sting.committests.skipped>
+        <sting.unittests.skipped>${sting.committests.skipped}</sting.unittests.skipped>
+        <sting.integrationtests.skipped>${sting.committests.skipped}</sting.integrationtests.skipped>
+        <sting.queuetests.skipped>${sting.committests.skipped}</sting.queuetests.skipped>
+        <sting.largescaletests.skipped>true</sting.largescaletests.skipped>
+        <sting.knowledgebasetests.skipped>true</sting.knowledgebasetests.skipped>
+        <sting.queuetests.run>false</sting.queuetests.run>
+        <scala.maxmemory>1g</scala.maxmemory>
+        <test.maxmemory>4g</test.maxmemory>
+        <java.gc.threads>4</java.gc.threads>
+        <java.gc.timeLimit>50</java.gc.timeLimit>
+        <java.gc.heapFreeLimit>10</java.gc.heapFreeLimit>
+        <test.args>-Xmx${test.maxmemory} -XX:+UseParallelOldGC -XX:ParallelGCThreads=${java.gc.threads} -XX:GCTimeLimit=${java.gc.timeLimit} -XX:GCHeapFreeLimit=${java.gc.heapFreeLimit}</test.args>
+
+        <!-- Version numbers for picard sam-jdk. Usually kept in sync. -->
+        <picard.public.version>1.109.1722</picard.public.version>
+        <sam.version>${picard.public.version}</sam.version>
+        <picard.version>${picard.public.version}</picard.version>
+        <variant.version>${picard.public.version}</variant.version>
+        <tribble.version>${picard.public.version}</tribble.version>
+    </properties>
+
+    <!-- Dependency configuration (versions, etc.) -->
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala-compiler</artifactId>
+                <version>2.10.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.scala-lang</groupId>
+                <artifactId>scala-library</artifactId>
+                <version>2.10.2</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.cofoja</groupId>
+                <artifactId>cofoja</artifactId>
+                <version>1.0-r139</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf</groupId>
+                <artifactId>sam</artifactId>
+                <version>${sam.version}</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>org.testng</groupId>
+                        <artifactId>testng</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>net.sf</groupId>
+                <artifactId>picard</artifactId>
+                <version>${picard.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.broad</groupId>
+                <artifactId>tribble</artifactId>
+                <version>${tribble.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>org.broadinstitute</groupId>
+                <artifactId>variant</artifactId>
+                <version>${variant.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>log4j</groupId>
+                <artifactId>log4j</artifactId>
+                <version>1.2.15</version>
+                <exclusions>
+                    <exclusion>
+                        <groupId>com.sun.jdmk</groupId>
+                        <artifactId>jmxtools</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>javax.jms</groupId>
+                        <artifactId>jms</artifactId>
+                    </exclusion>
+                    <exclusion>
+                        <groupId>com.sun.jmx</groupId>
+                        <artifactId>jmxri</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+            <dependency>
+                <groupId>javax.mail</groupId>
+                <artifactId>mail</artifactId>
+                <version>1.4.4</version>
+            </dependency>
+            <dependency>
+                <groupId>colt</groupId>
+                <artifactId>colt</artifactId>
+                <version>1.2.0</version>
+            </dependency>
+            <dependency>
+                <groupId>it.unimi.dsi</groupId>
+                <artifactId>fastutil</artifactId>
+                <version>6.5.3</version>
+            </dependency>
+            <dependency>
+                <groupId>org.simpleframework</groupId>
+                <artifactId>simple-xml</artifactId>
+                <version>2.0.4</version>
+            </dependency>
+            <dependency>
+                <groupId>org.reflections</groupId>
+                <artifactId>reflections</artifactId>
+                <version>0.9.8</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-log4j12</artifactId>
+                <version>1.6.1</version>
+            </dependency>
+            <dependency>
+                <groupId>gov.nist.math</groupId>
+                <artifactId>jama</artifactId>
+                <version>1.0.2</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.jgrapht</groupId>
+                <artifactId>jgrapht</artifactId>
+                <version>0.8.3</version>
+            </dependency>
+            <dependency>
+                <groupId>org.freemarker</groupId>
+                <artifactId>freemarker</artifactId>
+                <version>2.3.18</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-email</artifactId>
+                <version>1.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-jexl</artifactId>
+                <version>2.1.1</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-lang</groupId>
+                <artifactId>commons-lang</artifactId>
+                <version>2.5</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-logging</groupId>
+                <artifactId>commons-logging</artifactId>
+                <version>1.1.1</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-collections</groupId>
+                <artifactId>commons-collections</artifactId>
+                <version>3.2.1</version>
+            </dependency>
+            <dependency>
+                <groupId>commons-httpclient</groupId>
+                <artifactId>commons-httpclient</artifactId>
+                <version>3.1</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-math</artifactId>
+                <version>2.2</version>
+            </dependency>
+            <dependency>
+                <groupId>net.java.dev.jna</groupId>
+                <artifactId>jna</artifactId>
+                <version>3.2.7</version>
+            </dependency>
+            <dependency>
+                <groupId>net.java.dev.jets3t</groupId>
+                <artifactId>jets3t</artifactId>
+                <version>0.8.1</version>
+            </dependency>
+            <dependency>
+                <groupId>us.levk</groupId>
+                <artifactId>drmaa-gridengine</artifactId>
+                <version>6.2u5</version>
+            </dependency>
+            <dependency>
+                <groupId>net.sf.snpeff</groupId>
+                <artifactId>snpeff</artifactId>
+                <version>2.0.5</version>
+            </dependency>
+            <dependency>
+                <groupId>org.mongodb</groupId>
+                <artifactId>mongo-java-driver</artifactId>
+                <version>2.7.3</version>
+            </dependency>
+            <dependency>
+                <groupId>com.google.code.gson</groupId>
+                <artifactId>gson</artifactId>
+                <version>2.2.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.apache.httpcomponents</groupId>
+                <artifactId>httpclient</artifactId>
+                <version>4.1.1</version>
+            </dependency>
+
+            <!--
+            For com.sun.javadoc
+            See also: http://sunnytalkstech.blogspot.in/2011/08/maven-dependency-for-toolsjar-in-jdk7.html
+            -->
+            <dependency>
+                <groupId>com.sun</groupId>
+                <artifactId>tools</artifactId>
+                <version>1.4.2</version>
+                <scope>system</scope>
+                <systemPath>${java.home}/../lib/tools.jar</systemPath>
+            </dependency>
+
+            <dependency>
+                <groupId>org.testng</groupId>
+                <artifactId>testng</artifactId>
+                <version>6.8</version>
+                <scope>test</scope>
+            </dependency>
+            <dependency>
+                <groupId>com.google.caliper</groupId>
+                <artifactId>caliper</artifactId>
+                <version>0.5-rc1</version>
+                <scope>test</scope>
+                <exclusions>
+                    <!--
+                    TODO: After upgrade to caliper 1.0-beta-1 or later, this may need a revisit.
+                    Possibly other modules may need to exclude *their* old guava versions.
+                     -->
+                    <exclusion>
+                        <groupId>com.google.guava</groupId>
+                        <artifactId>guava</artifactId>
+                    </exclusion>
+                </exclusions>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <!-- Plugin configuration -->
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>1.2.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>com.lukegb.mojo</groupId>
+                    <artifactId>gitdescribe-maven-plugin</artifactId>
+                    <version>2.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>1.8</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>2.5</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>2.8</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>2.6</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>2.9.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.scala-tools</groupId>
+                    <artifactId>maven-scala-plugin</artifactId>
+                    <version>2.15.2</version>
+                    <configuration>
+                        <jvmArgs>
+                            <jvmArg>-Xmx${scala.maxmemory}</jvmArg>
+                        </jvmArgs>
+                    </configuration>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>2.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-enforcer-plugin</artifactId>
+                    <version>1.3.1</version>
+                </plugin>
+                <!--
+                surefire/failsafe configurations are global, even across poms
+                not directly aggregated, for example package-tests/pom.xml
+                -->
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.16</version>
+                    <configuration>
+                        <!-- See explicit executions below -->
+                        <skip>true</skip>
+                        <failIfNoTests>false</failIfNoTests>
+                        <useFile>false</useFile>
+                        <reportFormat>plain</reportFormat>
+                        <argLine>${test.args}</argLine>
+                        <properties>
+                            <property>
+                                <name>usedefaultlisteners</name>
+                                <value>false</value>
+                            </property>
+                        </properties>
+                        <systemPropertyVariables>
+                            <clover.pertest.coverage>diff</clover.pertest.coverage>
+                            <java.awt.headless>true</java.awt.headless>
+                            <java.io.tmpdir>${java.io.tmpdir}</java.io.tmpdir>
+                        </systemPropertyVariables>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>default-test</id>
+                            <phase>none</phase>
+                        </execution>
+                        <execution>
+                            <!-- run all non integration tests -->
+                            <id>unit-tests</id>
+                            <goals>
+                                <goal>test</goal>
+                            </goals>
+                            <configuration>
+                                <!-- TODO: Re-enable unit tests by default? -->
+                                <skip>${sting.unittests.skipped}</skip>
+                                <reportsDirectory>${project.build.directory}/surefire-reports/unit/${test}</reportsDirectory>
+                                <includes>
+                                    <include>**/*UnitTest.class</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>2.16</version>
+                    <configuration>
+                        <!-- See explicit executions below -->
+                        <skip>true</skip>
+                        <failIfNoTests>false</failIfNoTests>
+                        <useFile>false</useFile>
+                        <reportFormat>plain</reportFormat>
+                        <argLine>${test.args}</argLine>
+                        <properties>
+                            <property>
+                                <name>usedefaultlisteners</name>
+                                <value>false</value>
+                            </property>
+                        </properties>
+                        <systemPropertyVariables>
+                            <clover.pertest.coverage>diff</clover.pertest.coverage>
+                            <java.awt.headless>true</java.awt.headless>
+                            <!-- TODO: Fix BaseTest to not error out if this property is missing. -->
+                            <queuetest.run>${sting.queuetests.run}</queuetest.run>
+                            <java.io.tmpdir>${java.io.tmpdir}</java.io.tmpdir>
+                        </systemPropertyVariables>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <id>integration-tests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <!-- run integration tests -->
+                            <configuration>
+                                <!-- TODO: Re-enable integration tests by default? -->
+                                <skip>${sting.integrationtests.skipped}</skip>
+                                <reportsDirectory>${project.build.directory}/failsafe-reports/integration/${it.test}</reportsDirectory>
+                                <summaryFile>${project.build.directory}/failsafe-reports/integration/failsafe-summary-${it.test}.xml</summaryFile>
+                                <includes>
+                                    <include>**/*IntegrationTest.class</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>queue-tests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <!-- run queue dry run tests -->
+                            <configuration>
+                                <!-- TODO: Re-enable queue tests by default? -->
+                                <skip>${sting.queuetests.skipped}</skip>
+                                <reportsDirectory>${project.build.directory}/failsafe-reports/queuetest/${it.test}</reportsDirectory>
+                                <summaryFile>${project.build.directory}/failsafe-reports/queuetest/failsafe-summary-${it.test}.xml</summaryFile>
+                                <includes>
+                                    <include>**/*QueueTest.class</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>large-scale-tests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <!-- run large scale tests -->
+                            <configuration>
+                                <skip>${sting.largescaletests.skipped}</skip>
+                                <reportsDirectory>${project.build.directory}/failsafe-reports/largescale/${it.test}</reportsDirectory>
+                                <summaryFile>${project.build.directory}/failsafe-reports/largescale/failsafe-summary-${it.test}.xml</summaryFile>
+                                <includes>
+                                    <include>**/*LargeScaleTest.class</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>knowledge-base-tests</id>
+                            <goals>
+                                <goal>integration-test</goal>
+                                <goal>verify</goal>
+                            </goals>
+                            <!-- run knowledge base tests -->
+                            <configuration>
+                                <skip>${sting.knowledgebasetests.skipped}</skip>
+                                <reportsDirectory>${project.build.directory}/failsafe-reports/knowledgebasetests/${it.test}</reportsDirectory>
+                                <summaryFile>${project.build.directory}/failsafe-reports/knowledgebasetests/failsafe-summary-${it.test}.xml</summaryFile>
+                                <includes>
+                                    <include>**/*KnowledgeBaseTest.class</include>
+                                </includes>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>com.google.code.sortpom</groupId>
+                    <artifactId>maven-sortpom-plugin</artifactId>
+                    <version>2.2</version>
+                    <configuration>
+                        <createBackupFile>false</createBackupFile>
+                        <predefinedSortOrder>custom_1</predefinedSortOrder>
+                        <lineSeparator>\n</lineSeparator>
+                        <encoding>${sourceEncoding}</encoding>
+                        <keepBlankLines>true</keepBlankLines>
+                        <sortDependencies>scope</sortDependencies>
+                        <nrOfIndentSpace>4</nrOfIndentSpace>
+                        <expandEmptyElements>false</expandEmptyElements>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <goals>
+                                <goal>sort</goal>
+                            </goals>
+                            <phase>verify</phase>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- TODO: Remove temporary symbolic link creation, after fixing test paths to use local resources. -->
+                <plugin>
+                    <groupId>com.pyx4j</groupId>
+                    <artifactId>maven-junction-plugin</artifactId>
+                    <version>1.0.3</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-invoker-plugin</artifactId>
+                    <version>1.8</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>2.5</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-site-plugin</artifactId>
+                    <version>3.3</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+
+        <!-- Invoke plugins that always run -->
+        <plugins>
+            <plugin>
+                <groupId>com.lukegb.mojo</groupId>
+                <artifactId>gitdescribe-maven-plugin</artifactId>
+                <configuration>
+                    <extraArguments>
+                        <param>--long</param>
+                    </extraArguments>
+                    <setReactorProjectsProperties>true</setReactorProjectsProperties>
+                    <descriptionProperty>git.version</descriptionProperty>
+                    <failOutput>exported</failOutput>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>gitdescribe-initialize</id>
+                        <goals>
+                            <goal>gitdescribe</goal>
+                        </goals>
+                        <phase>initialize</phase>
+                    </execution>
+                    <execution>
+                        <id>gitdescribe-presite</id>
+                        <goals>
+                            <goal>gitdescribe</goal>
+                        </goals>
+                        <phase>pre-site</phase>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <!-- TODO: gitdescribe plugin doesn't allow null prefixes -->
+                <executions>
+                    <execution>
+                        <id>fix-version-initialize</id>
+                        <goals>
+                            <goal>regex-property</goal>
+                        </goals>
+                        <phase>initialize</phase>
+                        <configuration>
+                            <name>build.version</name>
+                            <value>${git.version}</value>
+                            <regex>git-</regex>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>fix-version-pre-site</id>
+                        <goals>
+                            <goal>regex-property</goal>
+                        </goals>
+                        <phase>pre-site</phase>
+                        <configuration>
+                            <name>build.version</name>
+                            <value>${git.version}</value>
+                            <regex>git-</regex>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>com.google.code.sortpom</groupId>
+                <artifactId>maven-sortpom-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default</id>
+                        <goals>
+                            <goal>sort</goal>
+                        </goals>
+                        <phase>verify</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <reporting>
+        <excludeDefaults>true</excludeDefaults>
+    </reporting>
+
+    <repositories>
+        <repository>
+            <id>sting.public.repo.local</id>
+            <name>Sting Public Local Repository</name>
+            <url>file:${sting.basedir}/public/repo</url>
+        </repository>
+    </repositories>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.broadinstitute.sting</groupId>
+        <artifactId>sting-aggregator</artifactId>
+        <version>3.1</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>sting-utils</artifactId>
+    <packaging>jar</packaging>
+    <name>Sting Utils</name>
+
+    <properties>
+        <sting.basedir>${project.basedir}/../..</sting.basedir>
+        <gsalib.packagedir>org/broadinstitute/sting/utils/R</gsalib.packagedir>
+        <gsalib.filename>gsalib.tar.gz</gsalib.filename>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>net.sf</groupId>
+            <artifactId>sam</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.sf</groupId>
+            <artifactId>picard</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.broad</groupId>
+            <artifactId>tribble</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.broadinstitute</groupId>
+            <artifactId>variant</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>colt</groupId>
+            <artifactId>colt</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>it.unimi.dsi</groupId>
+            <artifactId>fastutil</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.simpleframework</groupId>
+            <artifactId>simple-xml</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.reflections</groupId>
+            <artifactId>reflections</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.freemarker</groupId>
+            <artifactId>freemarker</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-jexl</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-collections</groupId>
+            <artifactId>commons-collections</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-math</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.java.dev.jna</groupId>
+            <artifactId>jna</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>net.java.dev.jets3t</groupId>
+            <artifactId>jets3t</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>us.levk</groupId>
+            <artifactId>drmaa-gridengine</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.gson</groupId>
+            <artifactId>gson</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.httpcomponents</groupId>
+            <artifactId>httpclient</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.google.code.cofoja</groupId>
+            <artifactId>cofoja</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>${project.groupId}</groupId>
+            <artifactId>gsalib</artifactId>
+            <version>${project.version}</version>
+            <type>tar.gz</type>
+        </dependency>
+
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.google.caliper</groupId>
+            <artifactId>caliper</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-gsalib</id>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <phase>process-resources</phase>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>${project.groupId}</groupId>
+                                    <artifactId>gsalib</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>tar.gz</type>
+                                    <outputDirectory>${project.build.outputDirectory}/${gsalib.packagedir}</outputDirectory>
+                                    <destFileName>${gsalib.filename}</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

@@ -1,0 +1,1138 @@
+<project name="OpenFaces Project Build Script" default="build" basedir=".">
+
+  <property name="components.dir" location="openFaces"/>
+
+  <buildnumber file="build.number"/>
+  <property file="ofversion.properties"/>
+  <property name="of-version" value="${ofversion}.${build.number}"/>
+
+  <property name="build.compiler" value="javac1.5"/>
+
+  <property name="target.dir" location="target"/>
+  <property name="target-lib.dir" location="${target.dir}/lib"/>
+  <property name="openfaces-jar.file" location="${target-lib.dir}/openfaces-${of-version}.jar"/>
+  <property name="openfaces-weblogic-jar.file" location="${target-lib.dir}/openfaces-${of-version}-weblogic-jsp.jar"/>
+
+  <property name="test-app-jsp.dir" location="testApp/jsp"/>
+  <property name="test-app-facelets.dir" location="testApp/facelets"/>
+  <property name="live-demo.dir" location="liveDemo/jsp"/>
+  <property name="live-demo-facelets.dir" location="liveDemo/facelets"/>
+
+
+  <property name="funcTests.dir" location="funcTests"/>
+  <property name="funcTests-source.dir" location="${funcTests.dir}/source"/>
+  <property name="funcTests-target.dir" location="${funcTests.dir}/target"/>
+  <property name="funcTests-target-reports.dir" location="${funcTests-target.dir}/test-reports"/>
+  <property name="funcTestsFramework.dir" location="openFacesInspectors"/>
+  <property name="funcTestsFramework-source.dir" location="${funcTestsFramework.dir}/source"/>
+  <property name="funcTestsFramework-target.dir" location="${funcTestsFramework.dir}/out"/>
+  <property name="funcTestsFramework-distrib.dir" location="${funcTestsFramework.dir}/distribution"/>
+  <property name="funcTestsFramework-temp.dir" location="${funcTestsFramework.dir}/temp"/>
+  <property name="openfaces-inspectors-jar.file" location="${funcTestsFramework-distrib.dir}/openfaces-inspectors.jar"/>
+  <property name="patched-selenium-server.file"
+            location="lib/seleniuminspector/selenium-server-standalone-2.14.0.jar"/>
+  <property name="funcTestsFrameworkManifest.file" location="${funcTestsFramework-target.dir}/manifest.mf"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <!-- *** Public Targets ** -->
+
+  <target name="build" depends="clean" description="Build OpenFaces core and all the demo applications">
+    <mkdir dir="${target.dir}"/>
+
+    <echo>Building OpenFaces core...</echo>
+    <ant dir="${components.dir}" target="build" inheritall="false">
+      <property name="build.compiler" value="javac1.5"/>
+      <property name="target-jar.file" value="${openfaces-jar.file}"/>
+      <property name="target-weblogic-jar.file" value="${openfaces-weblogic-jar.file}"/>
+      <property name="lib.dir" value="../lib"/>
+      <property name="retain.classes.dir" value="true"/>
+      <property file="ofversion.properties"/>
+    </ant>
+    <echo>OpenFaces core built successfully.</echo>
+
+    <echo>Building Test Application (JSP-based version)...</echo>
+    <ant dir="${test-app-jsp.dir}" target="build" inheritall="false">
+      <property name="openfaces-jar.file" value="${openfaces-jar.file}"/>
+      <property name="ofversion" value="${ofversion}"/>
+    </ant>
+    <echo>Test Application (JSP-based version) built successfully.</echo>
+
+    <echo>Building Test Application (Facelets-based version)...</echo>
+    <ant dir="${test-app-facelets.dir}" target="build" inheritall="false">
+      <property name="openfaces-jar.file" value="${openfaces-jar.file}"/>
+      <property name="ofversion" value="${ofversion}"/>
+    </ant>
+    <echo>Test Application (Facelets-based version) built successfully.</echo>
+
+    <echo>Building Live Demo (JSP-based version)...</echo>
+    <ant dir="${live-demo.dir}" target="build" inheritall="false">
+      <property name="openfaces-jar.file" value="${openfaces-jar.file}"/>
+      <property name="ofversion" value="${ofversion}"/>
+    </ant>
+    <echo>Live Demo (JSP-based version) build successfully.</echo>
+
+    <echo>Building Live Demo (Facelets-based version)...</echo>
+    <ant dir="${live-demo-facelets.dir}" target="build" inheritall="false">
+      <property name="openfaces-jar.file" value="${openfaces-jar.file}"/>
+      <property name="ofversion" value="${ofversion}"/>
+    </ant>
+    <echo>Live Demo (Facelets-based version) build successfully.</echo>
+
+  </target>
+
+  <target name="clean" depends="init" description="clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <target name="compile-func-test-framework" description="Compile framework required for functional testing">
+    <mkdir dir="${funcTestsFramework-target.dir}"/>
+    <javac srcdir="${funcTestsFramework-source.dir}" destdir="${funcTestsFramework-target.dir}" debug="true"
+           source="1.5" target="1.5">
+      <classpath>
+        <pathelement path="lib/seleniuminspector/selenium-java-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-server-standalone-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-inspector.jar"/>
+        <pathelement path="testLib/junit.jar"/>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+    <manifest file="${funcTestsFrameworkManifest.file}">
+      <attribute name="Implementation-Title" value="OpenFaces Selenium Inspectors"/>
+      <attribute name="Implementation-Vendor" value="TeamDev Ltd."/>
+    </manifest>
+    <mkdir dir="${funcTestsFramework-distrib.dir}"/>
+    <jar jarfile="${openfaces-inspectors-jar.file}" basedir="${funcTestsFramework-target.dir}"/>
+    <copy file="lib/seleniuminspector/selenium-server-standalone-2.14.0.jar" todir="${funcTestsFramework-distrib.dir}"/>
+    <copy file="lib/seleniuminspector/selenium-java-2.14.0.jar" todir="${funcTestsFramework-distrib.dir}"/>
+  </target>
+
+  <target name="compile-func-tests" depends="compile-func-test-framework" description="Compile functional tests">
+    <delete dir="${funcTests-target.dir}/classes"/>
+    <mkdir dir="${funcTests-target.dir}/classes"/>
+    <javac srcdir="${funcTests-source.dir}" destdir="${funcTests-target.dir}/classes" debug="true" encoding="UTF-8">
+      <classpath>
+        <pathelement path="${openfaces-jar.file}"/>
+        <pathelement path="${openfaces-inspectors-jar.file}"/>
+        <pathelement path="testLib/junit.jar"/>
+        <pathelement path="testLib/jai/mlibwrapper_jai.jar"/>
+        <pathelement path="testLib/jai/jai_core.jar"/>
+        <pathelement path="testLib/jai/jai_codec.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-java-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-server-standalone-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-inspector.jar"/>
+      </classpath>
+    </javac>
+    <copy todir="${funcTests-target.dir}/classes">
+      <fileset dir="${funcTests-source.dir}">
+        <include name="**/*.properties"/>
+        <include name="**/*.lic"/>
+        <include name="**/*.png"/>
+        <include name="**/*.dll"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="run-func-tests" depends="compile-func-tests" description="Run functional tests">
+
+    <mkdir dir="${funcTests-target-reports.dir}"/>
+
+    <condition property="testAppContextPath" value="${context.path}">
+      <not>
+        <isset property="test.app.context.path"/>
+      </not>
+    </condition>
+    <condition property="testAppContextPath" value="${test.app.context.path}">
+      <isset property="test.app.context.path"/>
+    </condition>
+
+    <condition property="demoContextPath" value="${demoContext.path}">
+      <not>
+        <isset property="demo.context.path"/>
+      </not>
+    </condition>
+    <condition property="demoContextPath" value="${demo.context.path}">
+      <isset property="demo.context.path"/>
+    </condition>
+
+    <junit fork="yes" forkmode="once" failureproperty="junit_test_failed" dir="${funcTests-target.dir}">
+      <classpath>
+        <pathelement path="${openfaces-jar.file}"/>
+        <pathelement path="lib/seleniuminspector/selenium-server-standalone-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-java-2.14.0.jar"/>
+        <pathelement path="lib/seleniuminspector/selenium-inspector.jar"/>
+        <pathelement path="lib/mojarra/jsf-api-1.2_12-b01.jar"/>
+        <pathelement location="${funcTests-target.dir}/classes"/>
+        <pathelement path="${openfaces-inspectors-jar.file}"/>
+        <pathelement path="testLib/junit.jar"/>
+        <pathelement path="testLib/jai/mlibwrapper_jai.jar"/>
+        <pathelement path="testLib/jai/jai_core.jar"/>
+        <pathelement path="testLib/jai/jai_codec.jar"/>
+      </classpath>
+      <formatter type="xml"/>
+      <formatter usefile="false" type="plain"/>
+      <batchtest todir="${funcTests-target-reports.dir}">
+        <fileset dir="${funcTests-source.dir}">
+          <include name="**/*Test.java"/>
+        </fileset>
+      </batchtest>
+      <sysproperty key="test.app.jsf.implementation" value="${jsf.implementation}"/>
+      <sysproperty key="test.app.is.facelets" value="${is.facelets}"/>
+      <sysproperty key="test.app.context.path" value="${testAppContextPath}"/>
+      <sysproperty key="demo.context.path" value="${demoContextPath}"/>
+    </junit>
+
+    <copy todir="${funcTests-source.dir}">
+      <fileset dir="${funcTests-target.dir}/classes">
+        <include name="**/*.png"/>
+      </fileset>
+    </copy>
+
+    <fail if="junit_test_failed" message="FUNCTIONAL TEST(S) FAILED"/>
+  </target>
+
+  <target name="run-func-tests-jsp" description="Run functional tests in JSP-based JSF 1.2 environment">
+    <property name="jsf.implementation" value="SUN12"/>
+    <property name="is.facelets" value="false"/>
+    <property name="context.path" value="/TestAppJsp_2x"/>
+    <property name="demoContext.path" value="/LiveDemoJsp_2x"/>
+
+  </target>
+
+  <target name="run-func-tests-facelets" description="Run functional tests in Facelets-based JSF 1.2 environment">
+    <property name="jsf.implementation" value="SUN12"/>
+    <property name="is.facelets" value="true"/>
+    <property name="context.path" value="/TestAppFacelets_2x"/>
+    <property name="demoContext.path" value="/LiveDemoFacelets_2x"/>
+
+  </target>
+
+</project>
+<project name="OpenFaces Demo -- Facelets Version" default="build" basedir=".">
+
+  <!-- *** Resources *** -->
+
+  <property name="lib.dir" location="../../lib"/>
+  <property name="apache.lib.dir" location="../../lib/apache"/>
+  <property name="openfaces-dependencies.lib.dir" location="../../lib/openfaces-dependencies"/>
+  <property name="el.lib.dir" location="../../lib/el"/>
+  <property name="facelets.lib.dir" location="../../lib/facelets"/>
+  <property name="jsf.lib.dir" location="../../lib/mojarra"/>
+
+  <property name="src.dir" location="../core/source"/>
+  <property name="web-inf.dir" location="WEB-INF"/>
+  <property name="web-inf-core.dir" location="../core/WEB-INF"/>
+  <property name="resources.dir" location="resources"/>
+  <property name="resources-core.dir" location="../core/resources"/>
+  <property name="target.dir" location="target"/>
+  <property name="resources.target.dir" location="${target.dir}/resources"/>
+  <property name="target-war.file" location="${target.dir}/openfaces-demo-facelets.war"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+
+  <fileset id="basic-libraries" dir="${lib.dir}">
+    <include name="jstl-1.1.0.jar"/>
+  </fileset>
+
+  <fileset id="apache" dir="${apache.lib.dir}">
+    <include name="commons-beanutils-1.6.jar"/>
+    <include name="commons-collections-3.2.1.jar"/>
+    <include name="commons-digester-1.6.jar"/>
+    <include name="commons-logging-1.1.1.jar"/>
+    <include name="commons-lang-2.1.jar"/>
+  </fileset>
+
+  <fileset id="openfaces-dependencies" dir="${openfaces-dependencies.lib.dir}">
+    <include name="jfreechart-1.0.13.jar"/>
+    <include name="jcommon-1.0.16.jar"/>
+    <include name="jdom-1.0.jar"/>
+    <include name="cssparser-0.9.5.jar"/>
+    <include name="sac.jar"/>
+    <include name="commons-fileupload-1.2.2.jar"/>
+    <include name="commons-io-2.1.jar"/>
+  </fileset>
+
+  <fileset id="el-ri" dir="${el.lib.dir}">
+    <include name="el-ri-1.5.0.jar"/>
+  </fileset>
+
+  <fileset id="facelets" dir="${facelets.lib.dir}">
+    <include name="jsf-facelets-1.1.15.jar"/>
+  </fileset>
+
+  <fileset id="mojarra-1.2" dir="${jsf.lib.dir}">
+    <include name="jsf-api-1.2_12-b01.jar"/>
+    <include name="jsf-impl-1.2_12-b01.jar"/>
+  </fileset>
+
+  <!-- *** Public Targets ** -->
+
+  <target name="build" depends="-fail-if-no-openfaces-jar,-build-war"
+          description="generate the distribution"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="compile" depends="-fail-if-no-openfaces-jar,-compile"
+          description="Compile the source code for Live Demo application (Facelets-based version)">
+  </target>
+
+  <target name="copy-resources">
+    <copy todir="${classes.dir}">
+      <fileset dir="${src.dir}">
+        <exclude name="**/*.java"/>
+      </fileset>
+    </copy>
+  </target>
+
+
+  <target name="prepare-resources">
+    <copy todir="${resources.target.dir}">
+      <fileset dir="${resources.dir}"/>
+      <fileset dir="${resources-core.dir}"/>
+    </copy>
+    <replace dir="${resources.target.dir}" includes="**/*.jsp, **/*.xhtml" token="__OpenFacesVersion__"
+             value="${ofversion}"/>
+  </target>
+
+  <target name="deploy" depends="build" description="deploy war" if="deploy.dir">
+    <copy file="${target-war.file}" todir="${deploy.dir}"/>
+  </target>
+
+  <target name="clean" description="clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-compile" depends="clean, init" if="openfaces-jar.file">
+    <echo>Compiling source code of Live Demo application (Facelets-based version)...</echo>
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="jsp-api-2.1.jar"/>
+          <include name="mojarra/jsf-api-1.2_12-b01.jar"/>
+          <include name="servlet-api.jar"/>
+          <include name="apache/commons-digester-1.6.jar"/>
+          <include name="apache/commons-lang-2.1.jar"/>
+          <include name="openfaces-dependencies/jdom-1.0.jar"/>
+          <include name="openfaces-dependencies/jfreechart-1.0.13.jar"/>
+          <include name="openfaces-dependencies/jcommon-1.0.16.jar"/>
+          <include name="jstl-1.1.0.jar"/>
+          <include name="openfaces-dependencies/cssparser-0.9.5.jar"/>
+          <include name="openfaces-dependencies/sac.jar"/>
+          <include name="facelets/jsf-facelets-1.1.15.jar"/>
+          <include name="el/el-api-1.5.0.jar"/>
+          <include name="el/el-ri-1.5.0.jar"/>
+          <include name="openfaces-dependencies/commons-fileupload-1.2.2.jar"/>
+          <include name="openfaces-dependencies/commons-io-2.1.jar"/>
+        </fileset>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+    <echo>Compilation successful.</echo>
+  </target>
+
+  <target name="-build-war" depends="compile,copy-resources,prepare-resources">
+    <echo>Building WAR for Live Demo application (Facelets-based version)...</echo>
+    <property name="webxml" value="web.xml"/>
+    <war destfile="${target-war.file}" basedir="${resources.target.dir}" webxml="${web-inf.dir}/${webxml}">
+      <webinf dir="${web-inf.dir}">
+        <exclude name="${webxml}"/>
+      </webinf>
+      <webinf dir="${web-inf-core.dir}">
+        <exclude name="${webxml}"/>
+      </webinf>
+      <lib file="${openfaces-jar.file}"/>
+      <lib refid="basic-libraries"/>
+      <lib refid="mojarra-1.2"/>
+      <lib refid="openfaces-dependencies"/>
+      <lib refid="apache"/>
+      <lib refid="el-ri"/>
+      <lib refid="facelets"/>
+      <classes dir="${classes.dir}"/>
+    </war>
+    <echo>WAR built successfully.</echo>
+  </target>
+
+  <target name="-fail-if-no-openfaces-jar" unless="openfaces-jar.file">
+    <fail>"openfaces-jar.file" property must be specified</fail>
+  </target>
+
+
+</project><project name="OpenFaces Demo -- JSP Version" default="build" basedir=".">
+
+  <!-- *** Resources *** -->
+
+  <property name="lib.dir" location="../../lib"/>
+  <property name="apache.lib.dir" location="../../lib/apache"/>
+  <property name="openfaces-dependencies.lib.dir" location="../../lib/openfaces-dependencies"/>
+  <property name="el.lib.dir" location="../../lib/el"/>
+  <property name="jsf.lib.dir" location="../../lib/mojarra"/>
+  <property name="src.dir" location="../core/source"/>
+  <property name="web-inf.dir" location="WEB-INF"/>
+  <property name="web-inf-core.dir" location="../core/WEB-INF"/>
+  <property name="resources.dir" location="resources"/>
+  <property name="resources-core.dir" location="../core/resources"/>
+  <property name="target.dir" location="target"/>
+  <property name="resources.target.dir" location="${target.dir}/resources"/>
+  <property name="target-war.file" location="${target.dir}/openfaces-demo-jsp.war"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+
+
+  <fileset id="basic-libraries" dir="${lib.dir}">
+    <include name="jstl-1.1.0.jar"/>
+  </fileset>
+
+  <fileset id="apache" dir="${apache.lib.dir}">
+    <include name="commons-beanutils-1.6.jar"/>
+    <include name="commons-collections-3.2.1.jar"/>
+    <include name="commons-digester-1.6.jar"/>
+    <include name="commons-logging-1.1.1.jar"/>
+    <include name="commons-lang-2.1.jar"/>
+  </fileset>
+
+  <fileset id="openfaces-dependencies" dir="${openfaces-dependencies.lib.dir}">
+    <include name="jfreechart-1.0.13.jar"/>
+    <include name="jcommon-1.0.16.jar"/>
+    <include name="jdom-1.0.jar"/>
+    <include name="cssparser-0.9.5.jar"/>
+    <include name="commons-fileupload-1.2.2.jar"/>
+    <include name="commons-io-2.1.jar"/>
+    <include name="sac.jar"/>
+  </fileset>
+
+  <fileset id="mojarra-1.2" dir="${jsf.lib.dir}">
+    <include name="jsf-api-1.2_12-b01.jar"/>
+    <include name="jsf-impl-1.2_12-b01.jar"/>
+  </fileset>
+
+  <!-- *** Public Targets ** -->
+  <target name="build" depends="-fail-if-no-openfaces-jar,-build-war"
+          description="generate the distribution"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="compile" depends="-fail-if-no-openfaces-jar,-compile" description="compile the source">
+  </target>
+
+  <target name="copy-resources">
+    <copy todir="${classes.dir}">
+      <fileset dir="${src.dir}">
+        <exclude name="**/*.java"/>
+      </fileset>
+    </copy>
+  </target>
+
+
+  <target name="prepare-resources">
+    <copy todir="${resources.target.dir}">
+      <fileset dir="${resources.dir}"/>
+      <fileset dir="${resources-core.dir}"/>
+    </copy>
+    <replace dir="${resources.target.dir}" includes="**/*.jsp, **/*.xhtml" token="__OpenFacesVersion__"
+             value="${ofversion}"/>
+  </target>
+
+  <target name="deploy" depends="build" description="deploy war" if="deploy.dir">
+    <copy file="${target-war.file}" todir="${deploy.dir}"/>
+  </target>
+
+  <target name="clean" description="clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-build-war" depends="compile,copy-resources,prepare-resources">
+    <echo>Building WAR for Live Demo application (Facelets-based version)...</echo>
+    <property name="webxml" value="web.xml"/>
+    <war destfile="${target-war.file}" basedir="${resources.target.dir}" webxml="${web-inf.dir}/${webxml}">
+      <webinf dir="${web-inf.dir}">
+        <exclude name="${webxml}"/>
+      </webinf>
+      <webinf dir="${web-inf-core.dir}">
+        <exclude name="${webxml}"/>
+      </webinf>
+      <lib file="${openfaces-jar.file}"/>
+      <lib refid="basic-libraries"/>
+      <lib refid="mojarra-1.2"/>
+      <lib refid="apache"/>
+      <lib refid="openfaces-dependencies"/>
+      <classes dir="${classes.dir}"/>
+    </war>
+    <echo>WAR built successfully.</echo>
+  </target>
+
+  <target name="-compile" depends="clean, init" if="openfaces-jar.file">
+    <echo>Compiling source code of Live Demo application (JSP-based version)...</echo>
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="jsp-api-2.1.jar"/>
+          <include name="mojarra/jsf-api-1.2_12-b01.jar"/>
+          <include name="servlet-api.jar"/>
+          <include name="apache/commons-digester-1.6.jar"/>
+          <include name="apache/commons-lang-2.1.jar"/>
+          <include name="openfaces-dependencies/jdom-1.0.jar"/>
+          <include name="openfaces-dependencies/jfreechart-1.0.13.jar"/>
+          <include name="openfaces-dependencies/jcommon-1.0.16.jar"/>
+          <include name="jstl-1.1.0.jar"/>
+          <include name="openfaces-dependencies/cssparser-0.9.5.jar"/>
+          <include name="openfaces-dependencies/sac.jar"/>
+          <include name="facelets/jsf-facelets-1.1.15.jar"/>
+          <include name="el/el-api-1.5.0.jar"/>
+          <include name="el/el-ri-1.5.0.jar"/>
+          <include name="openfaces-dependencies/commons-fileupload-1.2.2.jar"/>
+          <include name="openfaces-dependencies/commons-io-2.1.jar"/>
+
+        </fileset>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+    <echo>Compilation successful.</echo>
+  </target>
+
+  <target name="-fail-if-no-openfaces-jar" unless="openfaces-jar.file">
+    <fail>"openfaces-jar.file" property must be specified</fail>
+  </target>
+
+
+</project><project name="OpenFaces Library" default="build" basedir=".">
+
+  <buildnumber file="build.number"/>
+  <property file="ofversion.properties"/>
+
+  <property name="src.dir" location="source"/>
+  <property name="target.dir" location="target"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+  <property name="of-version" value="${ofversion}.${build.number}"/>
+  <property name="openfaces-jar.file" location="${target.dir}/openfaces-${of-version}.jar"/>
+  <property name="openfaces-weblogic-jsp-jar-.file" location="${target.dir}/openfaces-weblogic-jsp.jar"/>
+  <property name="manifest.file" location="${target.dir}/manifest.mf"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="clean" description="Clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <target name="compile" depends="init" description="Compile the source code">
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="jsp-api-2.1.jar"/>
+          <include name="servlet-api.jar"/>
+          <include name="jstl-1.1.0.jar"/>
+          <include name="javax.servlet-3.0.jar"/>
+        </fileset>
+        <fileset dir="${facelets.lib.dir}">
+          <include name="jsf-facelets-1.1.15.jar"/>
+        </fileset>
+        <fileset dir="${el.lib.dir}">
+          <include name="el-api-1.5.0.jar"/>
+          <include name="el-ri-1.5.0.jar"/>
+        </fileset>
+        <fileset dir="${trinidad.lib.dir}">
+          <include name="trinidad-stub.jar"/>
+        </fileset>
+        <fileset dir="${adffaces.lib.dir}">
+          <include name="adf-faces-api-10.1.3.0.4.jar"/>
+        </fileset>
+        <fileset dir="${jsf.ri.lib.dir}">
+          <include name="jsf-api-1.2_12-b01.jar"/>
+        </fileset>
+        <fileset dir="${myfaces.lib.dir}">
+          <include name="myfaces-impl-1.2.3.jar"/>
+        </fileset>
+        <fileset dir="${portlets.lib.dir}">
+          <include name="exoportal-stub.jar"/>
+          <include name="portlet-api-2.0.jar"/>
+          <include name="jboss/portletbridge-api-2.1.0.FINAL.jar"/>
+          <include name="jboss/portletbridge-impl-2.1.0.FINAL.jar"/>
+          <include name="jsf-portlet-1.2.jar"/>
+        </fileset>
+        <fileset dir="${openfaces.dependencies.lib.dir}">
+          <include name="jdom-1.0.jar"/>
+          <include name="jfreechart-1.0.13.jar"/>
+          <include name="jcommon-1.0.16.jar"/>
+          <include name="cssparser-0.9.5.jar"/>
+          <include name="sac.jar"/>
+          <include name="commons-collections-3.2.1.jar"/>
+          <include name="hibernate-commons-annotations.jar"/>
+          <include name="hibernate-validator.jar"/>
+          <include name="jboss-el.jar"/>
+          <include name="commons-fileupload-1.2.2.jar"/>
+          <include name="commons-io-2.1.jar"/>
+        </fileset>
+        <fileset dir="${richfaces.lib.dir}">
+          <include name="richfaces-api-3.3.3.Final.jar"/>
+          <include name="richfaces-impl-3.3.3.Final.jar"/>
+          <include name="richfaces-ui-3.3.3.Final.jar"/>
+        </fileset>
+        <fileset dir="${apache.lib.dir}">
+          <include name="commons-collections-3.2.1.jar"/>
+          <include name="commons-beanutils-1.7.0.jar"/>
+          <include name="commons-logging-1.1.1.jar"/>
+        </fileset>
+        <fileset dir="${seam.lib.dir}">
+          <include name="hibernate-all.jar"/>
+        </fileset>
+
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="build" depends="clean" description="Generate the distribution">
+    <antcall target="-build-if-lib-set"/>
+    <antcall target="-build-if-lib-not-set"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-build-if-lib-set" if="lib.dir"
+          description="generate the distribution">
+    <property name="facelets.lib.dir" location="${lib.dir}/facelets"/>
+    <property name="el.lib.dir" location="${lib.dir}/el"/>
+    <property name="trinidad.lib.dir" location="${lib.dir}/trinidad"/>
+    <property name="adffaces.lib.dir" location="${lib.dir}/adf-faces"/>
+    <property name="jsf.ri.lib.dir" location="${lib.dir}/mojarra"/>
+    <property name="portlets.lib.dir" location="${lib.dir}/portals"/>
+    <property name="openfaces.dependencies.lib.dir" location="${lib.dir}/openfaces-dependencies"/>
+    <property name="richfaces.lib.dir" location="${lib.dir}/richfaces"/>
+    <property name="myfaces.lib.dir" location="${lib.dir}/myfaces"/>
+    <property name="apache.lib.dir" location="${lib.dir}/apache"/>
+    <property name="seam.lib.dir" location="${lib.dir}/jboss-seam"/>
+    <antcall target="-build"/>
+  </target>
+
+  <target name="-build-if-lib-not-set" unless="lib.dir"
+          description="generate the distribution">
+    <property name="lib.dir" location="lib"/>
+    <property name="facelets.lib.dir" location="${lib.dir}/facelets"/>
+    <property name="el.lib.dir" location="${lib.dir}/el"/>
+    <property name="trinidad.lib.dir" location="${lib.dir}/trinidad"/>
+    <property name="adffaces.lib.dir" location="${lib.dir}/adf-faces"/>
+    <property name="jsf.ri.lib.dir" location="${lib.dir}/mojarra"/>
+    <property name="portlets.lib.dir" location="${lib.dir}/portals"/>
+    <property name="openfaces.dependencies.lib.dir" location="${lib.dir}/openfaces-dependencies"/>
+    <property name="richfaces.lib.dir" location="${lib.dir}/richfaces"/>
+    <property name="myfaces.lib.dir" location="${lib.dir}/myfaces"/>
+    <property name="apache.lib.dir" location="${lib.dir}/apache"/>
+    <property name="seam.lib.dir" location="${lib.dir}/jboss-seam"/>
+    <antcall target="-build" inheritall="true"/>
+  </target>
+
+  <target name="-build" depends="compile,-copy-resources,-prepare-manifest-and-version"
+          description="generate the distribution">
+    <jar jarfile="${openfaces-jar.file}" basedir="${classes.dir}" manifest="${manifest.file}"/>
+    <replace file="${classes.dir}/META-INF/openfaces.tld" token="http://openfaces.org/" value="http://openfaces.org"/>
+    <jar jarfile="${openfaces-weblogic-jsp-jar-.file}" basedir="${classes.dir}" manifest="${manifest.file}"/>
+    <replace file="${classes.dir}/META-INF/openfaces.tld" token="http://openfaces.org" value="http://openfaces.org/"/>
+    <antcall target="-copy-target-jar"/>
+    <antcall target="-copy-target-weblogic-jar"/>
+
+    <antcall target="-delete-classes-dir"/>
+    <delete file="${manifest.file}"/>
+  </target>
+
+  <target name="-delete-classes-dir" unless="retain.classes.dir">
+    <delete dir="${target.dir}/classes"/>
+  </target>
+
+  <target name="-prepare-manifest-and-version" depends="-copy-resources">
+    <property name="cvstimestamp" value="${TODAY}"/>
+    <property name="version.file" location="${classes.dir}/META-INF/openFacesVersion.txt"/>
+    <copy file="source/META-INF/openFacesVersion.txt" tofile="${version.file}" overwrite="true"/>
+
+    <manifest file="${manifest.file}">
+      <attribute name="Implementation-Title" value="OpenFaces"/>
+      <attribute name="Implementation-Vendor" value="TeamDev Ltd."/>
+      <attribute name="Implementation-Version" value="${of-version}"/>
+      <attribute name="Build-Timestamp" value="${cvstimestamp}"/>
+    </manifest>
+    <replace file="${version.file}" token="version" value="${of-version}"/>
+    <replace file="${version.file}" token="cvstimestamp" value="${cvstimestamp}"/>
+  </target>
+
+  <target name="-copy-target-jar" if="target-jar.file">
+    <copy file="${openfaces-jar.file}" tofile="${target-jar.file}"/>
+  </target>
+
+  <target name="-copy-target-weblogic-jar" if="target-weblogic-jar.file">
+    <copy file="${openfaces-weblogic-jsp-jar-.file}" tofile="${target-weblogic-jar.file}"/>
+  </target>
+
+  <target name="-copy-resources">
+    <copy todir="${classes.dir}">
+      <fileset dir="${src.dir}">
+        <exclude name="**/*.java"/>
+      </fileset>
+    </copy>
+    <replace file="${classes.dir}/META-INF/openfaces.tld" token="__OpenFacesVersion__" value="${ofversion}"/>
+  </target>
+</project>
+<project name="OpenFaces Inspectors" default="build" basedir=".">
+
+  <buildnumber file="build.number"/>
+  <property file="../ofversion.properties"/>
+  <property name="of-version" value="${ofversion}.${build.number}"/>
+
+  <property name="src.dir" location="source"/>
+  <property name="target.dir" location="antout"/>
+  <property name="distrib.dir" location="distribution"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+  <property name="openfaces-inspectors-jar.file" location="${distrib.dir}/openfaces-inspectors.jar"/>
+  <property name="openfaces-inspectors-source-jar.file" location="${distrib.dir}/openfaces-inspectors-sources.jar"/>
+  <property name="patched-selenium-server.file" location="${distrib.dir}/patched-selenium-server-standalone-2.14.0.jar"/>
+  <property name="manifest.file" location="${target.dir}/manifest.mf"/>
+  <property name="lib.dir" location="../lib"/>
+  <property name="temp.dir" location="temp"/>
+  <property name="openfaces-jar.file" location="../openFaces/target/openfaces-${of-version}.jar"/>
+  <property name="openFacesInspectors-zip.file" location="${distrib.dir}/openfaces-inspectors.zip"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="compile" depends="init,-fail-if-no-openfaces-jar" description="Compile the source code">
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="../lib/seleniuminspector/selenium-java-2.14.0.jar "/>
+          <include name="../lib/seleniuminspector/selenium-server-standalone-2.14.0.jar"/>
+          <include name="seleniuminspector/selenium-inspector.jar"/>
+        </fileset>
+        <fileset file="../testLib/junit.jar"/>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+  </target>
+
+  <target name="create-source-lib">
+    <jar jarfile="${openfaces-inspectors-source-jar.file}">
+      <fileset dir="${src.dir}">
+        <exclude name="funcTestUtil.js"/>
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="build" description="Generate the distribution">
+    <antcall target="-build"/>
+    <antcall target="create-source-lib"/>
+  </target>
+
+  <target name="clean" description="Clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <target name="copy-documentation">
+    <copydir src="documentation/" dest="${distrib.dir}/documentation/"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-set-cc-properties" unless="label">
+    <property name="label" value="build.${build.number}"/>
+    <property name="cvstimestamp" value="${TODAY}"/>
+  </target>
+
+  <target name="-copy-target-jar" if="target-jar.file">
+    <copy file="${openfaces-inspectors-jar.file}" tofile="${target-jar.file}"/>
+  </target>
+
+  <target name="-build" depends="compile,-prepare-manifest-and-version"
+          description="generate the distribution">
+    <delete dir="${distrib.dir}"/>
+    <mkdir dir="${distrib.dir}"/>
+    <jar jarfile="${openfaces-inspectors-jar.file}" basedir="${classes.dir}" manifest="${manifest.file}"/>
+    <antcall target="copy-documentation"/>
+    <antcall target="javadoc"/>
+    <zip destfile="${openFacesInspectors-zip.file}" basedir="${distrib.dir}"/>
+  </target>
+
+  <target name="-delete-classes-dir" unless="retain.classes.dir">
+    <delete dir="${target.dir}/classes"/>
+  </target>
+
+  <target name="-prepare-manifest-and-version" depends="-set-cc-properties">
+    <manifest file="${manifest.file}">
+      <attribute name="Implementation-Title" value="OpenFaces Inspectors"/>
+      <attribute name="Implementation-Vendor" value="TeamDev Ltd."/>
+      <attribute name="Build-Label" value="${label}"/>
+      <attribute name="Build-Timestamp" value="${cvstimestamp}"/>
+    </manifest>
+  </target>
+
+  <target name="-fail-if-no-openfaces-jar" unless="openfaces-jar.file">
+    <fail>"openfaces-jar.file" property must be specified</fail>
+  </target>
+
+
+  <target name="javadoc" description="Create Javadocs for OpenFaces Inspectors">
+        <mkdir dir="${distrib.dir}/documentation/apiReference/"/>
+        <javadoc destdir="${distrib.dir}/documentation/apiReference/" source="1.5"
+                 useexternalfile="yes"
+                 author="false"
+                 version="false"
+                 use="true"
+                 windowtitle="OpenFaces Inspectors API Documentation"
+                 protected="true">
+            <classpath>
+                <fileset dir="${lib.dir}">
+                    <include name="selenium-java-2.14.0.jar "/>
+                    <include name="selenium-server-standalone-2.14.0.jar"/>
+                    <include name="junit.jar"/>
+                </fileset>
+            </classpath>
+            <fileset dir="${src.dir}" includes="**/*.java"/>
+
+            <doctitle><![CDATA[<h1>OpenFaces Inspectors API Documentation</h1>]]></doctitle>
+            <bottom><![CDATA[<i>Copyright &#169; 1998-2012 TeamDev Ltd. All Rights Reserved.</i>]]></bottom>
+            <tag name="todo" scope="all" description="To do:"/>
+        </javadoc>
+    </target>
+
+</project>
+<project name="OpenFaces Test Application -- Facelets Version" default="build" basedir=".">
+
+  <!-- *** Resources *** -->
+
+  <property name="lib.dir" location="../../lib"/>
+  <property name="apache.lib.dir" location="../../lib/apache"/>
+  <property name="openfaces-dependencies.lib.dir" location="../../lib/openfaces-dependencies"/>
+  <property name="el.lib.dir" location="../../lib/el"/>
+  <property name="tomahawk.lib.dir" location="../../lib/tomahawk"/>
+  <property name="facelets.lib.dir" location="../../lib/facelets"/>
+  <property name="richfaces.lib.dir" location="../../lib/richfaces"/>
+  <property name="hibernate.lib.dir" location="../../lib/hibernate"/>
+  <property name="jsf.lib.dir" location="../../lib/mojarra"/>
+  <property name="src.dir" location="../core/source"/>
+  <property name="web-inf.dir" location="web/WEB-INF"/>
+  <property name="web-inf-core.dir" location="../core/web/WEB-INF"/>
+  <property name="resources.dir" location="web"/>
+  <property name="resources-core.dir" location="../core/web"/>
+  <property name="target.dir" location="target"/>
+  <property name="resources.target.dir" location="${target.dir}/resources"/>
+  <property name="target-war.file" location="${target.dir}/test-app-facelets.war"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+
+  <fileset id="basic-libraries" dir="${lib.dir}">
+    <include name="jstl-1.1.0.jar"/>
+  </fileset>
+
+  <fileset id="apache" dir="${apache.lib.dir}">
+    <include name="commons-beanutils-1.6.jar"/>
+    <include name="commons-collections-3.2.1.jar"/>
+    <include name="commons-digester-1.6.jar"/>
+    <include name="commons-logging-1.1.1.jar"/>
+    <include name="commons-el-1.0.jar"/>
+    <include name="standard-1.1.2.jar"/>
+    <include name="commons-lang-2.1.jar"/>
+  </fileset>
+
+  <fileset id="openfaces-dependencies" dir="${openfaces-dependencies.lib.dir}">
+    <include name="jfreechart-1.0.13.jar"/>
+    <include name="jcommon-1.0.16.jar"/>
+    <include name="jdom-1.0.jar"/>
+    <include name="cssparser-0.9.5.jar"/>
+    <include name="sac.jar"/>
+    <include name="commons-fileupload-1.2.2.jar"/>
+    <include name="commons-io-2.1.jar"/>
+  </fileset>
+
+  <fileset id="tomahawk-libs" dir="${tomahawk.lib.dir}">
+    <include name="tomahawk12-1.1.8.jar"/>
+  </fileset>
+
+  <fileset id="richfaces-libs" dir="${richfaces.lib.dir}">
+    <include name="richfaces-api-3.3.3.Final.jar"/>
+    <include name="richfaces-impl-3.3.3.Final.jar"/>
+    <include name="richfaces-ui-3.3.3.Final.jar"/>
+  </fileset>
+
+  <fileset id="mojarra-1.2" dir="${jsf.lib.dir}">
+    <include name="jsf-api-1.2_12-b01.jar"/>
+    <include name="jsf-impl-1.2_12-b01.jar"/>
+  </fileset>
+
+  <fileset id="hibernate-libs" dir="${hibernate.lib.dir}">
+    <include name="hibernate3.jar"/>
+    <include name="hibernate-annotations.jar"/>
+  </fileset>
+
+  <fileset id="facelets" dir="${facelets.lib.dir}">
+    <include name="jsf-facelets-1.1.15.jar"/>
+  </fileset>
+
+  <fileset id="el-ri" dir="${el.lib.dir}">
+    <include name="el-ri-1.5.0.jar"/>
+  </fileset>
+
+  <!-- *** Public Targets ** -->
+
+  <target name="build" depends="-fail-if-no-openfaces-jar,-build-war-mojarra12"
+          description="generate the distribution"/>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="compile" depends="-fail-if-no-openfaces-jar,-compile" description="compile the source">
+  </target>
+
+  <target name="copy-resources">
+    <copy todir="${classes.dir}">
+      <fileset dir="${src.dir}">
+        <exclude name="**/*.java"/>
+      </fileset>
+    </copy>
+  </target>
+
+
+  <target name="prepare-resources">
+    <copy todir="${resources.target.dir}">
+      <fileset dir="${resources.dir}"/>
+      <fileset dir="${resources-core.dir}"/>
+    </copy>
+    <replace dir="${resources.target.dir}" includes="**/*.jsp, **/*.xhtml" token="__OpenFacesVersion__"
+             value="${ofversion}"/>
+  </target>
+
+
+
+  <target name="deploy" depends="build" description="deploy war" if="deploy.dir">
+    <copy file="${target-war.file}" todir="${deploy.dir}"/>
+  </target>
+
+  <target name="clean" description="clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-build-war-mojarra12" depends="compile,copy-resources,prepare-resources">
+    <property name="webxml" value="web.xml"/>
+    <war destfile="${target-war.file}" basedir="${resources.target.dir}" webxml="${web-inf.dir}/${webxml}">
+      <lib file="${openfaces-jar.file}"/>
+      <lib refid="basic-libraries"/>
+      <lib refid="apache"/>
+      <lib refid="openfaces-dependencies"/>
+      <lib refid="tomahawk-libs"/>
+      <lib refid="richfaces-libs"/>
+      <lib refid="mojarra-1.2"/>
+      <lib refid="el-ri"/>
+      <lib refid="facelets"/>
+      <lib refid="hibernate-libs"/>
+      <classes dir="${classes.dir}"/>
+    </war>
+  </target>
+
+  <target name="-fail-if-no-openfaces-jar" unless="openfaces-jar.file">
+    <fail>"openfaces-jar.file" property must be specified</fail>
+  </target>
+
+   <target name="-compile" depends="clean,init" if="openfaces-jar.file">
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5" encoding="UTF-8">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="jsp-api-2.1.jar"/>
+          <include name="mojarra/jsf-api-1.2_12-b01.jar"/>
+          <include name="servlet-api.jar"/>
+          <include name="apache/commons-digester-1.6.jar"/>
+          <include name="apache/commons-logging-1.1.1.jar"/>
+          <include name="openfaces-dependencies/jdom-1.0.jar"/>
+          <include name="openfaces-dependencies/jfreechart-1.0.13.jar"/>
+          <include name="openfaces-dependencies/jcommon-1.0.16.jar"/>          
+          <include name="openfaces-dependencies/hibernate-validator.jar"/>
+          <include name="jstl-1.1.0.jar"/>
+          <include name="openfaces-dependencies/cssparser-0.9.5.jar"/>
+          <include name="openfaces-dependencies/sac.jar"/>
+          <include name="facelets/jsf-facelets-1.1.15.jar"/>
+          <include name="richfaces/richfaces-api-3.3.3.Final.jar"/>
+          <include name="el/el-api-1.5.0.jar"/>
+          <include name="el/el-ri-1.5.0.jar"/>
+          <include name="jboss-seam/hibernate-all.jar"/>
+          <include name="jboss-seam/jboss-ejb3-all.jar"/>
+          <include name="jboss-seam/jboss-seam-2.1.1.GA.jar"/>
+          <include name="tomahawk/tomahawk12-1.1.8.jar"/>
+          <include name="apache/commons-collections-3.2.1.jar"/>
+          <include name="openfaces-dependencies/commons-fileupload-1.2.2.jar"/>
+          <include name="openfaces-dependencies/commons-io-2.1.jar"/>
+        </fileset>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+  </target>
+
+</project><project name="OpenFaces Test Application -- JSP Version" default="build" basedir=".">
+
+  <!-- *** Resources *** -->
+
+  <property name="lib.dir" location="./../../lib"/>
+  <property name="apache.lib.dir" location="${lib.dir}/apache"/>
+  <property name="openfaces-dependencies.lib.dir" location="${lib.dir}/openfaces-dependencies"/>
+  <property name="tomahawk.lib.dir" location="${lib.dir}/tomahawk"/>
+  <property name="richfaces.lib.dir" location="${lib.dir}/richfaces"/>
+  <property name="hibernate.lib.dir" location="../../lib/hibernate"/>
+  <property name="jsf.lib.dir" location="${lib.dir}/mojarra"/>
+  <property name="src.dir" location="../core/source"/>
+  <property name="web-inf.dir" location="web/WEB-INF"/>
+  <property name="web-inf-core.dir" location="../core/web/WEB-INF"/>
+  <property name="resources.dir" location="web"/>
+  <property name="resources-core.dir" location="../core/web"/>
+  <property name="target.dir" location="target"/>
+  <property name="resources.target.dir" location="${target.dir}/resources"/>
+  <property name="target-war.file" location="${target.dir}/test-app-jsp.war"/>
+  <property name="classes.dir" location="${target.dir}/classes"/>
+
+
+  <fileset id="basic-libraries" dir="${lib.dir}">
+    <include name="jstl-1.1.0.jar"/>
+  </fileset>
+
+  <fileset id="apache" dir="${apache.lib.dir}">
+    <include name="commons-beanutils-1.6.jar"/>
+    <include name="commons-collections-3.2.1.jar"/>
+    <include name="commons-digester-1.6.jar"/>
+    <include name="commons-logging-1.1.1.jar"/>
+    <include name="commons-el-1.0.jar"/>
+    <include name="standard-1.1.2.jar"/>
+    <include name="commons-lang-2.1.jar"/>
+  </fileset>
+
+  <fileset id="openfaces-dependencies" dir="${openfaces-dependencies.lib.dir}">
+    <include name="jfreechart-1.0.13.jar"/>
+    <include name="jcommon-1.0.16.jar"/>
+    <include name="jdom-1.0.jar"/>
+    <include name="cssparser-0.9.5.jar"/>
+    <include name="sac.jar"/>
+    <include name="commons-fileupload-1.2.2.jar"/>
+    <include name="commons-io-2.1.jar"/>
+  </fileset>
+
+  <fileset id="tomahawk-libs" dir="${tomahawk.lib.dir}">
+    <include name="tomahawk12-1.1.8.jar"/>
+  </fileset>
+
+  <fileset id="richfaces-libs" dir="${richfaces.lib.dir}">
+    <include name="richfaces-api-3.3.3.Final.jar"/>
+    <include name="richfaces-impl-3.3.3.Final.jar"/>
+    <include name="richfaces-ui-3.3.3.Final.jar"/>
+  </fileset>
+
+  <fileset id="hibernate-libs" dir="${hibernate.lib.dir}">
+     <include name="hibernate3.jar"/>
+     <include name="hibernate-annotations.jar"/>
+   </fileset>  
+
+  <fileset id="mojarra-1.2" dir="${jsf.lib.dir}">
+    <include name="jsf-api-1.2_12-b01.jar"/>
+    <include name="jsf-impl-1.2_12-b01.jar"/>
+  </fileset>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <!-- *** Public Targets ** -->
+
+  <target name="compile" depends="-fail-if-no-openfaces-jar,-compile" description="compile the source">
+  </target>
+
+  <target name="copy-resources">
+    <copy todir="${classes.dir}">
+      <fileset dir="${src.dir}">
+        <exclude name="**/*.java"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="build" depends="-fail-if-no-openfaces-jar,-build-war-mojarra12"
+          description="generate the distribution"/>
+
+  <target name="prepare-resources">
+    <copy todir="${resources.target.dir}">
+      <fileset dir="${resources.dir}"/>
+      <fileset dir="${resources-core.dir}"/>
+    </copy>
+    <replace dir="${resources.target.dir}" includes="**/*.jsp, **/*.xhtml" token="__OpenFacesVersion__"
+             value="${ofversion}"/>
+  </target>
+
+  <target name="deploy" depends="build" description="deploy war" if="deploy.dir">
+    <copy file="${target-war.file}" todir="${deploy.dir}"/>
+  </target>
+
+  <target name="clean" description="clean up">
+    <delete dir="${target.dir}"/>
+  </target>
+
+  <!-- *** Utility Targets *** -->
+
+  <target name="-fail-if-no-openfaces-jar" unless="openfaces-jar.file">
+    <fail>"openfaces-jar.file" property must be specified</fail>
+  </target>
+
+  <target name="-build-war-mojarra12" depends="compile,copy-resources,prepare-resources">
+    <property name="webxml" value="web.xml"/>
+    <war destfile="${target-war.file}" basedir="${resources.target.dir}" webxml="${web-inf.dir}/${webxml}">
+      <lib file="${openfaces-jar.file}"/>
+      <lib refid="basic-libraries"/>
+      <lib refid="apache"/>
+      <lib refid="openfaces-dependencies"/>
+      <lib refid="tomahawk-libs"/>
+      <lib refid="richfaces-libs"/>
+      <lib refid="hibernate-libs"/>
+      <lib refid="mojarra-1.2"/>
+      <classes dir="${classes.dir}"/>
+    </war>
+  </target>
+
+
+  <target name="-compile" depends="clean, init" if="openfaces-jar.file">
+    <mkdir dir="${classes.dir}"/>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="true" source="1.5" target="1.5" encoding="UTF-8">
+      <classpath>
+        <fileset dir="${lib.dir}">
+          <include name="jsp-api-2.1.jar"/>
+          <include name="mojarra/jsf-api-1.2_12-b01.jar"/>
+          <include name="servlet-api.jar"/>
+          <include name="apache/commons-digester-1.6.jar"/>
+          <include name="apache/commons-logging-1.1.1.jar"/>
+          <include name="openfaces-dependencies/jdom-1.0.jar"/>
+          <include name="openfaces-dependencies/jfreechart-1.0.13.jar"/>
+          <include name="openfaces-dependencies/jcommon-1.0.16.jar"/>
+          <include name="openfaces-dependencies/hibernate-validator.jar"/>
+          <include name="jstl-1.1.0.jar"/>
+          <include name="openfaces-dependencies/cssparser-0.9.5.jar"/>
+          <include name="openfaces-dependencies/sac.jar"/>
+          <include name="richfaces/richfaces-api-3.3.3.Final.jar"/>
+          <include name="facelets/jsf-facelets-1.1.15.jar"/>
+          <include name="el/el-api-1.5.0.jar"/>
+          <include name="el/el-ri-1.5.0.jar"/>
+          <include name="jboss-seam/hibernate-all.jar"/>
+          <include name="jboss-seam/jboss-ejb3-all.jar"/>
+          <include name="jboss-seam/jboss-seam-2.1.1.GA.jar"/>
+          <include name="tomahawk/tomahawk12-1.1.8.jar"/>
+          <include name="apache/commons-collections-3.2.1.jar"/>
+          <include name="openfaces-dependencies/commons-fileupload-1.2.2.jar"/>
+          <include name="openfaces-dependencies/commons-io-2.1.jar"/>
+        </fileset>
+        <fileset file="${openfaces-jar.file}"/>
+      </classpath>
+    </javac>
+  </target>
+
+</project>

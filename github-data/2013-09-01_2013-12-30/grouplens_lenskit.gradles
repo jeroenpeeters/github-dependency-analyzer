@@ -1,0 +1,577 @@
+import org.grouplens.lenskit.build.*
+
+ext.webUrl = 'http://lenskit.grouplens.org'
+
+configurations {
+    allDeps // collect all external dependencies of all modules
+}
+
+allprojects {
+    group 'org.grouplens.lenskit'
+    version '2.1-SNAPSHOT'
+    
+    ext.groovyVersion = '2.1.5'
+    ext.logbackVersion = '1.0.13'
+    ext.slf4jVersion = '1.7.6'
+
+    repositories {
+        if (properties.get('maven.useLocal', 'false').toBoolean()) {
+            mavenLocal()
+        }
+        mavenCentral()
+        maven {
+            url "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+    configurations {
+        // the 'support' config will be for build helpers (e.g. JavaDoc taglets)
+        support
+    }
+
+    extensions.create('git', GitExtension)
+    apply from: "$rootDir/gradle/travis.gradle"
+
+    // Provide support for forcing configuration deps to be resolved
+    task resolveAll
+    ciPrep.dependsOn resolveAll
+
+    configurations.all { cfg ->
+        def resolve = task("resolve${cfg.name.capitalize()}") {
+            description "Resolve dependencies in the $cfg.name configuration."
+            doLast {
+                logger.info 'resolving {}', cfg.name
+                def result = cfg.resolvedConfiguration
+                result.rethrowFailure()
+                for (f in result.resolvedArtifacts*.file) {
+                    logger.info '{} depends on file {}', cfg.name, f
+                }
+            }
+        }
+        resolveAll.dependsOn resolve
+    }
+
+    ext.skipSlowTests = project.properties.get('tests.skipSlow', 'false').toBoolean()
+}
+
+task reportTests(type: TestReport) {
+    destinationDir file("$buildDir/reports/all-tests")
+}
+
+subprojects {
+    apply plugin: 'java'
+    sourceCompatibility = '1.6'
+    sourceSets.all { ss ->
+        // generate resources & classes to same dir
+        ss.output.resourcesDir = ss.output.classesDir
+    }
+
+    // don't package until testing
+    jar.mustRunAfter 'test'
+    tasks.withType(Upload) { task ->
+        // check before uploading. upload, not jar, waits in case a check requires the jar
+        task.mustRunAfter 'check'
+    }
+    // defer javadoc until after the build
+    javadoc.mustRunAfter 'classes'
+
+    tasks.withType(JavaCompile).all { task ->
+        task.options.encoding = 'UTF-8'
+        task.options.fork = true
+    }
+    compileJava {
+        options.deprecation = true
+        options.compilerArgs << '-Xlint' << '-Xlint:-processing'
+    }
+    test {
+        maxHeapSize = '512m'
+    }
+    reportTests.reportOn test
+
+    // some common deps shared by everything
+    dependencies {
+        compile group: 'org.slf4j', name: 'slf4j-api', version: slf4jVersion
+        compile group: 'com.google.code.findbugs', name: 'annotations', version: '2.0.1'
+    }
+
+    apply from: "$rootDir/gradle/class-list.gradle"
+    apply from: "$rootDir/gradle/license.gradle"
+
+    if (name != 'lenskit-test') {
+        dependencies {
+            testCompile project(':lenskit-test')
+            testRuntime group: 'ch.qos.logback', name: 'logback-classic', version: logbackVersion
+        }
+        test {
+            systemProperties listener: 'org.grouplens.lenskit.util.test.LoggingListener'
+            systemProperties 'log.file': "$buildDir/test.log"
+        }
+    }
+
+    configurations.compile.dependencies.all { dep ->
+        if (!(dep instanceof ProjectDependency)) {
+            rootProject.configurations.allDeps.dependencies << dep
+        }
+    }
+}
+
+// Aggregate documentation
+ext.masterProjects = ['lenskit-api', 'lenskit-core', 'lenskit-data-structures',
+                      'lenskit-groovy', 'lenskit-eval', 'lenskit-cli',
+                      'lenskit-knn', 'lenskit-svd',
+                      'lenskit-slopeone', 'lenskit-predict']
+task javadoc(type: Javadoc, group: 'build') {
+    for (prj in masterProjects) {
+        source project(prj).sourceSets.main.allJava
+    }
+    destinationDir = file("$buildDir/docs/javadoc")
+    classpath = configurations.allDeps
+    title = "LensKit $version"
+}
+
+allprojects {
+    dependencies {
+        // We need the GroupLens taglets
+        support group: 'org.grouplens.common', name: 'common-javadoc', version: '0.8'
+    }
+    tasks.withType(Javadoc) { task ->
+        task.configure {
+            options {
+                tags 'todo:a:To Do:', 'review:a:Review:'
+
+                // grab the taglets from the support classpath
+                tagletPath configurations.support.files.toList()
+                taglets 'org.grouplens.javadoc.taglets.ExtraInlineTaglet'
+                taglets 'org.grouplens.javadoc.taglets.CompatTaglet'
+
+                jFlags "-Dgrouplens.javadoc.versioning.url=$webUrl/versioning.html"
+
+                group 'General API', 'org.grouplens.lenskit'
+                group('Core', 'org.grouplens.lenskit.core',
+                      'org.grouplens.lenskit.basic', 'org.grouplens.lenskit.config')
+                group('Data Structures', 'org.grouplens.lenskit.vectors',
+              'org.grouplens.lenskit.collections', 'org.grouplens.lenskit.symbols',
+                      'org.grouplens.lenskit.scored', 'org.grouplens.lenskit.indexes')
+                group('Data Access', 'org.grouplens.lenskit.data*',
+                      'org.grouplens.lenskit.cursors')
+                group('Data Transformation',
+                      'org.grouplens.lenskit.baseline*', 'org.grouplens.lenskit.transform*',
+                      'org.grouplens.lenskit.vectors.*')
+                group('Recommender Implementations',
+                      'org.grouplens.lenskit.predict*', 'org.grouplens.lenskit.knn*',
+                      'org.grouplens.lenskit.mf*', 'org.grouplens.lenskit.slopeone*')
+                group('Recommender Evaluation and Tooling',
+                      'org.grouplens.lenskit.eval*',
+                      'org.grouplens.lenskit.cli*')
+                group('Utility Classes',
+                      'org.grouplens.lenskit.util*',
+                      'org.grouplens.lenskit.test*', 
+                      'org.grouplens.lenskit.inject',
+                      'org.grouplens.lenskit.iterative')
+
+                links 'http://fastutil.dsi.unimi.it/docs/'
+                links 'http://docs.guava-libraries.googlecode.com/git-history/release/javadoc/'
+                links 'http://dev.grouplens.org/grapht/apidocs/'
+            }
+        }
+    }
+}
+
+apply from: "$rootDir/gradle/website.gradle"
+apply from: "$rootDir/gradle/idea.gradle"
+
+if (file('local.gradle').exists()) {
+    apply from: 'local.gradle'
+}
+apply plugin: 'groovy'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+    compile 'nl.javadude.gradle.plugins:license-gradle-plugin:0.7.0'
+    compile 'org.eclipse.jgit:org.eclipse.jgit:3.3.1.201403241930-r'
+    compile 'org.codehaus.groovy.modules.http-builder:http-builder:0.7.1'
+    compile 'org.apache.httpcomponents:httpmime:4.2.1'
+    compile 'com.google.guava:guava:16.0.1'
+}
+
+apply plugin: 'idea'
+idea {
+    module {
+        outputDir = sourceSets.main.output.classesDir
+        testOutputDir = sourceSets.test.output.classesDir
+        downloadSources = true
+        downloadJavadoc = true
+        inheritOutputDirs = false
+    }
+}
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile project(':lenskit-core')
+    compile project(':lenskit-eval')
+    for (algo in ['knn', 'svd', 'predict', 'slopeone']) {
+        compile project(":lenskit-$algo")
+    }
+}
+
+meta {
+    name 'LensKit Metapackage'
+    description 'Metapackage to pull in all LensKit components.'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile project(':lenskit-data-structures')
+}
+
+meta {
+    name 'LensKit Core API'
+    description 'The core public APIs implemented by LensKit.'
+}
+import org.gradle.process.internal.ExecException
+import java.util.zip.ZipFile
+
+apply from: "$rootDir/gradle/maven.gradle"
+apply plugin: 'groovy'
+
+dependencies {
+    compile project(':lenskit-all')
+    compile group: 'net.sourceforge.argparse4j', name: 'argparse4j', version: '0.4.3'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: logbackVersion
+
+    runtime group: 'org.fusesource.jansi', name: 'jansi', version: '1.8'
+    runtime group: 'org.slf4j', name: 'jul-to-slf4j', version: slf4jVersion
+}
+
+meta {
+    name 'LensKit CLI'
+    description 'Command-line tools for interacting with LensKit.'
+}
+
+// Make LensKit version info available
+task versionInfo {
+    ext.versionFile = {
+        "$sourceSets.main.output.resourcesDir/META-INF/lenskit/version.properties"
+    }
+    outputs.file versionFile
+    inputs.property 'version', version
+}
+versionInfo << {
+    def vf = file(versionFile)
+    mkdir vf.parentFile
+    vf.text = "lenskit.version=$version\n"
+}
+classes.dependsOn versionInfo
+
+// Build an application
+apply plugin: 'application'
+
+mainClassName = 'org.grouplens.lenskit.cli.Main'
+applicationName = 'lenskit'
+
+// We need to be able to start lenskit-eval as well as lenskit
+task evalStartScripts(type: CreateStartScripts) {
+    applicationName = 'lenskit-eval'
+    mainClassName = 'org.grouplens.lenskit.eval.cli.EvalCLI'
+    classpath = startScripts.classpath
+    outputDir = startScripts.outputDir
+    optsEnvironmentVar = 'LENSKIT_OPTS'
+}
+applicationDistribution.from(evalStartScripts) {
+    into 'bin'
+}
+
+// Render the manpages
+task renderManPages(group: 'build') {
+    ext.manDir = 'src/man'
+    ext.outputDir = "$buildDir/man"
+    ext.filterScript = 'src/man/filter-manpage.py'
+    inputs.source fileTree(manDir) {
+        include '*.md'
+    }
+    inputs.file filterScript
+    outputs.dir outputDir
+    doLast {
+        mkdir outputDir
+        for (doc in inputs.sourceFiles.files) {
+            def name = doc.name - '.md'
+            try {
+                exec {
+                    executable 'pandoc'
+                    args '-Mheader=LensKit'
+                    args "-Mfooter=$version"
+                    args '-Msection=1'
+                    args '-F', file(filterScript)
+                    args '-s', '-t', 'man'
+                    args '-o', file("$outputDir/$name")
+                    args doc
+                }
+            } catch (ExecException e) {
+                logger.warn 'pandoc {}: {}', name, e
+                logger.warn 'skipping man page build'
+                throw new StopExecutionException("cannot run pandoc")
+            }
+        }
+    }
+}
+applicationDistribution.from(renderManPages) {
+    into 'man'
+}
+
+// aggregate license info and notices from dependencies
+task notices(group: 'build') {
+    ext.noticeFile = "$buildDir/NOTICE.txt"
+    inputs.files configurations.runtime
+    outputs.file noticeFile
+
+    doLast {
+        def cfg = configurations.runtime.resolvedConfiguration
+        file(noticeFile).withPrintWriter { out ->
+            out.println("This file contains the notices required by the libraries used by LensKit.")
+            out.println()
+
+            cfg.resolvedArtifacts*.file.each { File jar ->
+                def zip = new ZipFile(jar)
+                try {
+                    def noticeEntry = zip.getEntry("META-INF/NOTICE.txt")
+                    if (noticeEntry != null) {
+                        def notice = zip.getInputStream(noticeEntry).text
+                        out.println("${jar.name}:")
+                        notice.eachLine { line ->
+                            out.println("    ${line}")
+                        }
+                        out.println()
+                    }
+                } finally {
+                    zip.close()
+                }
+            }
+        }
+    }
+}
+applicationDistribution.from(notices)
+// copy license texts into the distribution
+applicationDistribution.from('src/licenses')
+// include aggregate javadoc
+applicationDistribution.from(rootProject.tasks['javadoc']) {
+    into 'javadoc'
+}
+
+// make standard tasks build the application
+build.dependsOn installApp
+assemble.dependsOn distZip, distTar
+apply from: "$rootDir/gradle/maven.gradle"
+apply plugin: 'groovy'
+
+dependencies {
+    compile project(':lenskit-api')
+    compile group: 'org.grouplens.grapht', name: 'grapht', version: '0.9.0-SNAPSHOT'
+    compile group: 'com.google.guava', name: 'guava', version: '16.0.1'
+
+    compile group: 'net.mikera', name: 'vectorz', version: '0.30.1'
+
+    testCompile project(':lenskit-test')
+    testCompile group: 'org.codehaus.groovy', name: 'groovy-all', version: groovyVersion
+    testRuntime group: 'com.h2database', name: 'h2', version: '1.3.176'
+}
+
+meta {
+    name 'LensKit Core'
+    description 'The core of LensKit, providing basic implementations and algorithm support.'
+}
+
+/* Since we define an annotation processor in this project, run it in its own task */
+task checkAnnotations(type: JavaCompile, dependsOn: classes) {
+    source sourceSets.main.java
+    classpath = sourceSets.main.compileClasspath
+    destinationDir = file("$buildDir/check-output")
+    
+    options.compilerArgs << '-proc:only'
+}
+check.dependsOn checkAnnotations
+
+/* Generate the Git commit list */
+task listGitCommits(group: 'build') {
+    // where does the report go?
+    ext.outputFile = "$sourceSets.main.output.resourcesDir/META-INF/lenskit/git-commits.lst"
+    // make sure we don't get stomped on
+    mustRunAfter processResources
+    
+    outputs.file outputFile
+    // we change with the HEAD revision
+    inputs.property('HEAD') { git.headRevision.name }
+
+    doLast {
+        mkdir file(outputFile).parentFile
+        git.withRepo { repo, cmd ->
+            logger.info 'git repository at {}', repo.directory
+            def head = repo.resolve('HEAD')
+            logger.info 'head revision: {}', head.name
+            file(outputFile).withPrintWriter { out ->
+                int n = 0
+                for (commit in cmd.log().add(git.headRevision).call()) {
+                    logger.debug 'found {}', commit.id
+                    out.println commit.id.name
+                    n += 1
+                }
+                logger.info 'listed {} revisions', n
+            }
+        }
+    }
+}
+classes.dependsOn listGitCommits
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile group: 'it.unimi.dsi', name:'fastutil', version: '6.5.13'
+    compile group: 'com.google.guava', name: 'guava', version: '16.0.1'
+    compile group: 'org.apache.commons', name: 'commons-lang3', version: '3.3'
+
+    testCompile project(':lenskit-test')
+    testCompile group: 'net.java.quickcheck', name: 'quickcheck', version: '0.6'
+}
+
+meta {
+    name 'LensKit Data Structures'
+    description 'Data structures and related utilities used in LensKit.'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+apply plugin: 'groovy'
+
+configurations {
+    application {
+        extendsFrom runtime
+    }
+    testRuntime {
+        extendsFrom application
+    }
+}
+
+dependencies {
+    compile project(':lenskit-core')
+    compile project(':lenskit-groovy')
+    compile group: 'org.codehaus.groovy', name: 'groovy-all', version: groovyVersion
+    compile group: 'joda-time', name: 'joda-time', version: '2.3'
+    compile group: 'commons-cli', name: 'commons-cli', version: '1.2'
+    compile group: 'org.apache.ant', name: 'ant', version: '1.8.4'
+    compile group: 'org.hamcrest', name: 'hamcrest-library', version: '1.3'
+
+    application group: 'ch.qos.logback', name: 'logback-classic', version: logbackVersion
+    application group: 'org.slf4j', name: 'jul-to-slf4j', version: slf4jVersion
+}
+
+meta {
+    name 'LensKit Evaluator'
+    description 'Facilities for evaluating recommender algorithms.'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+apply plugin: 'groovy'
+
+dependencies {
+    compile group: 'org.codehaus.groovy', name: 'groovy-all', version: groovyVersion
+    compile project(':lenskit-core')
+}
+
+meta {
+    name 'LensKit Groovy support'
+    description 'Groovy-based DSL for configuring LensKit recommenders.'
+}
+dependencies {
+    compile project(':lenskit-all')
+    compile project(':lenskit-test')
+    testRuntime project(':lenskit-cli')
+}
+
+apply plugin: 'groovy'
+
+// These tests require the MovieLens data set - arrange to download it
+ext.mlDataDir = file("$buildDir/ml-100k")
+ext.mlDataFile = file("$buildDir/ml-100k.zip")
+ext.mlDataURL = 'http://files.grouplens.org/datasets/movielens/ml-100k.zip'
+
+task fetchData(group: 'build') {
+    description "Fetch data for integration tests."
+    inputs.property 'url', mlDataURL
+    outputs.file mlDataFile
+    outputs.dir mlDataDir
+    // don't download if we're running offline
+    onlyIf { !gradle.startParameter.isOffline() }
+}
+fetchData << {
+    logger.lifecycle "This analysis makes use of the MovieLens 100K data set from GroupLens Research.  Use of this data set is restricted to non-commercial purposes and is only permitted in accordance with the license terms.  More information is available at <http://lenskit.grouplens.org/ML100K>."
+    mkdir buildDir
+    ant {
+        get src: mlDataURL, dest: mlDataFile, skipexisting: true
+        unzip(src: mlDataFile, dest: mlDataDir) {
+            mapper type: 'flatten'
+        }
+    }
+}
+
+// Configure the tests to use the data set
+test {
+    dependsOn fetchData
+    systemProperties 'lenskit.movielens.100k': mlDataDir
+}
+
+// import code to run the integration tests
+apply from: 'run-tests.gradle'
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile project(':lenskit-core')
+}
+
+meta {
+    name 'LensKit k-NN CF'
+    description 'k-NN collaborative filtering for LensKit.'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+apply plugin: 'groovy'
+
+dependencies {
+    compile project(':lenskit-core')
+    testCompile group: 'org.codehaus.groovy', name: 'groovy-all', version: groovyVersion
+    testCompile project(':lenskit-groovy')
+}
+
+meta {
+    name 'LensKit Rating Predictors'
+    description 'Advanced rating prediction support for LensKit.'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile project(':lenskit-core')
+    compile project(':lenskit-knn')
+}
+
+meta {
+    name 'LensKit Slope-One CF'
+    description 'Slope-One CF recommenders for LensKit'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile project(':lenskit-core')
+}
+
+meta {
+    name 'LensKit SVD CF'
+    description 'Matrix factorization collaborative filtering for LensKit'
+}
+apply from: "$rootDir/gradle/maven.gradle"
+
+dependencies {
+    compile group: 'junit', name: 'junit', version: '4.11'
+    compile group: 'org.hamcrest', name: 'hamcrest-library', version: '1.3'
+}
+
+meta {
+    name 'LensKit Test Utils'
+    description 'Testing utilities for LensKit.'
+}

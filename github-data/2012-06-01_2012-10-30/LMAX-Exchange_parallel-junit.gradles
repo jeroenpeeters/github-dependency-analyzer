@@ -1,0 +1,152 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.5.0'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'signing'
+apply plugin: 'maven'
+apply plugin: 'license'
+apply plugin: 'eclipse'   // Only used so the Eclipse STS Gradle plugin can see the 'provided' conf dependencies. :-(
+
+defaultTasks 'build'
+
+group = 'com.lmax.ant'
+archivesBaseName = 'parallel-junit'
+version = '0.1'
+
+description = 'Parallel JUnit Ant Task'
+
+ext {
+    fullName = 'Parallel JUnit'
+    sourceUrl = 'git@github.com:LMAX-Exchange/parallel-junit.git'
+
+    if (!project.hasProperty('sonatypeUsername')) sonatypeUsername = ''
+    if (!project.hasProperty('sonatypePassword')) sonatypePassword = ''
+}
+
+sourceCompatibility = 1.5
+targetCompatibility = 1.5
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    provided
+}
+
+sourceSets {
+    main.compileClasspath += configurations.provided
+    test.compileClasspath += configurations.provided
+    test.runtimeClasspath += configurations.provided
+    
+    integrationTest {
+        java.srcDir 'src/itest/java'
+        groovy.srcDir 'src/itest/groovy'
+        resources.srcDir 'src/itest/resources'
+        compileClasspath += sourceSets.test.compileClasspath
+        runtimeClasspath += sourceSets.test.runtimeClasspath
+    }
+}
+
+eclipse.classpath.plusConfigurations += configurations.provided
+
+dependencies {
+    groovy 'org.codehaus.groovy:groovy-all:1.8.6'
+
+    provided 'org.apache.ant:ant-junit:1.8.4'
+
+    testCompile 'org.spockframework:spock-core:0.6-groovy-1.8'
+
+    testRuntime 'cglib:cglib-nodep:2.2'
+    testRuntime 'org.objenesis:objenesis:1.2'
+}
+
+task integrationTest(type: Test, dependsOn: ['classes', 'integrationTestClasses']) {
+    testClassesDir = sourceSets.integrationTest.output.classesDir
+    classpath = sourceSets.integrationTest.runtimeClasspath
+}
+check.dependsOn integrationTest
+
+tasks.withType(Compile) {
+    options.compilerArgs << '-Xlint:unchecked'
+    options.compilerArgs << '-Xlint:-options'
+}
+
+tasks.withType(Test) {
+    testReportDir = file("${reporting.baseDir}/${testReportDirName}/${name}")
+    testResultsDir = file("${buildDir}/${testResultsDirName}/${name}")
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts.archives  sourcesJar
+
+license {
+    header file('gradle/licence-header.txt')
+    strictCheck true
+    ignoreFailures false
+    ext.year = Calendar.getInstance().get(Calendar.YEAR)
+}
+
+signing {
+    required { gradle.taskGraph.hasTask(uploadArchives) }
+    sign configurations.archives
+}
+
+def projectPom = {
+    name = fullName
+    description = project.description
+    url = 'http://lmax-exchange.github.com/parallel-junit/'
+
+    scm {
+        url = "scm:$sourceUrl"
+        connection = "scm:$sourceUrl"
+    }
+
+    licenses {
+        license {
+            name = 'The Apache Software License, Version 2.0'
+            url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+            distribution = 'repo'
+        }
+    }
+
+    developers {
+        developer {
+            id = 'team'
+            name = 'LMAX OSS Team'
+            email = 'oss@lmax.com'
+        }
+    }
+}
+
+install {
+    repositories.mavenInstaller.pom.project(projectPom)
+}
+
+uploadArchives {
+    repositories.mavenDeployer {
+        beforeDeployment { deployment -> signing.signPom(deployment) }
+
+        repository(url: 'https://oss.sonatype.org/service/local/staging/deploy/maven2') {
+            authentication(userName: sonatypeUsername, password: sonatypePassword)
+        }
+
+        pom.project(projectPom)
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.3'
+}

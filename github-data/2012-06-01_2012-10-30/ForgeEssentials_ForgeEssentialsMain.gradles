@@ -1,0 +1,186 @@
+buildscript {
+	repositories {
+		mavenCentral()
+		maven {
+			name = "forge"
+			url = "http://files.minecraftforge.net/maven"
+		}
+		maven {
+			name = "sk89q"
+			url = "http://maven.sk89q.com/repo/"
+		}
+	}
+	dependencies { classpath 'net.minecraftforge.gradle:ForgeGradle:1.0-SNAPSHOT'}
+
+}
+
+apply plugin: 'forge'
+
+version = "1.3pre3a"
+group= "com.forgeessentials"
+archivesBaseName = "forgeessentials"
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
+
+minecraft {
+	version = "1.6.4-9.11.1.964"
+	assetDir = "rundir/assets"
+	forgeVersion = "9.11.1.964"
+	
+	replaceIn "com/forgeessentials/core/preloader/FEModContainer.java"
+    replace "%VERSION%", project.version
+    replaceIn "com/forgeessentials/client/ForgeEssentialsClient.java"
+    replace "%VERSION%", project.version
+}
+
+sourceSets {
+    client{
+        compileClasspath = project.sourceSets.main.compileClasspath
+    }
+}
+
+configurations{
+    serverLibs
+}
+
+repositories{
+	mavenLocal()
+	maven {
+			name = "sk89q"
+			url = "http://maven.sk89q.com/repo/"
+	}
+	}
+
+processClientResources{
+    from (sourceSets.main.resources.srcDirs) {
+        expand 'version': project.version, 'mcversion': project.minecraft.version,
+                'forgeversion': project.minecraft.forgeVersion
+        include 'mcmod.info'
+    }
+
+    from (sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+processResources {
+    from (sourceSets.main.resources.srcDirs) {
+        expand 'version': project.version, 'mcVersion': project.minecraft.version,
+                'forgeVersion': project.minecraft.forgeVersion
+        include 'mcmod.info'
+    }
+
+    from (sourceSets.main.resources.srcDirs) {
+        exclude 'mcmod.info'
+    }
+}
+
+dependencies {
+    
+    compile 'org.pircbotx:pircbotx:1.9'
+    compile 'com.h2database:h2:1.3.175'
+    compile 'mysql:mysql-connector-java:5.1.22'
+    compile 'com.sk89q:worldedit:6.0.0-SNAPSHOT'
+    
+    serverLibs 'org.pircbotx:pircbotx:1.9'
+    serverLibs 'com.h2database:h2:1.3.175'
+    serverLibs 'mysql:mysql-connector-java:5.1.22'
+}
+
+// core
+jar{
+    from project.sourceSets.main.output
+    include "com/forgeessentials/core/**"
+    include "com/forgeessentials/permission/**"
+    include "com/forgeessentials/util/**"
+    include "com/forgeessentials/data/**"
+    include "com/forgeessentials/api/*.class"
+    include "com/forgeessentials/api/permissions/**"
+    include "com/forgeessentials/api/packetInspector/**"
+    include "com/forgeessentials/api/json/**"
+    include "org/mcstats/**"
+    include "logo.png"
+    include "mcmod.info"
+    include "forgeessentials_at.cfg"
+manifest {
+        attributes("FMLCorePlugin": "com.forgeessentials.core.preloader.FEPreLoader", "FMLCorePluginContainsFMLMod": "true")
+    }
+}
+
+//server complete
+task completeZip(type: Zip, dependsOn: 'reobf') {
+    appendix = 'server'
+from (project.tasks.jar.getArchivePath()) { into('mods') }
+    destinationDir = jar.destinationDir
+
+from(sourceSets.main.output) { include 'FEReadme.txt', 'HowToGetFESupport.txt' }
+from (project.configurations.serverLibs) {
+include '*'
+into('ForgeEssentials/lib')}
+}
+
+def list = [
+    'auth',
+    'backup',
+    'chat',
+    'commands',
+    'economy',
+    'playerlogger',
+    'protection',
+    'questioner',
+    'snooper',
+    'servervote',
+    'scripting',
+    'tickets',
+    'worldborder',
+    'worldcontrol',
+    'afterlife',
+    'teleport',
+]
+
+list.each { name ->
+    def taskName = name + "Jar"
+    def newTask = project.tasks.create(name: taskName, dependsOn: "jar", type: Jar) {
+        from sourceSets.main.output
+        appendix = name
+        include "com/forgeessentials/$name/**"
+        include "com/forgeessentials/api/$name/**"
+    }
+    
+    reobf {
+        reobf(newTask) { reobfSpec ->
+            reobfSpec.classpath = files(project.configurations.compile, project.tasks.jar.getArchivePath())
+        }
+    }
+
+    artifacts {
+        archives newTask
+    }
+    
+    project.tasks.completeZip {
+        from(newTask.getArchivePath()) { into 'ForgeEssentials/modules' }
+        dependsOn newTask
+    }
+}
+
+task clientJar(dependsOn: "jar", type: Jar){
+from sourceSets.client.output
+        appendix = "client"
+        include "**"
+        }
+        artifacts {
+        archives clientJar
+    }
+    reobf {
+        reobf(clientJar) { reobfSpec ->
+            reobfSpec.classpath = project.sourceSets.main.compileClasspath
+        }
+    }
+    
+
+build.dependsOn "completeZip"
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+}
+

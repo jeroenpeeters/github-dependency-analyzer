@@ -1,0 +1,1553 @@
+/*
+ * This file is part of the Illarion Java Applications.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Java Applications is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Java Applications is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Java Applications.  If not, see <http://www.gnu.org/licenses/>.
+ */
+
+apply plugin: 'idea'
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.10'
+}
+
+idea {
+    project {
+        languageLevel = '1.7'
+    }
+}
+
+allprojects { project ->
+    if (project.hasProperty('targetRepo')) {
+        project.ext.mavenRepo = "file://$targetRepo"
+    } else {
+        project.ext.mavenRepo = "file://${project.buildDir}/repo"
+    }
+
+    task gitVersion { task ->
+        def gitVersion = 'unknown'
+        def branch = 'develop'
+        def File rootDir = project.rootDir
+        for (def gitCmd in ['git', 'git.cmd']) {
+            try {
+                def procBranch = "$gitCmd rev-parse --abbrev-ref HEAD".execute(null as List, rootDir)
+                procBranch.waitFor()
+                branch = procBranch.in.text.trim()
+                procBranch.destroy()
+
+                def procVersion = "$gitCmd describe --tags HEAD".execute(null as List, rootDir)
+                procVersion.waitFor()
+                gitVersion = procVersion.in.text.trim()
+                procVersion.destroy()
+
+                break
+            } catch (e) {
+                logger.error('Failed to get version from Git', e)
+            }
+        }
+
+        def String mainVersion
+        def indexOfSeparator = gitVersion.indexOf('-')
+        if (indexOfSeparator == -1) {
+            mainVersion = gitVersion
+        } else {
+            mainVersion = gitVersion.substring(0, indexOfSeparator)
+        }
+
+        if (branch == 'master') {
+            if (indexOfSeparator > -1) {
+                throw new RuntimeException("Can't build snapshot in master branch.")
+            }
+        } else {
+            mainVersion += '-SNAPSHOT'
+        }
+
+        task.project.version = mainVersion
+        task.project.ext.fullVersion = gitVersion
+    }
+
+    project.configurations.all {
+        resolutionStrategy {
+            cacheDynamicVersionsFor 10 * 60, 'seconds'
+            cacheChangingModulesFor 0, 'seconds'
+        }
+    }
+
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath group: 'net.sf.proguard', name: 'proguard-gradle', version: '4.10'
+        classpath group: 'edu.sc.seis.gradle', name: 'launch4j', version: '1.0.6'
+        classpath group: 'edu.sc.seis.gradle', name: 'macappbundle', version: '2.0.0'
+    }
+}
+
+subprojects {
+    project.group = 'org.illarion'
+
+    plugins.withType(JavaPlugin) {
+        project.sourceCompatibility = JavaVersion.VERSION_1_7
+        project.targetCompatibility = JavaVersion.VERSION_1_7
+        project.tasks.withType(JavaCompile) {
+            options.encoding = 'UTF-8'
+        }
+        project.test {
+            useTestNG()
+        }
+    }
+
+    repositories {
+        mavenCentral()
+        maven {
+            url 'http://illarion.org/media/java/maven'
+        }
+        maven {
+            url 'http://nifty-gui.sourceforge.net/nifty-maven-repo'
+        }
+        maven {
+            url 'http://oss.sonatype.org/content/repositories/releases/'
+        }
+    }
+}/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'illarion_build'
+
+dependencies {
+    compile project(':common')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'de.matthiasmann', name: 'pngdecoder', version: '20130527'
+    compile gradleApi()
+    compile localGroovy()
+    testCompile group: 'org.testng', name: 'testng', version: '6.8.7'
+    testCompile group: 'org.hamcrest', name: 'hamcrest-all', version: '1.3'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes        \
+               'Permissions': 'all-permissions',      \
+               'Codebase': 'illarion.org',      \
+               'Trusted-Library': true,      \
+               'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),        \
+               'Built-By': System.getProperty('user.name'),        \
+               'Built-JDK': System.getProperty('java.version'),        \
+               'Implementation-Title': 'Illarion Build Utility',        \
+               'Implementation-Vendor': 'Illarion e.V.',        \
+               'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'maven-publish'
+
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_client'
+mainClassName = 'illarion.client.IllaClient'
+
+dependencies {
+    compile project(':common')
+    compile project(':engine')
+    runtime project(':engine-libgdx')
+    compile project(':engine-nifty')
+    compile project(':nifty-controls')
+    runtime project(':nifty-style')
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jul-to-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.codehaus.janino', name: 'janino', version: '2.6.1'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile group: 'lessvoid', name: 'nifty', version: '1.4.0-SNAPSHOT'
+    runtime group: 'org.illarion', name: 'rsc_books', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_chars', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_effects', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_gui', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_items', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_music', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_sounds', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_tables', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_tiles', version: project.ext.illarionResourcesVersion
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes     \
+             'Main-Class': 'illarion.client.IllaClient',     \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Application-Name': 'Illarion Client',     \
+             'Application-Library-Allowable-Codebase': 'illarion.org',     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),     \
+             'Built-JDK': System.getProperty('java.version'),     \
+             'Implementation-Title': 'Illarion Client',     \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+run {
+    jvmArgs.add '-Dillarion.server=devserver'
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Common Library.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Common Library is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Common Library is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Common Library.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_common'
+
+dependencies {
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'xpp3', name: 'xpp3', version: '1.1.4c'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile(group: 'org.mantisbt', name: 'mantisconnect', version: '1.1.2.0') {
+        exclude module: 'log4j'
+        exclude module: 'commons-logging'
+    }
+    testCompile group: 'org.testng', name: 'testng', version: '6.8.7'
+}
+
+processResources.dependsOn("downloadSkills")
+
+task downloadSkills {
+    if (rootProject.hasProperty('releaseBuild')) {
+        ant.get(src: 'http://illarion.org/data/xml_skills.php?server=1',
+                dest: 'src/main/resources/skills.xml')
+    } else {
+        ant.get(src: 'http://illarion.org/data/xml_skills.php',
+                dest: 'src/main/resources/skills.xml')
+    }
+
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes        \
+               'Permissions': 'all-permissions',       \
+               'Codebase': 'illarion.org',       \
+               'Trusted-Library': true,       \
+               'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),       \
+               'Built-By': System.getProperty('user.name'),        \
+               'Built-JDK': System.getProperty('java.version'),        \
+               'Implementation-Title': 'Illarion Common Library',        \
+               'Implementation-Vendor': 'Illarion e.V.',       \
+               'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Compiler.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Compiler is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Compiler is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Compiler.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_compiler'
+mainClassName = 'illarion.compile.Compiler'
+
+dependencies {
+    compile project(':common')
+    compile project(':easynpc')
+    compile project(':easyquest')
+    compile group: 'commons-cli', name: 'commons-cli', version: '1.2'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+              'Main-Class': 'illarion.compile.Compiler',      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Application-Name': 'Illarion Compiler',     \
+             'Application-Library-Allowable-Codebase': 'illarion.org',     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Compiler',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task proguard(type: proguard.gradle.ProGuardTask, dependsOn: 'jar') {
+    final def mainFile = new File(project.buildDir, "libs/${project.archivesBaseName}-${project.version}.jar")
+            .absolutePath
+    injars(mainFile)
+    configurations.runtime.each { File file ->
+        if (file.absolutePath.startsWith(System.getProperty('java.home'))) {
+            libraryjars file.absolutePath
+        } else {
+            def filter = "!META-INF/*,!META-INF/plexus/*,!META-INF/sisu/*,!META-INF/maven/**,!about.html,!LICENSE," +
+                    "!OSGI-OPT/**,!**/packageinfo,!**.java,!xmlns/**"
+            if (file.absolutePath.contains("xpp3")) {
+                filter += ",!javax/xml/namespace/QName.class"
+            }
+            if (file.absolutePath.contains("illarion")) {
+                filter += ",!*.png,!logback.xml"
+                filter += ",!Books.dat"
+                filter += ",!Chars.dat"
+                filter += ",!Cloth.dat"
+                filter += ",!Effects.dat"
+                filter += ",!Gui.dat"
+                filter += ",!Overlays.dat"
+                filter += ",!Runes.dat"
+                filter += ",!Sounds.dat"
+                filter += ",!Tiles.dat"
+            }
+            if (file.absolutePath.contains("javolution-core-java")) {
+                filter += ",!org/osgi/**"
+            }
+            injars([filter: filter], file.absolutePath)
+        }
+    }
+
+    libraryjars files("${System.getProperty('java.home')}/lib/jce.jar")
+    libraryjars files("${System.getProperty('java.home')}/lib/rt.jar")
+
+    outjars new File(project.buildDir, "compiler.jar").absolutePath
+
+    /* Forcing all class files to contain the same codebase level. */
+    target "1.7"
+
+    /* Optimization settings */
+    dontoptimize
+    optimizationpasses 1
+    allowaccessmodification
+    mergeinterfacesaggressively
+
+    /* Obfuscation settings */
+    dontobfuscate
+
+    renamesourcefileattribute "SourceFile"
+    keepattributes "SourceFile,LineNumberTable"
+    keepattributes "*Annotation*"
+
+    keepclasseswithmembers "public class illarion.compile.Compiler {" +
+            "public static void main(java.lang.String[]);" +
+            "}"
+
+    keepclasseswithmembernames "class * {" +
+            "native <methods>;" +
+            "}"
+
+    keepclassmembers "class * {" +
+            "@illarion.common.util.CalledByReflection *;" +
+            "}"
+
+    keepclassmembers "class * extends java.lang.Enum {" +
+            "public static **[] values();" +
+            "public static ** valueOf(java.lang.String);" +
+            "}"
+
+    keepclassmembers "class * implements java.io.Serializable {" +
+            "static final long serialVersionUID;" +
+            "static final java.io.ObjectStreamField[] serialPersistentFields;" +
+            "private void writeObject(java.io.ObjectOutputStream);" +
+            "private void readObject(java.io.ObjectInputStream);" +
+            "java.lang.Object writeReplace();" +
+            "java.lang.Object readResolve();" +
+            "}"
+
+    keep "class ch.qos.logback.** { *; }"
+    keep "class illarion.compile.impl.EasyQuestCompile"
+    keep "class illarion.compile.impl.EasyNpcCompile"
+    keep "class org.xmlpull.mxp1.MXParserFactory"
+
+    dontwarn "com.sun.**"
+    dontwarn "javax.servlet.**"
+    dontwarn "javax.mail.**"
+    dontwarn "javax.jms.**"
+    dontwarn "javax.xml.**"
+    dontwarn "org.pushingpixels.**"
+    dontwarn "org.apache.commons.**"
+    dontwarn "org.apache.axis.**"
+    dontwarn "org.mantisbt.**"
+    dontwarn "org.osgi.service.**"
+    dontnote "javax.xml.**"
+    dontwarn "ch.qos.logback.classic.**"
+    dontwarn "org.codehaus.janino.**"
+    dontwarn "org.apache.log4j.**"
+}
+
+
+if (project.hasProperty('compilerDir')) {
+    task publishBundle(type: Copy, dependsOn: 'proguard') {
+        from new File(project.buildDir, "compiler.jar").absolutePath
+        into file(project.compilerDir)
+    }
+    task publish(dependsOn: "publishBundle") {}
+}
+
+build.dependsOn("proguard")/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'maven-publish'
+apply from: '../javafx.plugin'
+apply from: '../versions.gradle'
+
+if (project.hasProperty('targetDistDir')) {
+    // Launch4j requires a native installment. Has to remain disabled until the server contains this
+    //apply plugin: 'launch4j'
+
+    // The MacOS bundle plugin is broken to the point where its not usable at all. Its impossible to set the input
+    // files as this plugin receives the from the jar task directly. And those requirements are resolved wrong due
+    // the usage of JavaFX.
+    //apply plugin: 'macAppBundle'
+}
+
+archivesBaseName = 'illarion_download'
+mainClassName = 'illarion.download.gui.GuiApplication'
+
+dependencies {
+    compile project(':common')
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jul-to-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'xpp3', name: 'xpp3', version: '1.1.4c'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile group: 'org.eclipse.aether', name: 'aether-impl', version: '0.9.0.v20140226'
+    compile group: 'org.eclipse.aether', name: 'aether-transport-http', version: '0.9.0.v20140226'
+    compile group: 'org.eclipse.aether', name: 'aether-connector-basic', version: '0.9.0.v20140226'
+    compile group: 'org.apache.maven', name: 'maven-aether-provider', version: '3.2.1'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Main-Class': 'illarion.download.gui.GuiApplication',     \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Application-Name': 'Illarion Launcher',     \
+             'Application-Library-Allowable-Codebase': 'illarion.org',     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Launcher',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task publishDownloaderBundle() {}
+
+if (project.hasProperty('targetDistDir')) {
+    publish.dependsOn {
+        publishDownloader
+    }
+    publishDownloaderBundle.dependsOn {
+        publishBundle
+        //launch4j
+        //publishMacBundle
+    }
+}
+
+startScripts.dependsOn {
+    jfxJar
+}
+
+cssToBin.enabled = false
+
+javafx {
+    id 'IllaLauncher'
+    appID 'IllaLauncher'
+    appName 'Illarion-Launcher'
+    mainClass project.mainClassName
+
+    embedLauncher = true
+
+    category = 'Games'
+    copyright = 'Copyright (c) 2013 Illarion e.V.'
+    description = 'This is the downloader and launcher of Illarion.'
+    licenseType = 'AGPLv3'
+    vendor = 'Illarion e.V.'
+    installSystemWide = false
+    menu = true
+    shortcut = true
+
+    if (project.hasProperty('keyFile')) {
+        apply from: project.keyFile
+        releaseKey {
+            alias = project.ext.storealias
+            keyStore = project.ext.keystore
+            storePass = project.ext.storepass
+            storeType = project.ext.storetype
+        }
+        signingMode 'release'
+    }
+    packaging 'none'
+
+    profiles {
+        windows {
+            javaRuntime = '<NO RUNTIME>'
+        }
+        macosx {
+            javaRuntime = '<NO RUNTIME>'
+        }
+        linux {
+            javaRuntime = '<NO RUNTIME>'
+        }
+    }
+
+    width = 620
+    height = 410
+    embedJNLP = true
+    codebase = 'http://illarion.org/media/java/launcher'
+}
+
+if (project.hasProperty('targetDistDir')) {
+    /*launch4j {
+        mainClassName = project.mainClassName
+        icon = 'icons/windows.ico'
+        outfile = new File(project.targetDistDir, "illarion.exe").absolutePath
+        copyright = '2014 - Illarion e.V'
+    }*/
+    /*macAppBundle {
+        mainClassName = project.mainClassName
+        icon = 'icons/mac.icns'
+        bundleJRE = false
+        javaProperties.put("apple.laf.useScreenMenuBar", "true")
+        jvmVersion = '1.7+'
+        appName = "Illarion"
+        dmgOutputDir = "macApp"
+        dmgName = "illarion.app.zip"
+    }*/
+
+    task clearDistDir(type: Delete) {
+        delete project.distsDir
+    }
+    jfxDeploy {
+        doFirst {
+            clearDistDir
+        }
+    }
+    task publishDownloader(type: Copy, dependsOn: 'jfxDeploy') {
+        from project.distsDir
+        into file(project.targetDistDir)
+    }
+    task publishBundle(type: Copy, dependsOn: 'proguard') {
+        from new File(project.buildDir, "downloader.jar").absolutePath
+        into file(project.targetDistDir)
+    }
+    /*task publishMacBundle(type: Copy, dependsOn: 'createAppZip') {
+        from new File(project.buildDir, "macApp/illarion.app.zip").absolutePath
+        into file(project.targetDistDir)
+    }*/
+}
+
+task proguard(type: proguard.gradle.ProGuardTask, dependsOn: 'jfxJar') {
+    final def mainFile = new File(project.buildDir, "libs/${project.archivesBaseName}-${project.version}.jar")
+            .absolutePath
+    injars(mainFile)
+    configurations.runtime.each { File file ->
+        if (file.absolutePath.startsWith(System.getProperty('java.home'))) {
+            libraryjars file.absolutePath
+        } else {
+            def filter = "!META-INF/*,!META-INF/plexus/*,!META-INF/sisu/*,!META-INF/maven/**,!about.html,!LICENSE," +
+                    "!OSGI-OPT/**,!**/packageinfo,!**.java,!xmlns/**"
+            if (file.absolutePath.contains("xpp3")) {
+                filter += ",!javax/xml/namespace/QName.class"
+            }
+            if (file.absolutePath.contains("javolution-core-java")) {
+                filter += ",!org/osgi/**"
+            }
+            injars([filter: filter], file.absolutePath)
+        }
+    }
+
+    libraryjars files("${System.getProperty('java.home')}/lib/jce.jar")
+    libraryjars files("${System.getProperty('java.home')}/lib/rt.jar")
+
+    outjars new File(project.buildDir, "downloader.jar").absolutePath
+
+    /* Forcing all class files to contain the same codebase level. */
+    target "1.7"
+
+    /* Optimization settings */
+    dontoptimize
+    optimizationpasses 1
+    allowaccessmodification
+    mergeinterfacesaggressively
+
+    /* Obfuscation settings */
+    dontobfuscate
+
+    renamesourcefileattribute "SourceFile"
+    keepattributes "SourceFile,LineNumberTable"
+    keepattributes "*Annotation*"
+
+    keepclasseswithmembers "public class com.javafx.main.Main {" +
+            "public static void main(java.lang.String[]);" +
+            "}"
+
+    keepclasseswithmembers "public class illarion.download.** {" +
+            "public static void main(java.lang.String[]);" +
+            "}"
+
+    keepclasseswithmembernames "class * {" +
+            "native <methods>;" +
+            "}"
+
+    keepclassmembers "class * extends java.lang.Enum {" +
+            "public static **[] values();" +
+            "public static ** valueOf(java.lang.String);" +
+            "}"
+
+    keepclassmembers "class * implements java.io.Serializable {" +
+            "static final long serialVersionUID;" +
+            "static final java.io.ObjectStreamField[] serialPersistentFields;" +
+            "private void writeObject(java.io.ObjectOutputStream);" +
+            "private void readObject(java.io.ObjectInputStream);" +
+            "java.lang.Object writeReplace();" +
+            "java.lang.Object readResolve();" +
+            "}"
+
+    keep "class ch.qos.logback.** { *; }"
+    keep "class illarion.download.gui.controller.*"
+    keep "class org.apache.commons.logging.impl.LogFactoryImpl"
+    keep "class org.apache.commons.logging.impl.SimpleLog"
+    keep "class org.xmlpull.mxp1.MXParserFactory"
+
+    keepclassmembers "class illarion.download.** {" +
+            "@javafx.fxml.FXML *;" +
+            "}"
+
+    keepclasseswithmembers "class * {" +
+            "org.apache.commons.logging.Log getLog(java.lang.String);" +
+            "}"
+
+    dontwarn "javafx.embed.**"
+    dontwarn "com.sun.**"
+    dontwarn "javax.servlet.**"
+    dontwarn "javax.mail.**"
+    dontwarn "javax.jms.**"
+    dontwarn "javax.xml.**"
+    dontnote "javax.xml.**"
+    dontnote "org.apache.log4j.jmx.Agent"
+    dontnote "org.apache.log4j.net.ZeroConfSupport"
+    dontnote "org.apache.log4j.spi.LocationInfo"
+    dontwarn "org.apache.commons.**"
+    dontwarn "org.apache.tools.ant.**"
+    dontwarn "org.apache.axis.**"
+    dontwarn "org.mantisbt.connect.ant.**"
+    dontwarn "org.apache.maven.repository.internal.**"
+    dontwarn "org.eclipse.aether.impl.**"
+    dontwarn "org.eclipse.aether.internal.impl.**"
+    dontwarn "org.eclipse.aether.connector.**"
+    dontwarn "org.eclipse.aether.transport.**"
+    dontwarn "org.osgi.service.**"
+    dontwarn "org.slf4j.**"
+    dontwarn "ch.qos.logback.**"
+    dontwarn "org.codehaus.janino.**"
+    dontwarn "org.apache.log4j.**"
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'maven-publish'
+apply plugin: 'idea'
+
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_easynpc'
+mainClassName = 'illarion.easynpc.gui.MainFrame'
+
+project.extensions.antlr = [
+        grammarpackage: "illarion.easynpc.grammar",
+        antlrSource: 'src/main/antlr4',
+        destinationDir: "src/generated/java"
+]
+
+idea {
+    module {
+        sourceDirs += file(antlr.destinationDir)
+    }
+}
+
+configurations {
+    antlr4 {
+        description = "ANTLR4"
+    }
+}
+
+dependencies {
+    compile project(':common')
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jul-to-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.codehaus.janino', name: 'janino', version: '2.6.1'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile group: 'com.github.insubstantial', name: 'substance', version: '7.2.1'
+    compile group: 'com.github.insubstantial', name: 'substance-flamingo', version: '7.2.1'
+    compile group: 'com.fifesoft', name: 'rsyntaxtextarea', version: '2.5.0'
+    compile group: 'org.antlr', name: 'antlr4-runtime', version: '4.1'
+
+    antlr4 group: "org.antlr", name: "antlr4", version: "4.1"
+
+    runtime group: 'org.illarion', name: 'rsc_tables', version: project.ext.illarionResourcesVersion
+}
+
+task antlrOutputDir {
+    doFirst {
+        mkdir(antlr.destinationDir)
+    }
+}
+
+task generateGrammarSource(dependsOn: antlrOutputDir, type: JavaExec) {
+    description = 'Generates Java sources from ANTLR4 grammars.'
+
+    inputs.dir file(antlr.antlrSource)
+    outputs.dir file(antlr.destinationDir)
+
+    def grammars = fileTree(antlr.antlrSource).include('**/*.g4')
+
+    main = 'org.antlr.v4.Tool'
+    classpath = configurations.antlr4
+    def pkg = antlr.grammarpackage.replaceAll("\\.", "/")
+    args = ["-o", "${antlr.destinationDir}/${pkg}"/*, "-atn"*/, "-visitor", "-package", antlr.grammarpackage, grammars.files].flatten()
+
+}
+
+compileJava {
+    dependsOn generateGrammarSource
+    source antlr.destinationDir
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes       \
+              'Main-Class': 'illarion.easynpc.gui.MainFrame',      \
+              'Permissions': 'all-permissions',      \
+              'Codebase': 'illarion.org',      \
+              'Application-Name': 'Illarion easyNPC editor',      \
+              'Application-Library-Allowable-Codebase': 'illarion.org',      \
+              'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),      \
+              'Built-By': System.getProperty('user.name'),       \
+              'Built-JDK': System.getProperty('java.version'),       \
+              'Implementation-Title': 'Illarion easyNPC Editor',       \
+              'Implementation-Vendor': 'Illarion e.V.',      \
+              'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+clean {
+    delete antlr.destinationDir
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'maven-publish'
+
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_easyquest'
+mainClassName = 'illarion.easyquest.gui.MainFrame'
+
+dependencies {
+    compile project(':common')
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jul-to-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.codehaus.janino', name: 'janino', version: '2.6.1'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile group: 'com.github.insubstantial', name: 'substance', version: '7.2.1'
+    compile group: 'com.github.insubstantial', name: 'substance-flamingo', version: '7.2.1'
+    compile group: 'org.tinyjee.jgraphx', name: 'jgraphx', version: '2.0.0.1'
+}
+
+processResources.dependsOn {
+    createFileLists
+}
+
+task createFileLists {
+    ['condition', 'handler', 'trigger'].each { directory ->
+        FileTree filesTree = fileTree('src/main/resources') {
+            include "template/$directory/*.lua"
+        }
+
+        File listFile = file("src/main/resources/template/$directory/filelist")
+        listFile.createNewFile()
+        listFile.write("")
+        filesTree.visit { file ->
+            if (file.relativePath.toString().endsWith('.lua')) {
+                listFile << "$file.relativePath\n"
+            }
+        }
+    }
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes       \
+              'Main-Class': 'illarion.easyquest.gui.MainFrame',     \
+              'Permissions': 'all-permissions',      \
+              'Codebase': 'illarion.org',      \
+              'Application-Name': 'Illarion easyQuest editor',      \
+              'Application-Library-Allowable-Codebase': 'illarion.org',      \
+              'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),      \
+              'Built-By': System.getProperty('user.name'),       \
+              'Built-JDK': System.getProperty('java.version'),       \
+              'Implementation-Title': 'Illarion easyQuest Editor',       \
+              'Implementation-Vendor': 'Illarion e.V.',      \
+              'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Controls.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Controls is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Controls is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Controls.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'illarion_engine_libgdx'
+dependencies {
+    compile project(':engine')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'com.badlogicgames.gdx', name: 'gdx', version: '0.9.9'
+    compile group: 'com.badlogicgames.gdx', name: 'gdx-backend-lwjgl', version: '0.9.9'
+    runtime group: 'com.badlogicgames.gdx', name: 'gdx-platform', version: '0.9.9', classifier: 'natives-desktop'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Trusted-Library': true,     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Game Engine - libGDX Backend',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Controls.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Controls is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Controls is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Controls.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'illarion_engine_nifty'
+dependencies {
+    compile project(':common')
+    compile project(':engine')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'lessvoid', name: 'nifty', version: '1.4.0-SNAPSHOT'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Trusted-Library': true,     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Game Engine - Nifty-GUI Implementation',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Controls.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Controls is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Controls is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Controls.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+        }
+    }
+}
+
+archivesBaseName = 'illarion_engine_slick'
+dependencies {
+    compile project(':engine')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.newdawn', name: 'slick', version: '264'
+    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl', version: '2.8.5'
+    compile group: 'org.lwjgl.lwjgl', name: 'lwjgl_util', version: '2.8.5'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Trusted-Library': true,     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Game Engine - Slick2D Backend',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Controls.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Controls is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Controls is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Controls.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'illarion_engine'
+dependencies {
+    compile project(':common')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Trusted-Library': true,     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Game Engine',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Client.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Client is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Client is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Client.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'application'
+apply plugin: 'maven-publish'
+
+apply from: '../versions.gradle'
+
+archivesBaseName = 'illarion_mapedit'
+mainClassName = 'illarion.mapedit.MapEditor'
+
+dependencies {
+    compile project(':common')
+    compile project(':engine')
+    compile group: 'org.javolution', name: 'javolution-core-java', version: '6.0.0'
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'org.slf4j', name: 'slf4j-api', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jul-to-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'jcl-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.slf4j', name: 'log4j-over-slf4j', version: project.ext.slf4jVersion
+    compile group: 'org.codehaus.janino', name: 'janino', version: '2.6.1'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.0.13'
+    compile group: 'net.sf.trove4j', name: 'trove4j', version: '3.0.3'
+    compile group: 'org.bushe', name: 'eventbus', version: '1.4'
+    compile group: 'com.github.insubstantial', name: 'substance', version: '7.2.1'
+    compile group: 'com.github.insubstantial', name: 'substance-flamingo', version: '7.2.1'
+    compile group: 'org.swinglabs', name: 'swingx', version: '1.6.1'
+    runtime group: 'org.illarion', name: 'rsc_items', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_music', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_tables', version: project.ext.illarionResourcesVersion
+    runtime group: 'org.illarion', name: 'rsc_tiles', version: project.ext.illarionResourcesVersion
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes        \
+               'Main-Class': 'illarion.mapedit.MapEditor',      \
+               'Permissions': 'all-permissions',       \
+               'Codebase': 'illarion.org',       \
+               'Application-Name': 'Illarion Mapeditor',       \
+               'Application-Library-Allowable-Codebase': 'illarion.org',       \
+               'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),       \
+               'Built-By': System.getProperty('user.name'),        \
+               'Built-JDK': System.getProperty('java.version'),        \
+               'Implementation-Title': 'Illarion Mapeditor',        \
+               'Implementation-Vendor': 'Illarion e.V.',       \
+               'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Controls.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Controls is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Controls is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Controls.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'nifty-controls-illarion'
+
+dependencies {
+    compile project(':common')
+    compile group: 'com.google.code.findbugs', name: 'jsr305', version: '2.0.3'
+    compile group: 'lessvoid', name: 'nifty', version: '1.4.0-SNAPSHOT'
+    compile group: 'lessvoid', name: 'nifty-default-controls', version: '1.4.0-SNAPSHOT'
+}
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes      \
+             'Permissions': 'all-permissions',     \
+             'Codebase': 'illarion.org',     \
+             'Trusted-Library': true,     \
+             'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),     \
+             'Built-By': System.getProperty('user.name'),      \
+             'Built-JDK': System.getProperty('java.version'),      \
+             'Implementation-Title': 'Illarion Nifty-GUI Controls',      \
+             'Implementation-Vendor': 'Illarion e.V.',     \
+             'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}/*
+ * This file is part of the Illarion Nifty-GUI Style.
+ *
+ * Copyright © 2013 - Illarion e.V.
+ *
+ * The Illarion Nifty-GUI Style is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation, either version 3 of the License, or
+ * (at your option) any later version.
+ *
+ * The Illarion Nifty-GUI Style is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with the Illarion Nifty-GUI Style.  If not, see <http://www.gnu.org/licenses/>.
+ */
+apply plugin: 'java'
+apply plugin: 'maven-publish'
+
+archivesBaseName = 'nifty-style-illarion'
+
+jar {
+    dependsOn { gitVersion }
+    manifest {
+        attributes     \
+            'Permissions': 'all-permissions',    \
+            'Codebase': 'illarion.org',    \
+            'Trusted-Library': true,    \
+            'Built-Date': new Date().format('yyyy-MM-dd HH:mm:ssZ'),    \
+            'Built-By': System.getProperty('user.name'),     \
+            'Built-JDK': System.getProperty('java.version'),     \
+            'Implementation-Title': 'Illarion Nifty-GUI Style',     \
+            'Implementation-Vendor': 'Illarion e.V.',    \
+            'Implementation-Version': project.ext.fullVersion
+    }
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            from components.java
+
+            artifact sourceJar {
+                classifier "sources"
+            }
+        }
+    }
+    repositories {
+        maven {
+            url project.ext.mavenRepo
+        }
+    }
+}

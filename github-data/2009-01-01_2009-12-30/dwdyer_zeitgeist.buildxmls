@@ -1,0 +1,124 @@
+<project name="zeitgeist"
+         xmlns:uncommons="antlib:org.uncommons.antlib"
+         default="dist"
+         basedir=".">
+  <description>Ant build file for the Uncommons Zeitgeist project.</description>
+
+  
+<!-- ==================================================================
+     GLOBAL BUILD PROPERTIES
+=================================================================== -->
+
+  <!-- Project-global locations. -->
+  <property name="conf.dir" value="etc" />
+  <property name="lib.dir" value="lib" />
+  <property name="lib.compiletime" value="${lib.dir}/compiletime" />
+  <property name="lib.runtime" value="${lib.dir}/runtime" />
+  <property name="dist.dir" value="dist" />
+  <property name="docs.dir" value="docs" />
+  <property name="release.dir" value="release" />
+  <property name="temp.dir" value="temp" />
+
+  <!-- Classpath for compilation and tests. -->
+  <path id="tool.path">
+    <fileset dir="${lib.dir}" includes="**/*.jar" />
+  </path>
+
+  <taskdef uri="antlib:org.uncommons.antlib"
+           resource="org/uncommons/antlib/antlib.xml"
+           classpathref="tool.path"/>
+
+
+  <property name="version" value="1.2"/>
+  <property name="artifact.identifier" value="uncommons-zeitgeist-${version}"/>
+
+  <!-- This is the minimum coverage percentage (for both lines and
+       branches) that will be tolerated.  This is used to prevent
+       regressions in coverage.  The threshold will be raised as
+       test coverage improves. -->
+  <property name="minimum.coverage" value="55" />
+
+
+
+<!-- ==================================================================
+     TARGETS FOR BUILDING THE SOFTWARE
+=================================================================== -->
+
+  <!-- Builds everything from scratch. -->
+  <target name="all"
+          depends="clean, dist, test"
+          description="Builds everything, excluding docs, from scratch."/>
+  
+  
+  <!-- Deletes all directories and files created by the build process. -->
+  <target name="clean"
+          description="Remove all files created by the build process." >
+    <delete dir="${docs.dir}" />
+    <delete dir="${dist.dir}" />
+    <delete dir="${release.dir}" />
+    <delete dir="${temp.dir}" />
+    <uncommons:clean module="core" />
+    <uncommons:clean module="publisher" />
+  </target>
+
+
+  <!-- Builds the core module. -->
+  <target name="core"
+          description="Build the core module.">
+    <uncommons:compile module="core" />
+    <uncommons:jar module="core"
+                   jarfile="${ant.project.name}-core-${version}.jar"
+                   classpath="lib/rome-1.0.jar lib/rome-fetcher-1.0.jar lib/jdom.jar lib/simple-log.jar"
+                   mainclass="org.uncommons.zeitgeist.Zeitgeist" />
+  </target>
+
+
+  <!-- Builds the publisher JAR, which depends on the core module. -->
+  <target name="publisher"
+          depends="core"
+          description="Build the publisher module.">
+    <uncommons:compile module="publisher" />
+    <uncommons:jar module="publisher"
+                   jarfile="${ant.project.name}-publisher-${version}.jar"
+                   classpath="${ant.project.name}-core-${version}.jar lib/ST-4.0.7.jar lib/antlr-3.5-complete.jar lib/simple-log.jar"
+                   mainclass="org.uncommons.zeitgeist.publisher.Publisher" />
+  </target>
+
+
+  <!-- Copy all necessary files to distribution directory. -->
+  <target name="dist"
+          depends="core, publisher"
+          description="Generate the project distribution." >
+    <uncommons:dist />
+    <!-- Copy default properties. -->
+    <copy file="${modules.dir}/publisher/src/conf/zeitgeist.properties" todir="${dist.dir}" />
+  </target>
+
+
+  <!-- Create the release artifacts. -->
+  <target name="release"
+          depends="clean, dist, test, docs"
+          description="Creates the release archives.">
+    <uncommons:release name="${artifact.identifier}" />
+  </target>
+
+  
+  <!-- Runs unit tests for all modules. -->
+  <target name="test"
+          depends="dist"
+          description="Run the unit test suite.">
+    <uncommons:test suites="${conf.dir}/testng.xml"
+                    title="Zeitgeist Unit Test Report"
+                    mincoverage="${minimum.coverage}" />
+  </target>
+
+
+  <!-- Generates API documentation for all modules. -->
+  <target name="docs"
+          description="Generates Javadoc API documentation.">
+    <uncommons:javadoc title="Zeitgeist API"
+                       version="${version}" />
+  </target>
+
+
+</project>

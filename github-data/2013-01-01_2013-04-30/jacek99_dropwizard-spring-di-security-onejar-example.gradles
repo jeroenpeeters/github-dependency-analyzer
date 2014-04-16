@@ -1,0 +1,199 @@
+import org.apache.tools.ant.taskdefs.condition.Os
+import java.text.SimpleDateFormat
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'rpm'
+
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
+
+
+//use Gradle Wrapper to control which version of Gradle is used (for plugin compatibility)
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.7'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile ("com.yammer.dropwizard:dropwizard-core:0.6.2") {
+        exclude group: 'org.eclipse.jetty.orbit'
+    }
+    compile "org.apache.geronimo.specs:geronimo-servlet_3.0_spec:1.0"
+    compile 'org.projectlombok:lombok:0.11.6'
+    compile "org.springframework:spring-web:$springVersion"
+    compile "javax.inject:javax.inject:1"
+
+    compile "org.springframework.security:spring-security-web:$springSecurityVersion"
+    compile "org.springframework.security:spring-security-config:$springSecurityVersion"
+    compile "org.springframework.security:spring-security-aspects:$springSecurityVersion"
+
+}
+
+
+jar {
+    manifest {
+        attributes 'Main-Class': 'com.github.jacek99.myapp.MyAppService'
+        attributes 'Implementation-Title': 'MyApp' ,'Implementation-Version': version
+    }
+}
+
+/**
+ * Gradle Shadow plugin integration
+ */
+buildscript {
+    repositories {
+        maven {
+            name 'Gradle Shadow'
+            url 'http://dl.bintray.com/content/johnrengelman/gradle-plugins'
+        }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.gradle.plugins:shadow:0.7.4'
+        classpath 'com.trigonic:gradle-rpm-plugin:1.4'
+    }
+}
+
+ext {
+    release = new SimpleDateFormat("yyyyMMddHHmmss").format(new Date())
+}
+
+apply plugin: 'shadow'
+
+task run(dependsOn: 'classes', type: JavaExec) {
+    main = 'com.github.jacek99.myapp.MyAppService'
+    classpath = sourceSets.main.runtimeClasspath
+    args 'server','myapp.yml'
+}
+
+task runShadow(type:Exec, dependsOn: 'shadow') {
+    workingDir = "build/libs"
+    commandLine = ['java', '-jar', '-server', "myapp-$version-shadow.jar",'server','../../myapp.yml']
+}
+
+task bdd(type: Exec, dependsOn: 'shadow') {
+    description = "Tests BDDs against the running application"
+    
+    // fix to run cucumber on a particular infernal OS properly
+    if (Os.isFamily(Os.FAMILY_WINDOWS)) {
+        commandLine 'cmd', '/c', 'bundle.bat', 'exec', 'cucumber'
+    }
+    else {
+        commandLine = ['cucumber']
+    }
+    workingDir = "./src/test/resources/bdd" 
+    def oneJarProcess = null
+
+    doFirst{
+        println "Starting application on separate thread..."
+        Thread.startDaemon {
+            oneJarProcess = "java -jar -server build/libs/myapp-$version-shadow.jar server myapp.yml".execute()
+        }
+        println "Waiting for application to start before executing tests..."
+        addShutdownHook {
+            println "Shutting down application"
+            oneJarProcess.destroy()
+        }
+    }
+
+}
+
+/**
+ * NATIVE LINUX PACKAGING SUPPORT
+ */
+
+/**
+ * DEBIAN / RPM integration
+ */
+task deb(dependsOn: 'shadow') << {
+
+    //define full Debian package name and version number
+    ext.debian = "myapp-${version}-${project.ext.release}"
+
+    copy {
+        from "src/deploy/resources/config"
+        from "src/deploy/resources/upstart/debian"
+        into "build/distributions/$debian"
+    }
+    copy {
+        from "src/deploy/resources/deb"
+        into "build/distributions/$debian/DEBIAN"
+    }
+    copy {
+        from("build/libs") {
+            include "myapp-$version-shadow.jar"
+            //remove version number from actual file installed on a server, removes need to update myapp.conf every time
+            rename { String fileName ->
+                fileName.replace("-$version", '')
+            }
+        }
+        into "build/distributions/$debian/opt/myapp"
+    }
+
+    //replace version in Debian control file
+    println "Updating version in Debian control file"
+    String contents = file(new File( "build/distributions/$debian/DEBIAN/control" )).getText( 'UTF-8')
+    contents = contents.replaceAll( '##VERSION##', "$version")
+    file(new File("build/distributions/$debian/DEBIAN/control")).write(contents,'UTF-8')
+
+    println "Compiling ${debian}.deb using Debian packaging tools..."
+    exec {
+        commandLine = ['dpkg-deb',"--build","$debian"]
+        workingDir = "build/distributions"
+    }
+}
+
+task rpm(type: Rpm, dependsOn: 'shadow') {
+    packageName = 'myapp'
+    version = "$version"
+    release = project.ext.release
+    arch = NOARCH
+    os = LINUX
+    summary = "MyApp"
+    description 'Dropwizard sample app'
+    vendor = 'Jacek Furmankiewicz'
+    url = 'https://github.com/jacek99'
+
+    //installUtils = file('scripts/rpm/utils.sh')
+    //preInstall = file('scripts/rpm/preInstall.sh')
+    postInstall = file('src/deploy/resources/rpm/postinst')
+    preUninstall = file('src/deploy/resources/rpm/prerm')
+    //postUninstall = file('scripts/rpm/postUninstall.sh')
+
+    requires('java-1.7.0-openjdk', '1.7', GREATER | EQUAL)
+
+    into '/opt/myapp'
+
+    //application executable
+    from("build/libs") {
+        include "myapp-$version-shadow.jar"
+        //remove version from file to avoid having to redo config files on every release
+        rename { String fileName ->
+            fileName.replace("-$version", '')
+        }
+    }
+    //configuration file
+    from('src/deploy/resources/config') {
+        fileType = CONFIG
+        into '/'
+    }
+
+    //systemd configuration for Fedora
+    from('src/deploy/resources/systemd') {
+        fileType = CONFIG
+        into '/'
+    }
+
+    //Upstart file for CentOS/RHEL, customized compared to the Debian version
+    from('src/deploy/resources/upstart/centos') {
+        fileType = CONFIG
+        into '/'
+    }
+}
+
+

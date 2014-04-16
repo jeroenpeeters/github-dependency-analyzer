@@ -1,0 +1,114 @@
+<project name="juel" default="dist" basedir="." xmlns:jacoco="antlib:org.jacoco.ant">
+	<property file="build.properties" />
+
+	<property name="version" value="2.2.7" />
+
+	<property name="build.dir" value="build" />
+	<property name="dist.dir" value="dist" />
+	<property name="mvn.repo" value="http://repo.maven.apache.org/maven2" />	
+
+	<property name="junit.jar" value="lib/junit.jar" />
+
+	<target name="clean" description="cleanup build directory">
+		<delete dir="${build.dir}" />
+	</target>
+
+	<target name="modules" description="download juel jars">
+		<get dest="${build.dir}">
+			<url url="${mvn.repo}/de/odysseus/juel/juel-api/${version}/juel-api-${version}.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-api/${version}/juel-api-${version}-sources.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-api/${version}/juel-api-${version}-javadoc.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-impl/${version}/juel-impl-${version}.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-impl/${version}/juel-impl-${version}-sources.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-impl/${version}/juel-impl-${version}-javadoc.jar"/> 
+			<url url="${mvn.repo}/de/odysseus/juel/juel-spi/${version}/juel-spi-${version}.jar"/> 
+		</get>
+	</target>
+
+	<!-- TODO when calling this, fop doesn't find fonts. For now, we build docs
+	     manually and include its build directory into disttribution archive... -->
+	<target name="doc" description="generate documentation">
+		<ant antfile="doc/build.xml" inheritall="false" target="dist">
+			<property name="build.dir" location="${build.dir}/forrester" />
+		</ant>
+	</target>
+	
+	<target name="dist" depends="clean,modules" description="build juel distribution">		
+		<mkdir dir="${dist.dir}"/>
+		<zip destfile="${dist.dir}/juel-${version}.zip">
+			<zipfileset prefix="juel-${version}" dir="..">
+				<include name="LICENSE.txt" />
+				<include name="README.txt" />
+				<include name="pom.xml" />
+				<include name=".project" />
+				<include name=".classpath" />
+				<include name="modules/**" />
+				<exclude name="modules/*/target/**" />
+				<exclude name="modules/.*" />
+				<include name="samples/**" />
+				<exclude name="**/.DS_Store" />
+			</zipfileset>
+			<zipfileset prefix="juel-${version}" dir="${build.dir}">
+				<include name="juel-api-${version}.jar" />
+				<include name="juel-api-${version}-sources.jar" />
+				<include name="juel-api-${version}-javadoc.jar" />
+				<include name="juel-impl-${version}.jar" />
+				<include name="juel-impl-${version}-sources.jar" />
+				<include name="juel-impl-${version}-javadoc.jar" />
+				<include name="juel-spi-${version}.jar" />
+			</zipfileset>
+			<zipfileset prefix="juel-${version}/doc" dir="doc/build">
+				<include name="**" />
+			</zipfileset>
+		</zip>
+	</target>
+
+</project><project default="site" basedir=".">
+
+	<property name="build.dir" value="build" />
+
+	<taskdef name="forrester" classname="de.odysseus.forrester.ant.ForresterTask">
+		<classpath>
+			<fileset dir="lib">
+				<include name="*.jar" />
+			</fileset>
+		</classpath>
+	</taskdef>
+
+	<target name="clean">
+		<delete dir="${build.dir}" />
+	</target>
+
+	<target name="prepare">
+		<mkdir dir="${build.dir}" />
+	</target>
+
+	<target name="skin" depends="prepare">
+		<copy todir="${build.dir}/skin">
+			<fileset dir="skin/html/resources">
+				<include name="**" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="site" depends="skin">
+		<forrester context="context.xml" outdir="${build.dir}" variant="site">
+			<context2html />
+		</forrester>
+	</target>
+
+	<target name="html" depends="skin">
+		<forrester context="context.xml" outdir="${build.dir}" variant="html">
+			<context2html />
+		</forrester>
+	</target>
+
+	<target name="pdf" depends="skin">
+		<forrester context="context.xml" outdir="${build.dir}" variant="pdf">
+			<project2pdf project="juel" />
+		</forrester>
+	</target>
+
+	<target name="dist" depends="html,pdf" />
+
+</project>

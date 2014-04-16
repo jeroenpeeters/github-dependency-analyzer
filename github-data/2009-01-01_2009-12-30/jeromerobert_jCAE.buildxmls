@@ -1,0 +1,1517 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="jcae">
+
+	<target name="init">
+		<tstamp/>
+		<property name="version" value="${DSTAMP}"/>	
+		<property file="build.properties"/>
+		<property environment="env"/>
+	</target>
+	
+	<target name="compile" depends="compile-without-occ,compile-with-occ" />
+
+	<target name="compile-without-occ" depends="init">
+		<mkdir dir="${classes.dir}"/>
+		<propertyfile file="${classes.dir}/timestamp.properties">
+			<entry key="build.time" type="date" pattern="yyyy-MM-dd HH:mm:ss" value="now" />
+		</propertyfile>
+		<javac debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.dir}" encoding="UTF-8">
+			<compilerarg line="${compiler.arg}"/>
+			<classpath>
+				<pathelement location="${trove.jar}"/>
+				<pathelement location="${xml-apis.jar}"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="compile-with-occ" depends="init">
+		<mkdir dir="${classes.dir}"/>
+		<javac debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.mesherocc.dir}" encoding="UTF-8">
+			<compilerarg line="${compiler.arg}"/>
+			<classpath>
+				<pathelement location="${occjava.jar}"/>
+				<pathelement location="${trove.jar}"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="compile-junit" depends="init,jar" description="Compile junit tests">
+		<mkdir dir="${classes.test.dir}"/>
+		<javac debug="true" deprecation="true" destdir="${classes.test.dir}" srcdir="${src.test.dir}" encoding="UTF-8">
+			<compilerarg line="${compiler.arg}"/>
+			<classpath>
+				<pathelement location="${jcae-viewer3d.jar}"/>
+				<pathelement location="${amibe.jar}"/>
+				<pathelement location="${junit.jar}"/>
+				<pathelement location="${trove.jar}"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="test" depends="junit,test-large" description="Run all tests"/>
+
+	<target name="junit" depends="jar,jar-junit" description="Run JUnit tests">
+		<available file="junit.logging.properties" property="logging.configuration.present" value="${user.dir}/junit.logging.properties"/>
+		<mkdir dir="${test.dir}/results"/>
+		<junit printsummary="withOutAndErr" fork="yes" failureProperty="test.failure">
+			<sysproperty key="java.util.logging.config.file" value="${logging.configuration.present}"/>
+			<env key="LD_LIBRARY_PATH" path="lib:${env.LD_LIBRARY_PATH}" />
+			<formatter type="xml"/>
+			<classpath>
+				<pathelement location="${amibe.jar}"/>
+				<pathelement location="${junit.jar}"/>
+				<pathelement location="${jcae.junit.jar}"/>
+			</classpath>
+			<assertions>
+				<enable package="org.jcae.mesh.amibe"/>
+			</assertions>
+			<batchtest fork="yes" todir="${test.dir}/results" >
+				<fileset dir="${classes.test.dir}">
+					<!-- Old tests, not yet converted to JUnit -->
+					<exclude name="org/jcae/mesh/amibe/patch/**"/>
+					<exclude name="org/jcae/mesh/amibe/util/**"/>
+					<exclude name="org/jcae/mesh/amibe/metrics/OctreeSample**"/>
+					<exclude name="org/jcae/mesh/bora/SampleBora*"/>
+					<!-- Not JUnit tests, used by test-large -->
+					<exclude name="org/jcae/mesh/MesherTest.class"/>
+					<exclude name="org/jcae/mesh/MesherTest$ComputeTriangleQuality.class"/>
+					<exclude name="org/jcae/mesh/MesherTest$FakeEntityResolver.class"/>
+				</fileset>
+			</batchtest>
+		</junit>
+		<fail message="test failed" if="test.failure"/>
+	</target>
+
+	<target name="test-large" depends="jar,jar-junit" description="Run JUnit tests">
+		<mkdir dir="${test.dir}/results"/>
+		<junit printsummary="withOutAndErr" fork="yes" failureProperty="test.failure">
+			<jvmarg value="-Xmx800m"/>
+			<jvmarg value="-Drun.test.large=true"/>
+			<env key="MMGT_OPT" value="0"/>
+			<env key="LD_LIBRARY_PATH" path="lib:${env.LD_LIBRARY_PATH}" />
+			<sysproperty key="test.dir" value="${test.dir}"/>
+			<formatter type="xml"/>
+			<classpath>
+				<pathelement location="${amibe.jar}"/>
+				<pathelement location="${junit.jar}"/>
+				<pathelement location="${jcae.junit.jar}"/>
+			</classpath>
+			<test name="org.jcae.mesh.MesherTest" todir="${test.dir}/results"/>
+		</junit>
+		<fail message="test failed" if="test.failure"/>
+	</target>
+
+	<target name="junitreport" depends="init" description="Generate a report about JUnit tests">
+		<junitreport todir="${test.dir}/results">
+			<fileset dir="${test.dir}/results">
+				<include name="TEST-*.xml"/>
+			</fileset>
+			<report format="frames" todir="${test.dir}/html"/>
+		</junitreport>
+	</target>
+
+	<target name="jar" depends="jar-without-occ,jar-with-occ" description="Build jar files" />
+	
+	<target name="jar-without-occ" depends="compile-without-occ" description="amibe.jar">
+		<mkdir dir="lib"/>
+		<jar basedir="${classes.dir}" excludes="**/occ/*" compress="true" jarfile="${amibe.jar}">
+			<manifest>
+				<attribute name="Main-Class" value="org.jcae.mesh.Mesher"/>
+				<attribute name="Class-Path" value="${jar.dependencies}"/>
+			</manifest>
+			<fileset dir="${src.dir}" includes="**/*.properties"/>
+			<fileset dir="${src.dir}" includes="**/*.dtd"/>
+			<fileset dir="${src.dir}" includes="**/*.xsd"/>
+		</jar>
+	</target>
+	
+	<target name="jar-with-occ" depends="compile-with-occ" description="mesherocc.jar">
+		<mkdir dir="lib"/>
+		<jar basedir="${classes.dir}" includes="**/occ/*" compress="true" jarfile="${mesherocc.jar}">
+			<manifest>
+				<attribute name="Class-Path" value="${mesherocc.jar.dependencies}"/>
+			</manifest>
+		</jar>
+	</target>
+	
+	<target name="jar-junit" depends="compile-junit" description="jar">
+		<mkdir dir="lib"/>
+		<jar basedir="${classes.test.dir}" compress="true" jarfile="${jcae.junit.jar}"/>
+	</target>
+	
+	<target name="all" depends="dist-bin" description="Build everything."/>
+	
+	<target name="javadoc" description="Javadoc for my API." depends="init">
+		<mkdir dir="${javadoc.dir}"/>
+		<javadoc destdir="${javadoc.dir}" packagenames="*">
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+				<exclude name="**/*Test.java"/>
+			</fileset>
+			<tag name="todo" scope="all" description="To do:" />
+			<classpath>
+				<pathelement location="${amibe.jar}"/>
+				<pathelement location="${trove.jar}"/>
+			</classpath>
+		</javadoc>
+		<!-- It seems that doc-files/* are not copied if sourcepath is not present -->
+		<copy todir="${javadoc.dir}">
+			<fileset dir="${src.dir}">
+				<include name="**/doc-files/*.png"/>
+			</fileset>
+		</copy>
+	</target>
+	
+	<target name="clean" description="Clean all build products." depends="init">
+		<delete dir="${classes.dir}"/>
+		<delete dir="${classes.test.dir}"/>
+		<delete dir="${javadoc.dir}"/>
+		<delete dir="${test.dir}/results"/>
+		<delete dir="${test.dir}/output"/>
+		<delete dir="${test.dir}/logs"/>
+		<delete file="${amibe.jar}"/>
+		<delete file="${test.jar}"/>
+		<delete file="${jcae.junit.jar}"/>
+		<delete file="${mesherocc.jar}"/>
+	</target>
+	
+	<target name="dist" depends="init" description="build a tar.bz2 archive to distribute sources">
+		<tar destfile="${project.name}-src-${version}.tar">
+			<tarfileset dir="." prefix="${project.name}-${version}" username="jcae" group="jcae">
+				<include name="build.properties" />
+				<include name="build.xml" />
+				<include name="src/**"/>
+				<include name="INSTALL"/>
+				<include name="ChangeLog"/>
+				<include name="doc/*"/>
+			</tarfileset>
+		</tar>
+		<bzip2 src="${project.name}-src-${version}.tar" zipfile="${project.name}-src-${version}.tar.bz2"/>
+		<delete file="${project.name}-src-${version}.tar"/>
+	</target>
+
+	<target name="dist-bin" description="build a zip to distribute binaries" depends="jar">
+		<zip destfile="${project.name}-${version}.zip">
+			<zipfileset prefix="${project.name}-${version}" dir="lib"/>
+		</zip>
+	</target>
+	<target name="dist-doc" description="build a zip to distribute doc" depends="javadoc">
+		<zip destfile="${project.name}-doc-${version}.zip">
+			<zipfileset prefix="${project.name}-${version}/doc" dir="doc"/>
+		</zip>
+	</target>
+
+	<target name="debug-netbeans" depends="jar" if="netbeans.home">
+		<nbjpdastart name="${project.name}" addressproperty="jpda.address" transport="dt_socket"/>
+	</target>
+
+	<target name="debug" depends="jar, debug-netbeans" description="Debug Project">
+		<java fork="true" jar="${amibe.jar}">
+			<jvmarg value="-Xdebug"/>
+			<jvmarg value="-Xnoagent"/>
+			<jvmarg value="-Djava.compiler=none"/>
+			<jvmarg value="-Xrunjdwp:transport=dt_socket,address=${jpda.address},server=y,suspend=n"/>
+		</java>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project xmlns:j2seproject3="http://www.netbeans.org/ns/j2se-project/3" name="amibe" default="default" basedir=".">
+    <description>Builds, tests, and runs the project amibe.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="amibe-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	<target name="-post-init">
+        <condition property="no.deps" value="true">
+            <isset property="no.occ"/>
+        </condition>
+        <condition property="amibe.source" value="${src.src.dir}">
+            <isset property="no.occ"/>
+        </condition>
+		<property name="amibe.source" value="${src.src.dir}:${src.src-occ.dir}"/>
+	</target>
+
+	<!-- overide default implementation which is buggy
+	  Just add useNativeBasedir="true" so cascading calls no longer bug
+	-->
+    <target depends="-check-call-dep" if="should.call.dep" name="-maybe-call-dep">
+        <ant antfile="${call.script}" inheritall="false" target="${call.target}" useNativeBasedir="true">
+            <propertyset>
+                <propertyref prefix="transfer."/>
+                <mapper from="transfer.*" to="*" type="glob"/>
+            </propertyset>
+        </ant>
+    </target>
+
+	<!-- Override to call javac with a custom srcdir parameter -->
+    <target depends="init,deps-jar,-pre-pre-compile,-pre-compile, -copy-persistence-xml,-compile-depend" if="have.sources" name="-do-compile">
+        <j2seproject3:javac gensrcdir="${build.generated.sources.dir}" srcdir="${amibe.source}"/>
+        <copy todir="${build.classes.dir}">
+            <fileset dir="${src.src.dir}" excludes="${build.classes.excludes},${excludes}" includes="${includes}"/>
+            <fileset dir="${src.src-occ.dir}" excludes="${build.classes.excludes},${excludes}" includes="${includes}"/>
+        </copy>
+    </target>
+
+	<target name="jar" depends="compile,-pre-pre-jar" description="jar">
+		<jar basedir="${build.classes.dir}" excludes="**/tests/** **/*Test* **/occ/*" compress="true" jarfile="${dist.jar}">
+			<manifest>
+				<attribute name="Main-Class" value="org.jcae.mesh.Mesher"/>
+				<attribute name="Class-Path" value="jcae-mesherocc.jar trove.jar"/>
+			</manifest>
+			<fileset dir="${src.src.dir}" includes="**/*.properties"/>
+			<fileset dir="${src.src.dir}" includes="**/*.dtd"/>
+		</jar>
+		<jar basedir="${build.classes.dir}" includes="**/occ/*" compress="true" jarfile="${dist.jar.dir}/jcae-mesherocc.jar">
+			<manifest>
+				<attribute name="Class-Path" value="occjava.jar"/>
+			</manifest>
+		</jar>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.mesh.cad.occ" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.mesh.cad.occ.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<property name="amibe.dir" value="../../amibe"/>
+	<property name="vtk-amibe-occ.dir" value="../../vtk-amibe-occ"/>
+	<target name="release">
+		<echo message="Building ${amibe.dir}"/>
+		<ant dir="${amibe.dir}" antfile="nbbuild.xml" target="jar" inheritall="false" inheritrefs="false"/>
+		<copy verbose="true" file="${amibe.dir}/dist/jcae-mesherocc.jar" todir="${cluster}/modules/ext"/>
+		<echo message="Done building ${amibe.dir}"/>
+		<echo message="Building ${vtk-amibe-occ.dir}"/>
+		<ant dir="${vtk-amibe-occ.dir}" target="jar" inheritall="false" inheritrefs="false"/>
+		<copy verbose="true" file="${vtk-amibe-occ.dir}/dist/vtk-amibe-occ.jar" todir="${cluster}/modules/ext"/>
+		<echo message="Done building ${vtk-amibe-occ.dir}"/>
+	</target>
+
+	<target name="clean" depends="projectized-common.clean">
+		<echo message="Cleaning ${amibe.dir}"/>
+		<ant dir="${amibe.dir}" antfile="nbbuild.xml" target="clean" inheritall="false" inheritrefs="false"/>
+		<echo message="Done cleaning ${amibe.dir}"/>
+		<echo message="Cleaning ${vtk-amibe-occ.dir}"/>
+		<ant dir="${vtk-amibe-occ.dir}" target="clean" inheritall="false" inheritrefs="false"/>
+		<echo message="Done cleaning ${vtk-amibe-occ.dir}"/>
+	</target>
+	
+	<target name="compile" depends="release,projectized-common.compile"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.mesh.amibe" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.mesh.amibe.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<property name="amibe.dir" value="../../amibe"/>
+	<property name="vtk-amibe.dir" value="../vtk-amibe"/>
+	<target name="release">
+		<echo message="Building ${amibe.dir}"/>
+		<ant dir="${amibe.dir}" antfile="nbbuild.xml" target="jar" inheritall="false" inheritrefs="false"/>
+		<copy verbose="true" todir="${cluster}/modules/ext" file="${amibe.dir}/dist/amibe.jar"/>
+		<copy verbose="true" file="${amibe.dir}/logging.properties" tofile="${cluster}/etc/logging.properties"/>
+		<copy verbose="true" todir="${cluster}/amibe-python">
+			<fileset dir="${amibe.dir}/python">
+				<exclude name="amibebatch"/>
+			</fileset>
+		</copy>
+		<echo message="Done building ${amibe.dir}"/>
+		<echo message="Building ${vtk-amibe.dir}"/>
+		<ant dir="${vtk-amibe.dir}" target="jar" inheritall="false" inheritrefs="false"/>
+		<copy verbose="true" todir="${cluster}/modules/ext" file="${vtk-amibe.dir}/dist/jcae-vtk-amibe.jar"/>
+		<echo message="Done building ${vtk-amibe.dir}"/>
+	</target>
+
+	<target name="clean" depends="projectized-common.clean">
+		<echo message="Cleaning ${amibe.dir}"/>
+		<ant dir="${amibe.dir}" antfile="nbbuild.xml" target="clean" inheritall="false" inheritrefs="false"/>
+		<echo message="Done cleaning ${amibe.dir}"/>
+		<echo message="Cleaning ${vtk-amibe-occ.dir}"/>
+		<ant dir="${vtk-amibe.dir}" target="clean" inheritall="false" inheritrefs="false"/>
+		<echo message="Done cleaning ${vtk-amibe-occ.dir}"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="jcae" basedir=".">
+    <description>Builds the module suite jcae.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- Patch launcher and/or configuration file -->
+	<target name="patch-launchers">
+		<property name="options" value=
+			"--branding jcae -J-Xmx768m -J-Dsun.java2d.ddoffscreen=false -J-Dsun.java2d.gdiblit=false"/>
+		<replaceregexp file="${build.launcher.dir}/etc/${app.name}.conf"
+			match="default_options=(.*)"
+			replace="default_options=&quot;${options}&quot;"
+			byline="true"/>
+		<replaceregexp file="${build.launcher.dir}/etc/${app.name}.conf"
+			match=".*jdkhome=&quot;.*&quot;"
+			replace="jdkhome=&quot;jre6&quot;"
+			byline="true"/>
+	</target>
+
+	<target name="-zip-linux" if="arch.linux">
+		<property name="jre.path" value="${path.jre.linux}"/>
+		<property name="arch" value="linux"/>
+	</target>
+	<target name="-zip-windows" if="arch.win32">
+		<property name="jre.path" value="${path.jre.win32}"/>
+		<property name="arch" value="win32"/>
+	</target>
+
+	<!-- When we switch from win32 to linux, arch specific files will stay in
+	in the cluster directory, so we need to clean it.
+	-->
+	<target name="clean-cluster" depends="-init">
+		<delete dir="${cluster}"/>
+	</target>
+
+	<!-- From netbeans-6.7/harness/suite.xml -->
+    <target name="build-zip" depends="clean-cluster,build,build-launchers,patch-launchers,-zip-linux,-zip-windows" description="Builds a ZIP distribution of the suite, launchers, and selected modules from the platform.">
+        <property name="zip.name" value="${app.name}-${arch}-${app.version}"/>
+		<mkdir dir="${dist.dir}"/>
+        <!-- pathfileset does not support 'prefix' and 'filemode' parameters,
+             we have to copy them to temp location -->
+        <tempfile property="temp.dir.nbexec" destdir="${basedir}/build" deleteonexit="true"/>
+        <tempfile property="temp.dir.rest" destdir="${basedir}/build" deleteonexit="delete"/>
+        <subant genericantfile="${harness.dir}/suite.xml" target="copy-cluster" inheritrefs="true">
+            <property name="dest.dir" value="${temp.dir.rest}"/>
+            <property name="nbexec.dir" value="${temp.dir.nbexec}"/>
+            <property name="build.dir" value="${basedir}/build"/>
+            <resources refid="zip.platform.clusters"/>
+        </subant>
+        <zip destfile="${dist.dir}/${zip.name}.zip">
+            <zipfileset dir="launchers/release" filemode="755" prefix="${zip.name}/bin"/>
+            <zipfileset dir="${build.launcher.dir}/etc/" prefix="${zip.name}/etc"/>
+            <zipfileset dir="${temp.dir.nbexec}" filemode="755" prefix="${zip.name}"/>
+            <zipfileset dir="${temp.dir.rest}" prefix="${zip.name}"/>
+
+            <!-- Yes, the doubled app.name is a bit ugly, but better than the alternative; cf. #66441: -->
+            <zipfileset dir="${cluster}" prefix="${zip.name}/${app.name}">
+                <exclude name="config/Modules/*.xml_hidden"/>
+				<exclude name="modules/bin/**"/>
+            </zipfileset>
+			<zipfileset dir="${cluster}/modules/bin" prefix="${zip.name}/${app.name}/modules/bin" filemode="755"/>
+			<zipfileset file="../amibe/python/amibebatch" prefix="${zip.name}/bin" filemode="755"/>
+
+			<zipfileset dir="${jre.path}" prefix="${zip.name}/jre6">
+				<exclude name="bin/**"/>
+			</zipfileset>
+			<zipfileset dir="${jre.path}/bin" prefix="${zip.name}/jre6/bin" filemode="755"/>
+        </zip>
+    </target>
+
+    <target name="-no-build-modules" depends="branding,release,-hide-excluded-modules" if="no.build.modules"/>
+	<target name="-build-modules" unless="no.build.modules">
+		<antcall target="suite.build"/>
+	</target>	
+	<target name="build" depends="-init,-no-build-modules,-build-modules"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.netbeans" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.netbeans.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.jython" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jython.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<property file="../nbproject/private/private.properties"/>
+	<property file="../nbproject/project.properties"/>
+
+	<target name="-copy-jar">
+		<copy verbose="true" file="${libs.jython.classpath}" tofile="${cluster}/modules/ext/jython.jar"/>
+	</target>
+
+	<target name="compile" depends="-copy-jar,projectized-common.compile"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.netbeans.mesh" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.netbeans.mesh.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.opencascade.jni" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.opencascade.jni.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<property name="original.project.dir" value="../occjava"/>
+	<property name="original.project.jar" value="${original.project.dir}/dist/occjava.jar"/>
+	<property file="../nbproject/private/private.properties"/>
+	<property file="../nbproject/project.properties"/>
+	<patternset id="occ.unix.files">
+		<!-- Debian packaging -->
+		<include name="libTK*-*.so"/>
+		<!-- OCE packaging -->
+		<include name="libTK*.so.1"/>
+		<!-- OCE packaging with OCE_NO_LIBRARY_VERSION=ON -->
+		<include name="libTK*.so"/>
+	</patternset>
+
+	<patternset id="occ.windows.files">
+	    <!-- mingw build without hack to remove lib prefix -->
+		<include name="libTK*.dll"/>
+		<!-- mingw build with hack to remove lib prefix -->
+		<include name="TK*.dll"/>
+	</patternset>
+
+	<target name="-release.files.linux" if="arch.linux">
+		<copy verbose="true" todir="${cluster}/modules/lib">
+			<fileset dir="${path.occ.linux}">
+				<patternset refid="occ.unix.files"/>
+			</fileset>
+		</copy>
+		<copy verbose="true" todir="${cluster}/modules/lib" flatten="true">
+			<filelist files="${path.occjava.linux}"/>
+			<filelist files="${path.libstdc++}"/>
+		</copy>
+	</target>
+
+	<target name="-release.files.win32" if="arch.win32">
+		<copy verbose="true" todir="${cluster}/modules/lib">
+			<fileset dir="${path.occ.win32}">
+				<patternset refid="occ.windows.files"/>
+			</fileset>
+		</copy>
+		<copy verbose="true" todir="${cluster}/modules/lib" flatten="true">
+			<filelist files="${path.occjava.win32}"/>
+			<filelist files="${path.libstdc++.win32}"/>
+		</copy>
+	</target>
+
+	<target name="release" depends="-release.files.linux,-release.files.win32">
+		<echo message="Building ${original.project.dir}"/>
+		<ant dir="${original.project.dir}"
+			 target="jar" inheritall="false" inheritrefs="false"/>
+		<echo message="Done building ${original.project.dir}"/>
+
+		<copy verbose="true" todir="${cluster}/modules/ext"
+			  file="${original.project.jar}"/>
+	</target>
+
+	<target name="clean" depends="projectized-common.clean">
+		<delete failonerror="false">
+			<fileset dir="${cluster}/modules/lib">
+				<patternset refid="occ.unix.files"/>
+			</fileset>
+			<fileset dir="${cluster}/modules/lib">
+				<patternset refid="occ.windows.files"/>
+			</fileset>
+		</delete>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="occjava" default="default" basedir=".">
+    <description>Builds, tests, and runs the project occjava.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="occjava-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="gnu.trove" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project gnu.trove.</description>
+    <import file="nbproject/build-impl.xml"/>
+		<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<target name="release">
+		<copy verbose="true" file="${libs.trove.classpath}" tofile="${cluster}/modules/ext/trove.jar"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.netbeans.tweakui" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.netbeans.tweakui.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<property file="../nbproject/private/private.properties"/>
+	<property file="../nbproject/project.properties"/>
+	<!-- OpenIDE-Module-Build-Version -->
+	<target name="init" depends="basic-init,files-init,build-init,-javac-init">
+		<mkdir dir="${build.classes.dir}/org/jcae/netbeans/tweakui/"/>
+		<propertyfile file="${build.classes.dir}/org/jcae/netbeans/tweakui/version.properties">
+		  <entry  key="version" value="${app.version}"/>
+		</propertyfile>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="javax.vecmath" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project javax.vecmath.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<target name="release">
+		<copy verbose="true" file="${libs.vecmath.classpath}" todir="${cluster}/modules/ext"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="viewer3d-amibe" default="default" basedir=".">
+    <description>Builds, tests, and runs the project viewer3d-amibe.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="viewer3d-amibe-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	<!-- overide default implementation which is buggy -->
+	<target depends="init" name="deps-jar" unless="no.deps">
+		<ant dir="${project.amibe}" inheritall="false" target="jar"/>
+		<ant dir="${project.viewer3d}" inheritall="false" target="jar"/>
+    </target>
+    <target depends="init" name="deps-clean" unless="no.deps">
+        <ant dir="${project.amibe}" inheritall="false" target="clean"/>
+        <ant dir="${project.viewer3d}" inheritall="false" target="clean"/>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="viewer3d" default="default" basedir=".">
+    <description>Builds, tests, and runs the project viewer3d.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="viewer3d-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	<!-- overide default implementation which is buggy -->
+	<target depends="init" name="deps-jar" unless="no.deps">
+		<ant dir="${project.occjava}" inheritall="false" target="jar"/>
+    </target>
+    <target depends="init" name="deps-clean" unless="no.deps">
+        <ant dir="${project.occjava}" inheritall="false" target="clean"/>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="vtk-amibe" default="default" basedir=".">
+    <description>Builds, tests, and runs the project vtk-amibe.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="vtk-amibe-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	<!-- overide default implementation which is buggy -->
+	<target depends="init" name="deps-jar" unless="no.deps">
+		<ant antfile="nbbuild.xml" dir="${project.amibe}" inheritall="false" target="jar"/>
+		<ant dir="${project.VTK_Util}" inheritall="false" target="jar"/>
+    </target>
+    <target depends="init" name="deps-clean" unless="no.deps">
+        <ant antfile="nbbuild.xml" dir="${project.amibe}" inheritall="false" target="clean"/>
+	<ant dir="${project.VTK_Util}" inheritall="false" target="clean"/>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.jcae.vtk" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.jcae.vtk.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+	<property name="original.project.dir" location="../../vtk-util"/>
+	<property name="original.project.jar" location="${original.project.dir}/dist/vtk-util.jar"/>
+	<target name="release">
+		<echo message="Building ${original.project.dir}"/>
+		<ant dir="${original.project.dir}"
+			 target="jar" inheritall="false" inheritrefs="false"/>
+		<echo message="Done building ${original.project.dir}"/>
+
+		<copy verbose="true" todir="${cluster}/modules/ext"
+			  file="${original.project.jar}"/>
+	</target>
+
+
+	<target name="clean" depends="projectized-common.clean">
+		<echo message="Cleaning ${original.project.dir}"/>
+		<ant dir="${original.project.dir}"
+			 target="clean" inheritall="false" inheritrefs="false"/>
+		<echo message="Done cleaning ${original.project.dir}"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="vtk" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project vtk.</description>
+    <import file="nbproject/build-impl.xml"/>
+	<!-- from http://wiki.netbeans.org/DevFaqWrapperModules -->
+
+	<property file="../nbproject/private/private.properties"/>
+	<property file="../nbproject/project.properties"/>
+	<patternset id="vtk.unix.files">
+		<include name="lib*.so"/>
+		<exclude name="libvtkhdf5*.so"/>
+		<exclude name="libvtk*Python*.so"/>
+		<include name="libvtkhdf5*.so.*"/>
+	</patternset>
+
+	<patternset id="vtk.windows.files">
+	    <!-- mingw build without hack to remove lib prefix -->
+		<include name="libvtk*.dll"/>
+		<!-- mingw build with hack to remove lib prefix -->
+		<include name="vtk*.dll"/>
+		<include name="LSDyna.dll"/>
+	</patternset>
+
+	<target name="-release.files.linux" if="arch.linux">
+		<copy verbose="true" todir="${cluster}/modules/lib">
+			<fileset dir="${vtk.dir.linux}">
+				<patternset refid="vtk.unix.files"/>
+			</fileset>
+		</copy>
+		<!-- not path.libstdc++.linux for backward compatiblity -->
+		<copy verbose="true" todir="${cluster}/modules/lib" flatten="true">
+			<!-- use filelist instead of fileset or files to raise an error
+			on missing files -->
+			<filelist files="${path.libstdc++}"/>
+		</copy>
+	</target>
+
+	<target name="-release.files.win32" if="arch.win32">
+		<copy verbose="true" todir="${cluster}/modules/lib">
+			<fileset dir="${vtk.dir.win32}">
+				<patternset refid="vtk.windows.files"/>
+			</fileset>
+		</copy>
+		<copy verbose="true" todir="${cluster}/modules/lib" flatten="true">
+			<!-- use filelist instead of fileset or files to raise an error
+			on missing files -->
+			<filelist files="${path.libstdc++.win32}"/>
+		</copy>
+	</target>
+
+	<target name="release" depends="-release.files.linux,-release.files.win32">
+		<copy file="${libs.VTK.classpath}" tofile="${cluster}/modules/ext/vtk.jar" />
+	</target>
+
+	<target name="clean" depends="projectized-common.clean">
+		<delete failonerror="false">
+			<fileset dir="${cluster}/modules/lib">
+				<patternset refid="vtk.unix.files"/>
+			</fileset>
+			<fileset dir="${cluster}/modules/lib">
+				<patternset refid="vtk.windows.files"/>
+			</fileset>
+		</delete>
+	</target>
+
+	<target name="compile" depends="release,projectized-common.compile"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="occjava">
+    <target name="init">
+        <property file="build.private.properties"/>
+        <property file="build.properties"/>
+        <property environment="env"/>
+    </target>
+
+    <target name="compile" depends="init" description="Compile">
+        <mkdir dir="${classes.dir}"/>
+        <javac debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.dir}">
+            <compilerarg line="${compiler.arg}"/>
+            <include name="org/jcae/opencascade/**"/>
+        </javac>
+    </target>
+
+    <target name="jar" depends="init,compile" description="Create a jar file" >
+        <mkdir dir="lib"/>
+        <jar basedir="${classes.dir}" compress="true" jarfile="${occjava.jar}" />
+    </target>
+
+    <target name="compile-junit" depends="init,jar" description="Compile junit tests">
+        <mkdir dir="${classes.test.dir}"/>
+        <javac debug="true" deprecation="true" destdir="${classes.test.dir}" srcdir="${src.test.dir}">
+            <compilerarg line="${compiler.arg}"/>
+            <classpath>
+                <pathelement location="${junit.jar}"/>
+                <pathelement location="${occjava.jar}"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="jar-junit" depends="compile-junit" description="Create a jar file for JUnit tests" >
+        <mkdir dir="lib"/>
+        <jar basedir="${classes.test.dir}" compress="true" jarfile="${test.jar}">
+            <manifest>
+                <attribute name="Class-Path" value="${test.jar.dependencies}"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="junit" depends="jar-junit" description="Run JUnit tests">
+        <mkdir dir="${test.dir}/results"/>
+        <junit printsummary="withOutAndErr" fork="yes" failureProperty="test.failure">
+            <env key="MMGT_OPT" value="0"/>
+            <env key="LD_LIBRARY_PATH" path="lib:${env.LD_LIBRARY_PATH}" />
+            <sysproperty key="test.dir" value="${test.dir}"/>
+            <formatter type="xml"/>
+            <classpath>
+                <pathelement location="${junit.jar}"/>
+                <pathelement location="${test.jar}"/>
+            </classpath>
+            <batchtest fork="yes" todir="${test.dir}/results" >
+                <fileset dir="${classes.test.dir}" />
+            </batchtest>
+        </junit>
+        <fail message="test failed" if="test.failure"/>
+    </target>
+
+    <target depends="init" description="Javadoc" name="javadoc">
+        <mkdir dir="${javadoc.dir}"/>
+        <javadoc destdir="${javadoc.dir}" access="public">
+			<packageset dir="${src.dir}" defaultexcludes="yes">
+				<include name="org/jcae/opencascade/**"/>
+			</packageset>
+            <sourcepath>
+                <pathelement location="${src.dir}"/>
+            </sourcepath>
+        </javadoc>
+    </target>
+	
+    <target name="clean" depends="init" description="Clean all build products." >
+        <delete dir="${classes.dir}"/>
+        <delete dir="${classes.test.dir}"/>
+        <delete dir="${test.dir}/results"/>
+        <delete dir="${javadoc.dir}"/>
+        <delete file="${occjava.jar}"/>
+        <delete file="${test.jar}"/>
+		<delete>
+			<fileset dir="src-java/org/jcae/opencascade/jni" excludes="BRepOffsetAPI_Sewing.java"/>
+		</delete>
+    </target>
+
+	<target name="jar-undo" depends="init" description="jar">
+		<mkdir dir="lib"/>
+        <javac source="1.4" target="1.4" debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.dir}" includes="undo/**">
+			<classpath>
+				<pathelement location="lib/jcae-viewer3d.jar"/>
+			</classpath>
+		</javac>
+		<jar basedir="${classes.dir}" includes="undo/**" compress="true" jarfile="lib/undo.jar">
+			<manifest>
+				<attribute name="Main-Class" value="undo.OccVi"/>
+				<attribute name="Class-Path" value="occjava.jar jcae-viewer3d.jar"/>
+			</manifest>
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="jcae-viewer3d-amibe">
+
+	<target name="init">
+		<property file="build.properties"/>
+		<tstamp/>
+		<property name="version" value="${DSTAMP}"/>
+	</target>
+	
+	<target name="compile" depends="init">
+		<mkdir dir="${classes.dir}"/>
+		<javac debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.dir}">
+			<compilerarg line="${compiler.arg}"/>
+			<classpath>
+				<pathelement location="${jcae.jar}"/>
+				<pathelement location="${jcae-viewer3d.jar}"/>
+				<pathelement location="${trove.jar}"/>
+			</classpath>
+		</javac>
+	</target>
+	
+	<target name="jar" depends="compile" description="Create the viewer3d jar">
+		<mkdir dir="${jar.dir}"/>
+		<jar compress="true" jarfile="${jar.dir}/${jcae-viewer3d-amibe.jar}">
+			<manifest>
+				<attribute name="Class-Path" value="${jcae-viewer3d-amibe.jar.dependencies}"/>
+			</manifest>
+			<fileset dir="${classes.dir}" includes="org/jcae/viewer3d/** org/jcae/mesh/**"/>
+		</jar>
+	</target>
+
+	<target name="all" depends="dist-bin" description="Build everything."/>
+	
+	<target name="javadoc" description="Javadoc for my API." depends="init">
+		<mkdir dir="${javadoc.dir}"/>
+		<javadoc destdir="${javadoc.dir}" packagenames="org.jcae.*">
+			<sourcepath>
+				<pathelement location="${src.dir}"/>
+			</sourcepath>
+			<classpath>
+				<pathelement location="${jcae.jar}"/>
+			</classpath>
+		</javadoc>
+	</target>
+	
+	<target name="clean" description="Clean all build products." depends="init">
+		<delete dir="${classes.dir}"/>
+		<delete dir="${javadoc.dir}"/>
+		<delete file="${jar.dir}/${jcae-viewer3d-amibe.jar}"/>
+	</target>
+	
+	<target name="dist" description="build a tar.bz2 archive to distribute sources" depends="init">
+		<tar destfile="${project.name}-src-${version}.tar">
+			<tarfileset dir="." prefix="${project.name}-${version}" username="jcae" group="jcae">
+				<include name="*.xml" />
+				<include name="src/**"/>
+				<include name="INSTALL"/>
+				<include name="ChangeLog"/>
+				<include name="doc/*.*"/>
+			</tarfileset>
+		</tar>
+		<bzip2 src="${project.name}-src-${version}.tar" zipfile="${project.name}-src-${version}.tar.bz2"/>
+		<delete file="${project.name}-src-${version}.tar"/>
+	</target>
+
+	<target name="dist-bin" description="build a zip to distribute binaries" depends="jar">
+		<zip destfile="${project.name}-bin-${version}.zip">
+			<zipfileset prefix="${project.name}-${version}/api" dir="doc/api"/>
+			<zipfileset prefix="${project.name}-${version}" file="${jar.dir}/${jcae-viewer3d-amibe.jar}"/>
+			<zipfileset prefix="${project.name}-${version}" file="${jcae.jar}"/>
+			<zipfileset prefix="${project.name}-${version}" file="${trove.jar}"/>
+		</zip>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<!-- By default, only the Clean and Build commands use this build script. -->
+<!-- Commands such as Run, Debug, and Test only use this build script if -->
+<!-- the Compile on Save feature is turned off for the project. -->
+<!-- You can turn off the Compile on Save (or Deploy on Save) setting -->
+<!-- in the project's Project Properties dialog box.-->
+<project name="viewer3d" default="default" basedir=".">
+    <description>Builds, tests, and runs the project viewer3d.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar:                  JAR building
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="viewer3d-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<!-- By default, only the Clean and Build commands use this build script. -->
+<!-- Commands such as Run, Debug, and Test only use this build script if -->
+<!-- the Compile on Save feature is turned off for the project. -->
+<!-- You can turn off the Compile on Save (or Deploy on Save) setting -->
+<!-- in the project's Project Properties dialog box.-->
+<project name="vtk-amibe-occ" default="default" basedir=".">
+    <description>Builds, tests, and runs the project vtk-amibe-occ.</description>
+    <import file="nbproject/build-impl.xml"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="vtk-amibe-occ-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+    <target depends="init" name="deps-jar" unless="no.deps">
+        <ant dir="${project.occjava}" inheritall="false" target="jar"/>
+    </target>
+    <target depends="init" name="deps-clean" unless="no.deps">
+        <ant dir="${project.occjava}" inheritall="false" target="clean"/>
+    </target>	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="jcae-vtk-amibe">
+
+	<target name="init">
+		<property file="build.properties"/>
+		<tstamp/>
+		<property name="version" value="${DSTAMP}"/>
+	</target>
+	
+	<target name="compile" depends="init">
+		<mkdir dir="${classes.dir}"/>
+		<javac debug="true" deprecation="true" destdir="${classes.dir}" srcdir="${src.dir}">
+			<compilerarg line="${compiler.arg}"/>
+			<classpath>
+				<pathelement location="${jcae.jar}"/>
+				<pathelement location="${vtk-util.jar}"/>
+				<pathelement location="${vtk.jar}"/>
+				<pathelement location="${trove.jar}"/>
+			</classpath>
+		</javac>
+	</target>
+	
+	<target name="jar" depends="compile" description="Create the jcae-vtk-amibe jar">
+		<mkdir dir="${jar.dir}"/>
+		<jar compress="true" jarfile="${jar.dir}/${jcae-vtk-amibe.jar}">
+			<manifest>
+				<attribute name="Class-Path" value="${jcae-vtk-amibe.jar.dependencies}"/>
+			</manifest>
+			<fileset dir="${classes.dir}" includes="org/jcae/vtk/**"/>
+		</jar>
+	</target>
+
+	<target name="all" depends="dist-bin" description="Build everything."/>
+	
+	<target name="javadoc" description="Javadoc for my API." depends="init">
+		<mkdir dir="${javadoc.dir}"/>
+		<javadoc destdir="${javadoc.dir}" packagenames="org.jcae.*">
+			<sourcepath>
+				<pathelement location="${src.dir}"/>
+			</sourcepath>
+			<classpath>
+				<pathelement location="${jcae.jar}"/>
+			</classpath>
+		</javadoc>
+	</target>
+	
+	<target name="clean" description="Clean all build products." depends="init">
+		<delete dir="${classes.dir}"/>
+		<delete dir="${javadoc.dir}"/>
+		<delete file="${jar.dir}/${jcae-vtk-amibe.jar}"/>
+	</target>
+	
+	<target name="dist" description="build a tar.bz2 archive to distribute sources" depends="init">
+		<tar destfile="${project.name}-src-${version}.tar">
+			<tarfileset dir="." prefix="${project.name}-${version}" username="jcae" group="jcae">
+				<include name="*.xml" />
+				<include name="src/**"/>
+				<include name="INSTALL"/>
+				<include name="ChangeLog"/>
+				<include name="doc/*.*"/>
+			</tarfileset>
+		</tar>
+		<bzip2 src="${project.name}-src-${version}.tar" zipfile="${project.name}-src-${version}.tar.bz2"/>
+		<delete file="${project.name}-src-${version}.tar"/>
+	</target>
+
+	<target name="dist-bin" description="build a zip to distribute binaries" depends="jar">
+		<zip destfile="${project.name}-bin-${version}.zip">
+			<zipfileset prefix="${project.name}-${version}/api" dir="doc/api"/>
+			<zipfileset prefix="${project.name}-${version}" file="${jar.dir}/${jcae-vtk-amibe.jar}"/>
+			<zipfileset prefix="${project.name}-${version}" file="${jcae.jar}"/>
+			<zipfileset prefix="${project.name}-${version}" file="${trove.jar}"/>
+		</zip>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See commented blocks below for -->
+<!-- some examples of how to customize the build. -->
+<!-- (If you delete it and reopen the project it will be recreated.) -->
+<project name="vtk-util" default="default" basedir=".">
+    <description>Builds, tests, and runs the project TestVTK.</description>
+	<target name="config" description="Create nbproject/build-impl.xml">
+		<xslt in="nbproject/project.xml" out="nbproject/build-impl.xml" style="build-impl.xsl"/>
+	</target>
+    <import file="nbproject/build-impl.xml" optional="true"/>
+	<property file="../zebra-netbeans/nbproject/private/private.properties"/>
+    <!--
+
+    There exist several targets which are by default empty and which can be 
+    used for execution of your tasks. These targets are usually executed 
+    before and after some main targets. They are: 
+
+      -pre-init:                 called before initialization of project properties
+      -post-init:                called after initialization of project properties
+      -pre-compile:              called before javac compilation
+      -post-compile:             called after javac compilation
+      -pre-compile-single:       called before javac compilation of single file
+      -post-compile-single:      called after javac compilation of single file
+      -pre-compile-test:         called before javac compilation of JUnit tests
+      -post-compile-test:        called after javac compilation of JUnit tests
+      -pre-compile-test-single:  called before javac compilation of single JUnit test
+      -post-compile-test-single: called after javac compilation of single JUunit test
+      -pre-jar:                  called before JAR building
+      -post-jar:                 called after JAR building
+      -post-clean:               called after cleaning build products
+
+    (Targets beginning with '-' are not intended to be called on their own.)
+
+    Example of inserting an obfuscator after compilation could look like this:
+
+        <target name="-post-compile">
+            <obfuscate>
+                <fileset dir="${build.classes.dir}"/>
+            </obfuscate>
+        </target>
+
+    For list of available properties check the imported 
+    nbproject/build-impl.xml file. 
+
+
+    Another way to customize the build is by overriding existing main targets.
+    The targets of interest are: 
+
+      -init-macrodef-javac:     defines macro for javac compilation
+      -init-macrodef-junit:     defines macro for junit execution
+      -init-macrodef-debug:     defines macro for class debugging
+      -init-macrodef-java:      defines macro for class execution
+      -do-jar-with-manifest:    JAR building (if you are using a manifest)
+      -do-jar-without-manifest: JAR building (if you are not using a manifest)
+      run:                      execution of project 
+      -javadoc-build:           Javadoc generation
+      test-report:              JUnit report generation
+
+    An example of overriding the target for project execution could look like this:
+
+        <target name="run" depends="TestVTK-impl.jar">
+            <exec dir="bin" executable="launcher.exe">
+                <arg file="${dist.jar}"/>
+            </exec>
+        </target>
+
+    Notice that the overridden target depends on the jar target and not only on 
+    the compile target as the regular run target does. Again, for a list of available 
+    properties which you can use, check the target you are overriding in the
+    nbproject/build-impl.xml file. 
+
+    -->
+	
+	<!-- Netbeans update the manifest in the init target so we must write it before -->
+	<!-- disabled as we are no longer using subversion. Kept in case we want to
+    do the same thing with git -->
+	<target name="-disabled-pre-init">
+		<exec executable="/bin/sh" failifexecutionfails="false"
+		outputproperty="tmprevision" errorproperty="dummy" logError="true">
+			<arg line="-c &quot;unset LANG;svnversion&quot;"/>
+		</exec>
+		<condition property="revision" value="exported" else="${tmprevision}">
+			<equals arg1="${tmprevision}" arg2=""/>
+		</condition>
+		<!-- default value if svnversion cannot be run -->
+		<property name="revision" value="exported"/>
+		<!-- from http://ant.apache.org/manual/CoreTasks/manifest.html -->
+		<manifest file="manifest.mf">
+			<attribute name="SCM-Revision" value="${revision}"/> 
+		</manifest>		
+	</target>
+</project>

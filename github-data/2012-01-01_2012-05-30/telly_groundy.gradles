@@ -1,0 +1,180 @@
+allprojects {
+  apply plugin: 'maven'
+
+  group = 'com.telly'
+  version = '1.5'
+}
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.10'
+}
+
+configure(subprojects.findAll {it.name != 'examples'}) {
+  apply plugin: 'java'
+  apply plugin: 'signing'
+  apply plugin: 'checkstyle'
+
+  configurations {
+    provided
+  }
+
+  sourceSets.main { compileClasspath += configurations.provided }
+
+  checkstyle {
+    configFile = new File(rootDir, "checkstyle.xml")
+  }
+
+  repositories {
+    mavenLocal()
+    maven { url "http://repo.maven.apache.org/maven2" }
+  }
+
+  task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+  }
+
+  task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+  }
+
+  artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+  }
+
+  def isDevBuild
+  def isReleaseBuild
+  def sonatypeRepositoryUrl
+
+  //set build variables based on build type (release, snapshot, development)
+  if (rootProject.hasProperty("release")) {
+    isReleaseBuild = true
+    sonatypeRepositoryUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+  } else if (rootProject.hasProperty("snapshot")) {
+    sonatypeRepositoryUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+  } else {
+    isDevBuild = true
+  }
+
+  //********* artifact signing *********
+  if (isReleaseBuild) {
+    signing {
+      sign configurations.archives
+    }
+  } else {
+    task signArchives {
+      // do nothing
+    }
+  }
+
+  uploadArchives {
+    repositories {
+      if (isDevBuild) {
+        mavenLocal()
+      } else {
+        mavenDeployer {
+          if (isReleaseBuild) {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+          }
+
+          repository(url: sonatypeRepositoryUrl) {
+            authentication(userName: sonatypeTellyUsername, password: sonatypeTellyPassword)
+          }
+
+          pom.project {
+            name 'Groundy project'
+            packaging 'jar'
+            description 'Fancy way to execute async/background tasks on Android'
+            url 'http://telly.github.com/groundy'
+
+            scm {
+              url 'git@github.com:telly/groundy.git'
+              connection 'scm:git:git@github.com:telly/groundy.git'
+              developerConnection 'scm:git:git@github.com:telly/groundy.git'
+            }
+
+            licenses {
+              license {
+                name 'The Apache Software License, Version 2.0'
+                url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                distribution 'repo'
+              }
+            }
+
+            developers {
+              developer {
+                name 'Cristian'
+              }
+              developer {
+                id 'eveliotc'
+                name 'Evelio Tarazona'
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}description = 'Groundy Compiler'
+
+dependencies {
+  compile project(':groundy')
+  compile 'com.squareup:javawriter:2.2.1'
+}buildscript {
+  repositories {
+    mavenLocal()
+    mavenCentral()
+  }
+  dependencies {
+    classpath 'com.android.tools.build:gradle:0.8.+'
+    classpath 'com.neenbedankt.gradle.plugins:android-apt:1.1'
+  }
+}
+
+apply plugin: 'android'
+apply plugin: 'android-apt'
+
+repositories {
+  mavenLocal()
+  mavenCentral()
+  maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+}
+
+dependencies {
+  compile project(':groundy')
+  compile project(':groundy-compiler')
+  compile 'com.github.kevinsawicki:http-request:4.0'
+}
+
+android {
+  compileSdkVersion 18
+  buildToolsVersion "19.0.0"
+
+  defaultConfig {
+    minSdkVersion 8
+    targetSdkVersion 18
+  }
+
+//  buildTypes {
+//    debug {
+//      runProguard true
+//      proguardFile getDefaultProguardFile('proguard-android.txt')
+//      proguardFile 'proguard-groundy.txt'
+//    }
+//  }
+
+  sourceSets {
+    main {
+      java { srcDir 'src'}
+      manifest.srcFile 'AndroidManifest.xml'
+      res.srcDirs = ['res']
+    }
+  }
+}description = 'Groundy Library'
+
+dependencies {
+  provided 'com.google.android:android:2.2.1'
+}

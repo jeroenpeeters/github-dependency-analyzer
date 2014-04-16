@@ -1,0 +1,116 @@
+/*
+ * Copyright (c) 2008 MongoDB, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'jacoco'
+apply plugin: 'clirr'
+apply plugin: 'codenarc'
+apply plugin: 'eclipse'
+
+sourceCompatibility = '1.5'
+targetCompatibility = '1.5'
+
+def configDir = new File(rootDir, 'config')
+
+buildscript {
+    repositories {
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'me.trnl:clirr-gradle-plugin:0.4'
+    }
+}
+
+repositories {
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+    mavenCentral()
+}
+
+sourceSets {
+    main {
+        java { srcDirs = ['src/main'] }
+    }
+    test {
+        groovy { srcDirs = ['src/test'] }
+        java { srcDirs = ['src/test', 'src/examples'] }
+    }
+    util.java { srcDirs = ['src/util'] }
+}
+
+dependencies {
+    testCompile 'junit:junit:4.11'
+    testCompile 'org.codehaus.groovy:groovy-all:2.0.8'
+    testCompile('org.spockframework:spock-core:0.7-groovy-2.0') {
+        exclude group: 'junit', module: 'junit-dep'
+    }
+    utilCompile files("${System.properties['java.home']}/../lib/tools.jar")
+}
+
+clirr {
+    excludeFilter = new File("$configDir/clirr-exclude.yml")
+    baseline 'org.mongodb:mongo-java-driver:2.11.3'
+}
+
+codenarc {
+    toolVersion = '0.20'
+}
+
+/* Compiling */
+tasks.withType(AbstractCompile) {
+    options.encoding = 'ISO-8859-1'
+    options.fork = true
+    options.debug = true
+
+    onlyIf { JavaVersion.current().isJava6Compatible() }
+}
+
+test {
+    maxHeapSize = "512m"
+
+    useJUnit()
+    jacoco { enabled = false }
+
+    beforeTest { descr ->
+        logger.info("[Test ${descr.className} > ${descr.name}]")
+    }
+    exclude 'example/**'
+}
+
+javadoc {
+    dependsOn compileUtilJava //We need taglets to be compiled
+    options.author = true
+    options.version = true
+    options.links 'http://docs.oracle.com/javase/7/docs/api/'
+    options.tagletPath project.sourceSets.util.output.classesDir
+    options.taglets 'ManualTaglet'
+    options.taglets 'DochubTaglet'
+    options.taglets 'ServerReleaseTaglet'
+}
+
+gradle.taskGraph.whenReady { taskGraph ->
+    if (taskGraph.hasTask(testCoverage)) {
+        tasks.withType(Test) { jacoco { enabled = true } }
+    }
+}
+
+task testCoverage(dependsOn: test)
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.9'
+}
+

@@ -1,0 +1,100 @@
+buildscript {
+    repositories {
+        maven { url 'http://repo1.maven.org/maven2' }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.7.+'
+    }
+}
+
+apply plugin: 'android'
+
+repositories {
+    mavenCentral()
+    maven {
+        url project.hasProperty('ligisMavenUrl') ? ligisMavenUrl : "https://raw.github.com/ligi/ligis-mvn-repo/master";
+    }
+}
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion "19.0.1"
+
+    flavorGroups "analytics", "cloud"
+    productFlavors {
+        withAnalytics {
+            flavorGroup "analytics"
+        }
+
+        noAnalytics {
+            flavorGroup "analytics"
+        }
+
+        withCloud {
+            flavorGroup "cloud"
+        }
+
+        noCloud {
+            flavorGroup "cloud"
+        }
+
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+}
+
+
+dependencies {
+    compile fileTree(dir: 'libs', include: '*.jar')
+    //compile 'com.actionbarsherlock:actionbarsherlock:4.4.0@aar'
+    compile 'com.android.support:support-v4:19.0.0'
+    compile 'com.android.support:appcompat-v7:19.0.0'
+    compile 'org.ligi:AXT:0.21'
+    compile 'org.ligi:tracedroid:1.1'
+
+    withCloudCompile 'com.google.android.gms:play-services:3.1.36'
+}
+repositories {
+    mavenCentral()
+}
+
+apply plugin: 'java'
+
+dependencies {
+    testCompile project(':android')
+    testCompile "junit:junit:4.10"
+    testCompile "com.squareup:fest-android:1.0.1"
+    testCompile 'org.robolectric:robolectric:2.0-alpha-2'
+
+    testCompile project(":android").android.applicationVariants.toList().first().javaCompile.outputs.files
+    testCompile project(":android").android.applicationVariants.toList().first().javaCompile.classpath
+    testCompile files(project(":android").plugins.findPlugin("android").runtimeJarList)
+}
+
+
+test {
+    inputs.files file("AndroidManifest.xml")
+    doFirst {
+        copy {
+            from project(":android").file("src/main/AndroidManifest.xml")
+            into projectDir
+        }
+    }
+    testLogging {
+        events "started", "standard_out"
+    }
+}
+
+tasks.withType(Test) {
+    scanForTestClasses = false
+    include "**/*The*.class" // whatever Ant pattern matches your test class files
+}
+
+test {
+    afterTest { desc, result ->
+	println "Executing test ${desc.name} [${desc.className}] with result: ${result.resultType}"
+    }
+}

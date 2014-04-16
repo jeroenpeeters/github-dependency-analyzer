@@ -1,0 +1,423 @@
+ext.githubProjectName = rootProject.name
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral() // maven { url 'http://jcenter.bintray.com' }
+    }
+    apply from: file('gradle/buildscript.gradle'), to: buildscript 
+}
+
+allprojects {
+    repositories { 
+        mavenCentral() // maven { url: 'http://jcenter.bintray.com' }
+    }
+}
+
+apply from: file('gradle/convention.gradle')
+apply from: file('gradle/maven.gradle')
+//apply from: file('gradle/check.gradle')
+apply from: file('gradle/license.gradle')
+apply from: file('gradle/release.gradle')
+
+subprojects {
+
+    group = "com.netflix.${githubProjectName}"
+
+    sourceSets.test.java.srcDir 'src/main/java'
+
+    tasks.withType(Javadoc).each {
+        it.classpath = sourceSets.main.compileClasspath
+    }
+}
+
+// Prevent contrib project from being published
+project('hystrix-contrib').task('uploadMavenCentral', overwrite:true) { }
+    buildscript {
+        repositories {
+            mavenRepo name: 'clojars', url: 'http://clojars.org/repo'
+        }
+        dependencies {
+            classpath 'clojuresque:clojuresque:1.5.8'
+        }
+    }
+    apply plugin: 'clojure'
+	apply plugin: 'eclipse'
+	apply plugin: 'idea'
+
+    repositories {
+        mavenCentral()
+        clojarsRepo()
+    }
+
+    dependencies {
+        compile project(':hystrix-core')
+        compile 'org.clojure:clojure:1.4.0'
+    }
+
+	/*
+	 * Add Counterclockwise and include 'provided' dependencies
+	 */
+	eclipse {
+	  project {
+	    natures "ccw.nature"
+	  }
+	  classpath {
+	    downloadSources = true
+	    downloadJavadoc = true
+	  }
+	}
+
+
+    ////////////////////////////////////////////////////////////////////////////////
+    // Define a task that runs an nrepl server. The port is given with the nreplPort
+    // property:
+    //    gradlew nrepl -PnreplPort=9999
+    // or put the property in ~/.gradle/gradle.properties
+	def nreplPort = 9999 // hardcoding to 9999 until figuring out how to make this not break Eclipse project import when the property isn't defined
+    configurations { nrepl }
+    dependencies { nrepl 'org.clojure:tools.nrepl:0.2.1' }
+    task nrepl(type: JavaExec) {
+        classpath configurations.nrepl.asPath,
+                  project.sourceSets.main.clojure.srcDirs,
+                  project.sourceSets.test.clojure.srcDirs,
+                  sourceSets.main.runtimeClasspath
+        main = "clojure.main"
+        args '--eval', "(ns gradle-nrepl (:require [clojure.tools.nrepl.server :refer (start-server stop-server)]))",
+            '--eval', "(println \"Starting nrepl server on port $nreplPort\")",
+            '--eval', "(def server (start-server :port $nreplPort))"
+    }
+
+// vim:ft=groovy
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    compile 'com.codahale.metrics:metrics-core:3.0.1'
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+aspectjVersion = '1.7.4'
+
+dependencies {
+  compile project(':hystrix-core')
+
+  compile "org.aspectj:aspectjweaver:$aspectjVersion"
+  compile "org.aspectj:aspectjrt:$aspectjVersion"
+
+  compile 'com.google.guava:guava:15.0'
+  compile 'commons-collections:commons-collections:3.2.1'
+  compile 'org.apache.commons:commons-lang3:3.1'
+  testCompile 'junit:junit-dep:4.10'
+  testCompile 'org.springframework:spring-core:4.0.0.RELEASE'
+  testCompile 'org.springframework:spring-context:4.0.0.RELEASE'
+  testCompile 'org.springframework:spring-aop:4.0.0.RELEASE'
+  testCompile 'org.springframework:spring-test:4.0.0.RELEASE'
+  testCompile 'cglib:cglib:3.1'
+}
+
+eclipse {
+  classpath {
+    // include 'provided' dependencies on the classpath
+    plusConfigurations += configurations.provided
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+idea {
+  module {
+    // include 'provided' dependencies on the classpath
+    scopes.COMPILE.plus += configurations.provided
+  }
+}apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    compile 'org.codehaus.jackson:jackson-core-asl:1.9.2'
+    provided 'javax.servlet:servlet-api:2.5'
+    provided 'junit:junit-dep:4.10'
+}
+
+eclipse {
+  classpath {
+		// include 'provided' dependencies on the classpath
+		plusConfigurations += configurations.provided
+		downloadSources = true
+		downloadJavadoc = true
+  }
+}
+
+idea {
+	module {
+		// include 'provided' dependencies on the classpath
+		scopes.COMPILE.plus += configurations.provided
+	}
+}apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile 'org.javassist:javassist:3.18.1-GA'
+
+    jar {
+        // make a fatjar otherwise it's painful getting the boot-class-path correct when deploying
+        from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+        manifest {
+            attributes( 
+                "Agent-Class": "com.netflix.hystrix.contrib.networkauditor.HystrixNetworkAuditorAgent", 
+                "Can-Redefine-Classes": true, 
+                "Can-Retransform-Classes": true, 
+                "Boot-Class-Path": "hystrix-network-auditor-agent-" + version + ".jar",
+                "Premain-Class": "com.netflix.hystrix.contrib.networkauditor.HystrixNetworkAuditorAgent")
+        }
+    }
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    provided 'javax.servlet:servlet-api:2.5'
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    compile 'com.netflix.servo:servo-core:0.6.+'
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    compile 'com.yammer.metrics:metrics-core:2.2.0'
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile 'com.netflix.archaius:archaius-core:0.4.1'
+    compile 'com.netflix.rxjava:rxjava-core:0.17.3'
+    compile 'org.slf4j:slf4j-api:1.7.0'
+    compile 'com.google.code.findbugs:jsr305:2.0.0'
+    testCompile 'junit:junit-dep:4.10'
+}
+
+
+javadoc {
+    // the exclude isn't working, nor is there a subPackages options as docs suggest there should be
+    // we do not want the com.netflix.hystrix.util package include
+    exclude '**/util/**'
+			
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "Hystrix Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<a href="https://github.com/Netflix/Hystrix"><img width="92" height="79" border="0" align="left" src="http://netflix.github.com/Hystrix/images/hystrix-logo-small.png"></a><h2 class="title" style="padding-top:40px">Hystrix: Latency and Fault Tolerance for Distributed Systems</h2>'
+}
+
+
+eclipse {
+  classpath {
+		// include 'provided' dependencies on the classpath
+		plusConfigurations += configurations.provided
+		downloadSources = true
+		downloadJavadoc = true
+  }
+}
+
+
+idea {
+	module {
+		// include 'provided' dependencies on the classpath
+		scopes.COMPILE.plus += configurations.provided
+
+	}
+}
+apply plugin: 'java'
+apply plugin: 'war'
+apply plugin: 'jetty'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    provided 'javax.servlet:servlet-api:2.5'
+    compile 'org.apache.httpcomponents:httpclient:4.2.1'
+    compile 'log4j:log4j:1.2.17'
+    compile 'org.slf4j:slf4j-log4j12:1.7.0'
+}
+
+jettyRun {
+        httpPort = 7979
+}
+
+eclipse {
+  classpath {
+		// include 'provided' dependencies on the classpath
+		plusConfigurations += configurations.provided
+		downloadSources = true
+		downloadJavadoc = true
+  }
+}
+
+
+idea {
+	module {
+		// include 'provided' dependencies on the classpath
+		scopes.COMPILE.plus += configurations.provided
+	}
+}apply plugin: 'java'
+apply plugin: 'war'
+apply plugin: 'jetty'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    compile project(':hystrix-examples')
+    compile project(':hystrix-contrib:hystrix-request-servlet')
+    compile project(':hystrix-contrib:hystrix-metrics-event-stream')
+}
+
+jettyRun {
+	httpPort = 8989
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+dependencies {
+    compile project(':hystrix-core')
+    provided 'junit:junit-dep:4.10'
+}
+
+task(runDemo, dependsOn: 'classes', type: JavaExec) {
+	main = 'com.netflix.hystrix.examples.demo.HystrixCommandDemo'
+	classpath = sourceSets.main.runtimeClasspath
+}
+
+eclipse {
+    classpath {
+        // include 'provided' dependencies on the classpath
+        plusConfigurations += configurations.provided
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}
+
+idea {
+    module {
+        // include 'provided' dependencies on the classpath
+        scopes.COMPILE.plus += configurations.provided
+    }
+}

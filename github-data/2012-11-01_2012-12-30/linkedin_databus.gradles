@@ -1,0 +1,871 @@
+subprojects {
+   apply from: rootProject.file("subprojects.gradle")
+
+   dependencies {
+        //runtime externalDependency.log4j
+        // Force easymock to version 3.1. One of the espresso dependencies changes it to 2.4
+        // and v2.4 does not support mocking of classes, causing our espresso unit tests
+        // to break.
+        //runtime(externalDependency.easymock) {
+        //    force = true
+        //}
+        //compile(externalDependency.easymock) {
+        //    force = true
+       //}
+    }
+}
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.8'
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-impl')
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+
+  compile externalDependency.log4j
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-api')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+
+  compile externalDependency.log4j
+  compile externalDependency.mysqlConnectorJava
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-api')
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-impl')
+  compile project(':databus-bootstrap-utils:databus-bootstrap-utils-impl')
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus2-relay:databus2-relay-impl')
+
+  compile externalDependency.log4j
+  compile externalDependency.mysqlConnectorJava
+  compile externalDependency.avro
+}
+apply plugin: 'java'
+
+test.workingDir = "${project.rootDir}"
+test.dependsOn(':db:databus2-bootstrap:reinit')
+
+dependencies {
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-api')
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-impl')
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus2-relay:databus2-relay-impl')
+
+  compile externalDependency.log4j
+  compile externalDependency.mysqlConnectorJava
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.json
+
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile project(':databus-core:databus-core-fwk-test')
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-server:databus-bootstrap-server-impl')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+  }
+ 
+  into("lib") {
+     from configurations.runtime
+  }
+}
+
+myTar.dependsOn ':databus-bootstrap-server:databus-bootstrap-server-impl:assemble'
+assemble.dependsOn myTar
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-api')
+  compile project(':databus-bootstrap-common:databus-bootstrap-common-impl')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus2-relay:databus2-relay-impl')
+
+  compile externalDependency.log4j
+  compile externalDependency.mysqlConnectorJava
+  compile externalDependency.avro
+  compile externalDependency.commonsCli
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+
+  runtime externalDependency.ojdbc6
+}
+apply plugin: 'java'
+
+// The metrics-core stuff from codahale is split across 2 or 3 locations:  the local extensions for
+// aggregation (MergeableExponentiallyDecayingReservoir) in :metrics-histograms:metrics-core-impl,
+// and the main metrics-core library in the metricsCore external dependency (for LinkedIn builds)
+// or in sandbox-repo/com/codahale/metrics/metrics-core/3.0.1/metrics-core-3.0.1.{jar,ivy} (for
+// open-source builds, including findbugs).  In fact, the sole reason (currently) for the external
+// dependency is the ThreadLocalRandom and Clock classes; if the sources for those were copied into
+// the local metrics-histograms package, we could eliminate both the sandbox-repo copy and the
+// external dependency.  But aggregation seems generally useful, so if we're eventually going to
+// contribute back the extensions (and assuming they're accepted), we'll ultimately eliminate
+// the local :metrics-histograms:metrics-core-impl instead.
+//
+// (As an interim step, we may move :metrics-histograms:metrics-core-impl to its own multi-product
+// on Artifactory so other teams can use it without having either to reinvent the wheel or to depend
+// on the full databus2 multi-product just to get MergeableExponentiallyDecayingReservoir.)
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-group-leader:databus-group-leader-api')
+  compile project(':databus-group-leader:databus-group-leader-impl')
+  compile project(':databus-cluster:databus-cluster-manager-impl')
+  compile project(':metrics-histograms:metrics-core-impl')
+  
+  compile externalDependency.avro
+  compile externalDependency.commonsStats
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.metricsCore
+  compile externalDependency.netty
+  compile externalDependency.helixCore
+  
+  testCompile project(':databus-core:databus-core-fwk-test')  
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-group-leader:databus-group-leader-api')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile project(':databus-group-leader:databus-group-leader-impl')
+  
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile externalDependency.easymockext
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-group-leader:databus-group-leader-api')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.commonsCli
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile project(':databus-group-leader:databus-group-leader-impl')
+  testCompile project(':databus-client:databus-client-test-util')
+  
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile externalDependency.easymockext
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus-core:databus-core-fwk-test')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus-core:databus-core-impl')
+
+  compile externalDependency.commonsCli
+  compile externalDependency.log4j
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+
+
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+  testCompile project(':databus-core:databus-core-fwk-test')
+  compile externalDependency.log4j
+  compile externalDependency.guava
+  compile externalDependency.helixCore
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.commonsCli
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.jacksonCoreAsl
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile project(':databus-core:databus-core-fwk-test')
+}
+
+test.useTestNG()
+
+apply plugin: 'java'
+
+dependencies {
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.commonsIo
+  compile externalDependency.zookeeper
+  compile externalDependency.zkclientHelix
+  compile externalDependency.testng
+}
+apply plugin: 'java'
+
+test.workingDir = "${project.rootDir}"
+
+dependencies {
+  compile externalDependency.avro
+  compile externalDependency.commonsBeanutils
+  compile externalDependency.commonsCli
+  compile externalDependency.commonsCodec
+  compile externalDependency.commonsCollections
+  compile externalDependency.commonsIo
+  compile externalDependency.commonsLang
+  compile externalDependency.commonsLogging
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.json
+  compile externalDependency.log4j
+  compile externalDependency.netty
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile project(':databus-core:databus-core-fwk-test')
+}
+
+test {
+  useTestNG()
+  testDataDirName = projectDir.absolutePath + "/test_data"
+  systemProperties.put('test.datadir', "${testDataDirName}")
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-schema-tools')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "config/" }
+
+  from("bin") {
+    into ("bin")
+    fileMode = 0755
+  }
+
+  into("lib") {
+     from configurations.runtime
+  }
+}
+
+myTar.dependsOn ':databus-core:databus-core-schema-tools:assemble'
+assemble.dependsOn myTar
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.commonsCli
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+}
+apply plugin: 'java'
+
+test.useTestNG()
+
+dependencies {
+  compile project(':databus-core:databus-core-schemas')
+
+  compile externalDependency.log4j
+
+  testCompile externalDependency.testng
+}
+apply plugin: 'java'
+
+test.workingDir = "${project.rootDir}"
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.commonsIo
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.zkclientHelix 
+}
+
+test {
+	useTestNG()
+	options.suites(file('testng.xml'))
+}
+apply plugin: 'java'
+
+dependencies {
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-group-leader:databus-group-leader-api')
+  compile project(':databus-group-leader:databus-group-leader-impl')
+
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.zkclientHelix
+}
+apply plugin: 'java'
+
+test.workingDir = "${project.rootDir}"
+
+dependencies {
+  compile project(':databus-group-leader:databus-group-leader-api')
+
+  compile externalDependency.commonsIo
+  compile externalDependency.log4j
+  compile externalDependency.zkclientHelix
+  compile externalDependency.zookeeper
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile project(':databus-core:databus-core-impl')
+}
+
+test.useTestNG()
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus2-relay:databus2-relay-impl')
+}
+apply plugin: 'java'
+
+test.workingDir = "${project.rootDir}"
+
+dependencies {
+  compile project(':databus-client:databus-client-http')
+  
+  compile externalDependency.log4j
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-tools:databus-dtail-impl')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+ 
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+  }
+
+  into("lib") {
+     from configurations.runtime
+  }
+}
+
+myTar.dependsOn ':databus-tools:databus-dtail-impl:assemble'
+//assemble.dependsOn myTar
+artifacts {
+	archives myTar
+}
+
+if (!isDefaultEnvironment) {
+	generateModuleArtifactSpec {
+		exclude {proj, conf, artifact -> artifact.file.name.endsWith('.jar') }
+	}
+}
+
+apply plugin: 'java'
+
+dependencies {
+  compile externalDependency.avro
+  compile externalDependency.log4j
+  compile externalDependency.commonsCli
+  compile externalDependency.json
+  compile externalDependency.log4j
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.jline
+  
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  testCompile project(':databus-core:databus-core-fwk-test')
+
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+
+  runtime externalDependency.ojdbc6
+}
+
+test.useTestNG()
+test.workingDir = "${project.rootDir}"
+
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-util-cmdline:databus-util-cmdline-impl')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+  
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+    fileMode = 0755
+  }
+
+  into("lib") {
+     from configurations.runtime
+  }
+
+}
+
+myTar.dependsOn ':databus-util-cmdline:databus-util-cmdline-impl:assemble'
+//assemble.dependsOn myTar
+artifacts {
+	archives myTar
+}
+
+if (!isDefaultEnvironment) {
+	generateModuleArtifactSpec {
+		exclude {proj, conf, artifact -> artifact.file.name.endsWith('.jar') }
+	}
+}
+
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-bootstrap-producer:databus-bootstrap-producer-impl')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+  }
+ 
+  into("lib") {
+     from configurations.runtime
+  }
+}
+
+myTar.dependsOn ':databus-bootstrap-producer:databus-bootstrap-producer-impl:assemble'
+assemble.dependsOn myTar
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus2-example:databus2-example-client')
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+  }
+
+  into("lib") {
+     from configurations.runtime
+  }
+}
+
+myTar.dependsOn ':databus2-relay:databus2-relay-impl:assemble'
+assemble.dependsOn myTar
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-client:databus-client-http')
+
+  compile externalDependency.commonsCli
+  compile externalDependency.log4j
+}
+apply plugin: 'java'
+
+dependencies {
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus2-relay:databus2-relay-impl')
+  compile project(':databus2-example:databus2-example-relay')
+
+  //if ((System.getProperty('open_source') == null) || (System.getProperty('open_source').trim().equalsIgnoreCase("false"))) {
+  //  compile externalDependency.databusSchemas
+  //}
+}
+
+task myTar(type: Tar) {
+  extension = 'tar.gz'
+  baseName = project.name
+  compression = Compression.GZIP
+
+  into("conf") { from "conf/" }
+
+  from("script") {
+    into ("bin")
+    fileMode = 0755
+  }
+
+  into("bin") {
+    from("${project.rootDir}/script")
+    include('setup.inc')
+  }
+
+  into("schemas-registry") {
+    from("schemas-registry")
+  }
+
+  into("lib") {
+    from configurations.runtime
+  }
+
+  into("schemas_registry") {
+    from "schemas_registry/"
+  }
+
+  into("sql") {
+    from "sql/"
+  }
+}
+
+myTar.dependsOn ':databus2-relay:databus2-relay-impl:assemble'
+myTar.dependsOn ':databus2-example:databus2-example-relay:assemble'
+//assemble.dependsOn myTar
+artifacts {
+    archives myTar
+}
+
+if (!isDefaultEnvironment) {
+	generateModuleArtifactSpec {
+		exclude {proj, conf, artifact -> artifact.file.name.endsWith('.jar') }
+	}
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus2-relay:databus2-relay-impl')
+  compile project(':databus-util-cmdline:databus-util-cmdline-impl')
+
+  compile externalDependency.commonsIo
+  compile externalDependency.commonsLang
+  compile externalDependency.commonsCli
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.avro
+
+}
+apply plugin: 'java'
+
+dependencies {
+
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-core:databus-core-impl')
+
+    compile externalDependency.avro
+  compile externalDependency.commonsBeanutils
+  compile externalDependency.commonsCli
+  compile externalDependency.commonsIo
+  compile externalDependency.commonsLogging
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.json
+  runtime externalDependency.ojdbc6
+
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.json
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+test.workingDir = "${project.rootDir}"
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus2-relay:databus2-event-producer-common')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-util-cmdline:databus-util-cmdline-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.json
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+test.workingDir = "${project.rootDir}"
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus2-relay:databus2-event-producer-common')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-util-cmdline:databus-util-cmdline-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.json
+  compile externalDependency.or
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile externalDependency.testng
+}
+
+test.useTestNG()
+test.workingDir = "${project.rootDir}"
+apply plugin: 'java'
+
+dependencies {
+  compile project(':databus-core:databus-core-container')
+  compile project(':databus-core:databus-core-impl')
+  compile project(':databus-core:databus-core-schemas')
+  compile project(':databus-client:databus-client-api')
+  compile project(':databus-client:databus-client-common')
+  compile project(':databus-client:databus-client-http')
+  compile project(':databus2-relay:databus2-event-producer-common')
+  compile project(':databus2-relay:databus2-event-producer-mock')
+  compile project(':databus2-relay:databus2-event-producer-or')
+//  compile project(':databus-util-cmdline:databus-util-cmdline-impl')
+
+  compile externalDependency.avro
+  compile externalDependency.commonsBeanutils
+  compile externalDependency.commonsCli
+  compile externalDependency.commonsIo
+  compile externalDependency.commonsLogging
+  compile externalDependency.jacksonCoreAsl
+  compile externalDependency.jacksonMapperAsl
+  compile externalDependency.log4j
+  compile externalDependency.netty
+  compile externalDependency.json
+
+  runtime externalDependency.ojdbc6
+
+  testCompile project(':databus-core:databus-core-fwk-test')
+  testCompile project(':databus-core:databus-core-impl')
+  testCompile externalDependency.testng
+  testCompile externalDependency.easymock
+}
+
+test {
+  ggTestDataDirName = projectDir.absolutePath + "/src/test/TestData"
+  systemProperties.put('test.ggTestDataDir', "${ggTestDataDirName}")
+}
+test.useTestNG()
+test.workingDir = "${project.rootDir}"
+task reinit {
+  doFirst {
+    exec {
+       commandLine('./bootstrap_db_reinit.sh')
+    }  
+  }
+}
+
+apply plugin: 'java'
+
+dependencies {
+  compile externalDependency.metricsCore
+
+  testCompile externalDependency.commonsStats
+  testCompile externalDependency.testng
+}
+
+test {
+  useTestNG()
+}

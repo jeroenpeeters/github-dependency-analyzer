@@ -1,0 +1,129 @@
+defaultTasks 'clean', 'build'
+
+task clean(dependsOn: [':opensnap-client:clean', ':opensnap-server:clean', 'cleanBuildDir']) << {
+
+}
+
+task build(dependsOn: [':opensnap-client:build', ':opensnap-server:build', 'copyJar']) << {
+	
+}
+
+
+task run() << {
+	javaexec {
+		main = '-jar'
+		args '-Dspring.profiles.active=local'
+		args 'build/opensnap.jar'
+	}
+} 
+
+task copyJar(type: Copy, dependsOn: ':opensnap-server:build') {
+    from('opensnap-server/build/libs') {
+    	include '**/*.jar'
+    	rename 'opensnap-(.*).jar', 'opensnap.jar'
+    }
+    into 'build'
+}
+
+task cleanBuildDir(type: Delete) {
+    delete 'build'
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+}
+apply plugin: 'java'
+
+jar {
+    from 'build/web'
+    eachFile { details ->
+        details.path = details.path.startsWith('META-INF') ?: 'static/'+details.path
+    }
+    // Jar contains duplicate empty folders, see Gradle issue:
+    // http://issues.gradle.org/browse/GRADLE-1830
+    // so we need to set includeEmptyDirs to false
+    includeEmptyDirs = false
+
+}
+
+task pubClean(type: Delete) {
+    delete 'build'
+}
+
+// We build in debug mode in order to have .dart files copied to build directory by pub
+task pubBuild(type: Exec) {
+    executable 'pub'
+    args 'build'
+    args '--mode=debug'
+}
+
+task copyDartFiles(type: Copy, dependsOn: 'pubBuild') {
+    from('web') {
+        include 'main.dart'
+        include 'packages/**'
+    }
+    into 'build/web'
+}
+
+jar.dependsOn pubBuild
+//jar.dependsOn copyDartFiles
+clean.dependsOn pubCleanext {
+    javaVersion = '1.8';
+    springVersion = '4.0.3.RELEASE'
+    springSecurityVersion = '3.2.3.RELEASE'
+    tomcatVersion = '8.0.5'
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.springframework.boot:spring-boot-gradle-plugin:1.0.1.RELEASE'
+    }
+}
+
+apply plugin: 'java'
+apply plugin: 'spring-boot'
+
+sourceCompatibility = javaVersion
+targetCompatibility = javaVersion
+archivesBaseName = 'opensnap'
+
+repositories {
+    mavenCentral()
+}
+
+configurations {
+    providedRuntime
+    compile.exclude module: 'spring-boot-starter-tomcat'
+    all*.exclude group: 'commons-logging', module: 'commons-logging'
+}
+
+dependencies {
+    compile project(':opensnap-client')
+    compile 'org.springframework.boot:spring-boot-starter-actuator'
+    compile 'org.springframework.boot:spring-boot-starter-web'
+    compile 'org.springframework:spring-messaging:' + springVersion
+    compile 'org.springframework:spring-webmvc:' + springVersion
+    compile 'org.springframework:spring-websocket:' + springVersion
+    compile 'org.projectreactor:reactor-tcp:1.0.1.RELEASE'
+
+    compile 'org.springframework.security:spring-security-core:' + springSecurityVersion
+    compile 'org.springframework.security:spring-security-config:' + springSecurityVersion
+    compile('org.springframework.security:spring-security-web:' + springSecurityVersion) {
+        exclude(module: 'spring-jdbc')
+    }
+
+    // Comment these lines in order to run OpenSnap as a WAR
+    compile 'org.apache.tomcat.embed:tomcat-embed-websocket:' + tomcatVersion
+    compile 'org.apache.tomcat.embed:tomcat-embed-logging-juli:' + tomcatVersion
+    compile 'org.apache.tomcat.embed:tomcat-embed-core:' + tomcatVersion
+    compile 'org.apache.tomcat.embed:tomcat-embed-el:' + tomcatVersion
+
+    testCompile 'org.testng:testng:6.8.8'
+    testCompile 'org.easytesting:fest-assert-core:2.0M10'
+    testCompile 'org.mockito:mockito-core:1.9.5'
+}
+
+

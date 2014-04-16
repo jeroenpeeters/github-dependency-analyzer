@@ -1,0 +1,100 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            name = "forge"
+            url = "http://files.minecraftforge.net/maven"
+        }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:1.0-SNAPSHOT'
+    }
+}
+
+apply plugin: 'forge'
+apply plugin: 'maven-publish'
+
+ext.buildProps = file "build.properties"
+
+buildProps.withReader {
+    def prop = new Properties()
+    prop.load(it)
+    ext.config = new ConfigSlurper().parse prop
+}
+
+version = "${config.version.mod.major}.${config.version.mod.minor}.${config.version.mod.revis}"
+group = "universalelectricity"
+archivesBaseName = "Universal-Electricity"
+
+minecraft {
+    version = "${config.version.minecraft}-${config.version.forge}"
+	
+	replaceIn "universalelectricity/api/UniversalElectricity.java"
+	replace "@MAJOR@", config.version.mod.major
+	replace "@MINOR@", config.version.mod.minor
+	replace "@REVIS@", config.version.mod.revis
+	replace "@BUILD@", System.getenv("BUILD_NUMBER")
+}
+
+if (System.getenv("BUILD_NUMBER") != null)
+    version += ".${System.getenv("BUILD_NUMBER")}"
+
+
+task copyBuildXml(type: Copy) {
+    from 'build.properties'
+    into 'output'
+}
+
+jar {
+    dependsOn copyBuildXml
+
+    classifier = 'core'
+    manifest {
+        attributes FMLCorePlugin: "universalelectricity.core.UELoader"
+		attributes FMLCorePluginContainsFMLMod: "true"
+    }
+
+    destinationDir = file 'output'
+}
+task deobfJar(type: Jar) {
+    from sourceSets.main.output
+    classifier 'dev'
+
+    manifest {
+        attributes FMLCorePlugin: "universalelectricity.core.UELoader",
+                FMLCorePluginContainsFMLMod: "true"
+    }
+
+    destinationDir = file 'output'
+}
+
+task apiZip(type: Zip) {
+    classifier = 'api'
+    from sourceSets*.allSource
+    include 'universalelectricity/api/**'
+    destinationDir = file 'output'
+}
+
+artifacts {
+    archives deobfJar
+    archives apiZip
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifact jar
+            artifact apiZip
+            artifact deobfJar
+					
+			artifact {
+				file 'output/build.properties'
+			}
+        }
+    }
+    repositories {
+        maven {
+            url "file://var/www/maven"
+        }
+    }
+}

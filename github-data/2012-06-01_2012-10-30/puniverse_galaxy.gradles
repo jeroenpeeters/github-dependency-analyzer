@@ -1,0 +1,287 @@
+apply plugin: 'java'
+sourceCompatibility = '1.7'
+
+[compileJava, compileTestJava, javadoc]*.options*.encoding = 'UTF-8'
+group               = "co.paralleluniverse"
+version             = "1.4-SNAPSHOT"
+status              = "integration"
+description         = "A high-performance in-memory data-grid."
+ext.url             = "http://puniverse.github.com/galaxy"
+ext.vendor          = "Parallel Universe Software Co."
+ext.licenseName     = "The GNU Lesser General Public License, version 3"
+ext.licenseUrl      = "http://www.gnu.org/licenses/lgpl-3.0.txt"
+ext.scmUrl          = "https://github.com/puniverse/galaxy"
+ext.scmConnection   = "https://github.com/puniverse/galaxy.git"
+ext.distDir         = "$buildDir/dist"
+ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
+
+if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
+    println "sonatype username or password not set"
+    sonatypeUsername = ""
+    sonatypePassword = ""
+}
+configurations {
+    all*.exclude group: 'javax.jms', module: 'jms'
+    all*.exclude group: 'com.sun.jdmk', module: 'jmxtools'
+    all*.exclude group: 'com.sun.jmx', module: 'jmxri'
+    all*.exclude group: 'javax.mail', module: 'mail'
+    //    published
+    javancssConf
+}
+
+repositories {
+    flatDir         { dirs 'baselib' }
+    repositories    { 
+        mavenCentral()
+    }
+}
+
+dependencies {
+    compile "com.google.guava:guava:16.0.1" 
+    compile "net.sf.trove4j:trove4j:3.0.3"
+    compile "org.springframework:spring-beans:4.0.1.RELEASE"
+    compile "org.springframework:spring-context:4.0.1.RELEASE"
+    compile "com.codahale.metrics:metrics-core:3.0.1" 
+    compile "io.netty:netty:3.9.0.Final"
+    compile "org.jgroups:jgroups:3.4.2.Final"
+    compile "com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:1.4"
+    compile "com.sleepycat:je:5.0.73"
+    compile "co.parallelunivese:high-scale-lib:" // non-Maven
+    runtime "org.slf4j:slf4j-api:1.7.6"
+    runtime "org.slf4j:jcl-over-slf4j:1.7.6"
+    runtime "org.slf4j:log4j-over-slf4j:1.7.6"   
+    runtime "org.apache.logging.log4j:log4j-slf4j-impl:2.0-rc1"
+    runtime "org.apache.logging.log4j:log4j-api:2.0-rc1"
+    runtime "org.apache.logging.log4j:log4j-core:2.0-rc1"
+    runtime "com.lmax:disruptor:3.2.0" // required for log4j
+    testCompile "junit:junit:4.11"
+    testCompile "org.apache.ant:ant-junit4:1.9.3"
+    testCompile "org.hamcrest:hamcrest-core:1.3"
+    testCompile "org.hamcrest:hamcrest-library:1.3"
+    testCompile "org.mockito:mockito-all:1.9.5"        
+    compile("org.apache.curator:curator-recipes:2.4.0") {
+        exclude group: "org.slf4j", module: '*'
+    }
+    compile("org.apache.curator:curator-client:2.4.0") {
+        exclude group: "org.slf4j", module: '*'
+    }
+    compile("org.apache.curator:curator-framework:2.4.0") {
+        exclude group: "org.slf4j", module: '*'
+    }
+    compile("org.apache.zookeeper:zookeeper:3.4.5") {
+        exclude group: "org.slf4j", module: '*'
+        
+    }
+    compile("de.javakaffee:kryo-serializers:0.26") {
+        exclude group: "com.esotericsoftware.kryo", module: '*'
+    }
+    compile("com.esotericsoftware.kryo:kryo:2.23.0") {
+        exclude group: "org.ow2.asm", module: '*'
+    }
+}
+
+///////// Doduments
+configure (javadoc) {    
+    destinationDir = file("docs/javadoc")
+    options.links = [    
+        "http://docs.oracle.com/javase/7/docs/api/",
+        "http://docs.guava-libraries.googlecode.com/git-history/v12.0/javadoc/"
+    ]
+    excludes = [
+        "co/paralleluniverse/common/MonitoringType.java",
+        "co/paralleluniverse/common/DegenerateInvocationHandler.java",
+        "co/paralleluniverse/common/ConcurrentThreadExecutor.java",
+        "co/paralleluniverse/common/DOMElementPropertyEditor.java",
+        "co/paralleluniverse/common/collection/**",
+        "co/paralleluniverse/common/io/ByteBufferInputStream.java",
+        "co/paralleluniverse/common/io/ByteBufferOutputStream.java",
+        "co/paralleluniverse/common/io/Checksum.java",
+        "co/paralleluniverse/common/io/DataObjectInputAdapter.java",
+        "co/paralleluniverse/common/io/DataObjectOutputAdapter.java",
+        "co/paralleluniverse/common/io/DoubleHasher.java",
+        "co/paralleluniverse/common/io/Hasher.java",
+        "co/paralleluniverse/common/io/MessageDigestChecksum.java",
+        "co/paralleluniverse/common/spring/SpringContainerHelper.java",
+        "co/paralleluniverse/common/logging/**",
+        "co/paralleluniverse/common/monitoring/**",
+        "co/paralleluniverse/common/util/**",
+        "co/paralleluniverse/galaxy/core/**",
+        "co/paralleluniverse/galaxy/berkeleydb/**",
+        "co/paralleluniverse/galaxy/jdbc/**",
+        "co/paralleluniverse/galaxy/jgroups/**",
+        "co/paralleluniverse/galaxy/monitoring/**",
+        "co/paralleluniverse/galaxy/netty/**",
+        "co/paralleluniverse/galaxy/objects/**",
+        "co/paralleluniverse/galaxy/redis/**",
+        "co/paralleluniverse/galaxy/server/**",
+        "co/paralleluniverse/galaxy/zookeeper/**"    
+    ]
+}
+
+////////// Distribution
+task copyDependenciesToDist(type:Copy) {
+    from configurations.runtime
+    into "$distDir/lib"
+}
+task srcZip(type:Zip) {
+    archiveName "src.zip"
+    from "src"
+}
+task copyConfigToDist(type:Copy) {
+    from 'config'
+    into "$distDir/config"
+}
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+} 
+[jar, sourcesJar, javadocJar, srcZip]*.destinationDir = file(distDir)
+jar {
+    from zipTree('baselib/high-scale-lib.jar')  // include non-Maven jars
+    manifest { 
+        attributes(
+            "Built-By"                  :   System.getProperty("user.name"),
+            "Implementation-Title"      :   name,
+            "Implementation-Version"    :   version,
+            "Implementation-Vendor"     :   vendor,
+            "Class-Path"                :   configurations.runtime.collect { "lib/"+it.getName() }.join(',') 
+        )
+    }
+}
+task dist {
+    dependsOn copyDependenciesToDist,copyConfigToDist,jar,sourcesJar,javadocJar,srcZip,javadoc    
+}
+
+defaultTasks 'distNoDocs'
+task distZip(type:Zip, dependsOn: dist) {
+    archiveName project.name+"-"+project.version+".zip"
+    from distDir
+}
+
+assemble.dependsOn dist
+///////// Site
+apply plugin: 'github-pages'
+
+//githubPages { repoUri = 'https://github.com/puniverse/galaxy.git' }
+buildscript {
+    repositories { mavenCentral() }
+    dependencies { classpath 'org.ajoberstar:gradle-git:0.6.3' }
+}
+
+///////// Publish Artifacts 
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+    //    archives distZip
+}
+
+signing {
+    sign configurations.archives
+}
+// remove high scale lib from local install pom
+configure(install.repositories.mavenInstaller) {
+    pom.whenConfigured { pom -> pom.dependencies = pom.dependencies.findAll { 
+            dep -> !dep.artifactId.startsWith('high-scale-lib') } 
+    }
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+            repository(
+                url: (isReleaseVersion ? 
+                        "https://oss.sonatype.org/service/local/staging/deploy/maven2" : 
+                        "https://oss.sonatype.org/content/repositories/snapshots")) {
+                // User and Password are taken from ~/.gradle/gradle.properties
+                authentication(userName: sonatypeUsername, password: sonatypePassword)
+            } 
+            pom.whenConfigured { pom -> pom.dependencies = pom.dependencies.findAll { 
+                    dep -> !dep.artifactId.startsWith('high-scale-lib') } 
+            }
+            pom.project {
+                name project.name
+                packaging 'jar'
+                description project.description
+                url project.url
+                scm {
+                    url project.scmUrl
+                    connection project.scmConnection
+                    developerConnection project.scmConnection
+                } 
+                licenses {
+                    license {
+                        name project.licenseName
+                        url project.licenseUrl
+                        distribution 'repo'
+                    }
+                }
+                developers {
+                    developer {
+                        id 'pron'
+                        name 'Ron Pressler'
+                    }
+                    developer {
+                        id 'eitan'
+                        name 'Eitan Yarden'
+                    }
+                }
+                
+            }
+        }
+    }
+}
+
+//////// Javancss
+ 
+dependencies {
+    javancssConf 'org.codehaus.javancss:javancss:32.53'
+}
+ 
+task javancss(dependsOn: 'classes') << {
+    ext.reportName = "$buildDir/javancss_metrics.txt"
+    println 'Running javancss quality metrics tool to file://'+reportName
+    ant {
+        logging.level = LogLevel.INFO
+        taskdef(name:'javancss', classname:'javancss.JavancssAntTask', classpath: configurations.javancssConf.asPath)
+        javancss(
+            srcdir:'src/main/java', 
+            abortOnFail:'true', 
+            generateReport:'true', 
+            packageMetrics:'true',
+            classMetrics:'false',
+            functionMetrics:'false'
+            //            outputFile: reportName,
+        )
+    }
+}
+/////// Others
+tasks.withType(Test) { 
+    systemProperty "log4j.configurationFile", "log4j.xml"
+    systemProperty "Log4jContextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+    useJUnit()
+    doLast() {
+        println "file://" + getReports().getHtml().getDestination() + "/index.html"
+    }    
+}
+
+task showResults(type:Exec) {
+    workingDir test.testResultsDir
+    commandLine 'cat','TEST-co.paralleluniverse.common.LinkedHashMap2Test.xml'
+    //    standardOutput = new ByteArrayOutputStream()
+    //    ext.output = { return standardOutput.toString() }
+    //    doLast {
+    //        logger.error(output)
+    //    }
+}    
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.10'
+}

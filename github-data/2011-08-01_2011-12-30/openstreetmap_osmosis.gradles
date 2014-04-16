@@ -1,0 +1,431 @@
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.4'
+}
+
+
+/* Build collections containing each type of project.  These collections will
+ * be used to apply common configurations to projects of the same type.
+ */
+def packageProjects = allprojects.findAll { project -> project.path.equals(':package') }
+def buildProjects = allprojects.findAll { project -> project.path.equals(':build-support') }
+// Java projects are all those that aren't in the previous collections.
+def javaProjects = subprojects.findAll { project -> !packageProjects.contains(project) && !buildProjects.contains(project) }
+
+// Apply common project configuration
+subprojects {
+	apply plugin: 'eclipse-wtp'
+
+	// All projects use a common group id.
+	group = 'org.openstreetmap.osmosis'
+
+	// Load the project version dynamically from Git.  For release builds, don't add a suffix.
+	def versionSuffix = "RELEASE".equals(osmosisBuildType) ? '' : '-' + osmosisBuildType
+	version = 'git describe --always --dirty'.execute().in.text.trim() + versionSuffix
+
+	// Enable access to artefact dependency repositories.
+	repositories {
+		// Standard Maven repository.
+		mavenCentral()
+	}
+}
+
+// Apply common configurations to all projects supporting Java.
+configure(javaProjects) {
+	apply plugin: 'checkstyle'
+	apply plugin: 'java'
+	apply plugin: 'jdepend'
+	apply plugin: 'maven'
+	apply plugin: 'signing'
+
+	sourceCompatibility = 1.6
+
+	test {
+		/*
+		 * Pass on each of our custom properties to the unit tests if they have
+		 * been provided.
+		 */
+		['db.apidb.authfile', 'db.pgsql.authfile'].each {
+			propName ->
+				if (System.getProperties().containsKey(propName)) {
+					jvmArgs '-D' + propName + '=' + System.getProperty(propName)
+				}
+		}
+		//testLogging.showStandardStreams = true
+	}
+
+	dependencies {
+		testCompile group: 'junit', name: 'junit', version: dependencyVersionJunit
+	}
+
+	checkstyle {
+		configFile = new File(rootDir, 'build-support/checkstyle.xml')
+		configProperties.samedir = configFile.parentFile
+	}
+
+	// Build javadoc and source jars and include in published artifacts.
+	task javadocJar(type: Jar, dependsOn: javadoc) {
+		classifier = 'javadoc'
+		from 'build/docs/javadoc'
+	}
+	task sourcesJar(type: Jar) {
+		from sourceSets.main.allSource
+		classifier = 'sources'
+	}
+	artifacts {
+	    archives jar
+	
+	    archives javadocJar
+	    archives sourcesJar
+	}
+
+	// Sign all published artifacts if signing is enabled.
+	signing {
+		sign configurations.archives
+		required = Boolean.valueOf(osmosisSigningEnabled)
+	}
+
+	// Configure the maven plugin to upload artefacts to the Sonatype repository.
+	uploadArchives {
+		repositories {
+			mavenDeployer {
+				beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+				// We upload to the Sonatype SNAPSHOT repository unless it is a release build in
+				// which case we upload to the staging repository.
+				def sonatypeRepoUrl = "RELEASE".equals(osmosisBuildType) ?
+					'https://oss.sonatype.org/service/local/staging/deploy/maven2/' :
+					'https://oss.sonatype.org/content/repositories/snapshots/'
+				repository(url: sonatypeRepoUrl) {
+					authentication(userName: sonatypeUsername, password: sonatypePassword)
+				}
+
+				pom.project {
+					name project.name
+					packaging 'jar'
+					description 'Osmosis is a Java application and library for processing OSM data.'
+					url 'http://wiki.openstreetmap.org/wiki/Osmosis'
+
+					scm {
+						url 'https://github.com/openstreetmap/osmosis'
+						connection 'scm:git:git://github.com/openstreetmap/osmosis.git'
+						developerConnection 'scm:git:ssh://git@github.com/openstreetmap/osmosis.git'
+					}
+
+					licenses {
+						license {
+							name 'Public Domain'
+						}
+					}
+
+					developers {
+						developer {
+							id 'brett'
+							name 'Brett Henderson'
+							email 'brett@bretth.com'
+						}
+					}
+				}
+			}
+		}
+	}
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-replication')
+    compile project(':osmosis-xml')
+    compile group: 'commons-dbcp', name: 'commons-dbcp', version: dependencyVersionCommonsDbcp
+    compile group: 'org.springframework', name: 'spring-jdbc', version: dependencyVersionSpring
+    runtime group: 'postgresql', name: 'postgresql', version: dependencyVersionPostgreSql
+    runtime group: 'mysql', name: 'mysql-connector-java', version: dependencyVersionMySql
+    testCompile project(':osmosis-testutil')
+}
+dependencies {
+    compile project(':osmosis-core')
+    testCompile project(':osmosis-xml')
+    testCompile project(':osmosis-testutil')
+}
+configurations {
+    // Exclude because all necessary APIs are included in the JDK.
+    all*.exclude group: 'xml-apis', module: 'xml-apis'
+    // Exclude because Stax is included in the JDK from java 1.6 onwards.
+    all*.exclude group: 'javax.xml.stream', module: 'stax-api'
+}
+
+dependencies {
+    compile group: 'net.sf.jpf', name: 'jpf', version: dependencyVersionJpf
+    compile group: 'org.codehaus.woodstox', name: 'woodstox-core-lgpl', version: dependencyVersionWoodstoxCore
+    compile group: 'org.codehaus.woodstox', name: 'stax2-api', version: dependencyVersionWoodstoxStax2
+    compile group: 'org.apache.commons', name: 'commons-compress', version: dependencyVersionCommonsCompress
+    compile group: 'xerces', name: 'xercesImpl', version: dependencyVersionXerces
+}
+
+/*
+ * Define a custom task to automatically generate the OsmosisConstants file
+ * and update the java compilation task to depend on it.
+ */
+task generateJavaSources {
+	description = 'Generates the OsmosisConstants java file with the current version number.'
+
+	// Build file objects for our template file, and output java file.
+    def commonPathPrefix = "$projectDir/src/main/java/org/openstreetmap/osmosis/core/OsmosisConstants.java"
+    def outputFile = new File(commonPathPrefix)
+    def inputFile = new File(commonPathPrefix + ".template")
+
+    /* 
+     * Declare inputs and outputs of the task to allow gradle to determine if
+     * it is up to date.
+     */
+    inputs.file inputFile
+    inputs.property('version', version)
+    outputs.file outputFile
+
+    doLast {
+        // Insert the version string into the constants file.
+        def fileContent = inputFile.getText()
+        fileContent = fileContent.replace("no-version-specified", version)
+        outputFile.write(fileContent)
+    }
+}
+// Define task dependency to ensure constants file is always up to date.
+compileJava.dependsOn generateJavaSources
+
+
+/*
+ * Define a custom task to automatically generate the plugin.xml file
+ * and update the copy resources task to depend on it.
+ */
+task generateResources {
+	description = 'Generates the plugin.xml file with the current version number.'
+
+	// Build file objects for our template file, and output java file.
+    def commonPathPrefix = "$projectDir/src/main/resources/org/openstreetmap/osmosis/core/plugin/plugin.xml"
+    def outputFile = new File(commonPathPrefix)
+    def inputFile = new File(commonPathPrefix + ".template")
+
+    /* 
+     * Declare inputs and outputs of the task to allow gradle to determine if
+     * it is up to date.
+     */
+    inputs.file inputFile
+    outputs.file outputFile
+
+    doLast {
+        // Insert the version string into the constants file.
+        def fileContent = inputFile.getText()
+        fileContent = fileContent.replace("no-version-specified", version)
+        outputFile.write(fileContent)
+    }
+}
+// Define task dependency to ensure constants file is always up to date.
+processResources.dependsOn generateResources
+dependencies {
+    compile project(':osmosis-core')
+    testCompile project(':osmosis-xml')
+    testCompile project(':osmosis-testutil')
+}
+dependencies {
+    compile project(':osmosis-apidb')
+    compile project(':osmosis-core')
+    compile project(':osmosis-replication')
+    compile project(':osmosis-xml')
+    testCompile project(':osmosis-testutil')
+}
+dependencies {
+    compile group: 'postgresql', name: 'postgresql', version: dependencyVersionPostgreSql
+}
+
+// Disable checkstyle because this is external code.
+checkstyleMain.enabled = false
+dependencies {
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: dependencyVersionProtobuf
+}
+
+// Disable checkstyle because this is external code.
+checkstyleMain.enabled = false
+
+sourceSets {
+	main {
+		// Create a separate source directory to contain protobuf generated classes.
+		java.srcDirs 'gen-src/main/java'
+	}
+}
+
+// Configure the maven plugin to upload artefacts to the Sonatype repository.
+uploadArchives {
+	repositories {
+		mavenDeployer {
+			pom.project {
+				licenses {
+					license {
+						name 'LGPL 3'
+						url 'http://www.gnu.org/licenses/lgpl-3.0.html'
+					}
+				}
+			}
+		}
+	}
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-osm-binary')
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: dependencyVersionProtobuf
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-osm-binary')
+    compile group: 'com.google.protobuf', name: 'protobuf-java', version: dependencyVersionProtobuf
+    testCompile project(':osmosis-pbf')
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+configurations {
+    // Exclude unnecessary postgis stub classes.
+    all*.exclude group: 'org.postgis', module: 'postgis-stubs'
+}
+
+dependencies {
+    compile project(':osmosis-core')
+    compile group: 'org.postgis', name: 'postgis-jdbc', version: dependencyVersionPostGis
+    compile group: 'postgresql', name: 'postgresql', version: dependencyVersionPostgreSql
+    testCompile project(':osmosis-dataset')
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+
+// Disable tests until continuous integration has a database configured.
+test.enabled = false
+configurations {
+    // Exclude unnecessary postgis stub classes.
+    all*.exclude group: 'org.postgis', module: 'postgis-stubs'
+}
+
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-hstore-jdbc')
+    compile group: 'commons-dbcp', name: 'commons-dbcp', version: dependencyVersionCommonsDbcp
+    compile group: 'org.postgis', name: 'postgis-jdbc', version: dependencyVersionPostGis
+    compile group: 'org.springframework', name: 'spring-jdbc', version: dependencyVersionSpring
+    compile group: 'postgresql', name: 'postgresql', version: dependencyVersionPostgreSql
+    testCompile project(':osmosis-dataset')
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-replication')
+    compile project(':osmosis-xml')
+    compile group: 'org.jboss.netty', name: 'netty', version: dependencyVersionNetty
+    testCompile project(':osmosis-testutil')
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-set')
+    compile project(':osmosis-xml')
+}
+dependencies {
+    compile project(':osmosis-core')
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+dependencies {
+    compile project(':osmosis-core')
+    testCompile project(':osmosis-testutil')
+    testCompile project(':osmosis-xml')
+}
+
+dependencies {
+    compile project(':osmosis-core')
+    compile project(':osmosis-xml')
+    testCompile project(':osmosis-testutil')
+}
+
+/*
+ * Disable checkstyle.
+ * The tag transform plugin used to exist outside the main source tree and as a result
+ * doesn't comply with Osmosis coding standards.
+ */
+checkstyleMain.enabled = false
+dependencies {
+    compile project(':osmosis-core')
+    compile group: 'junit', name: 'junit', version: dependencyVersionJunit
+}
+dependencies {
+    compile project(':osmosis-core')
+    compile group: 'commons-codec', name: 'commons-codec', version: dependencyVersionCommonsCodec
+    testCompile project(':osmosis-testutil')
+}
+configurations {
+    runtime
+    archives
+}
+
+dependencies {
+    runtime project(':osmosis-apidb')
+    runtime project(':osmosis-areafilter')
+    runtime project(':osmosis-core')
+    runtime project(':osmosis-dataset')
+    runtime project(':osmosis-extract')
+    runtime project(':osmosis-pbf')
+    runtime project(':osmosis-pbf2')
+    runtime project(':osmosis-pgsimple')
+    runtime project(':osmosis-pgsnapshot')
+    runtime project(':osmosis-replication')
+    runtime project(':osmosis-replication-http')
+    runtime project(':osmosis-set')
+    runtime project(':osmosis-tagfilter')
+    runtime project(':osmosis-tagtransform')
+    runtime project(':osmosis-xml')
+    runtime group: 'org.codehaus.plexus', name: 'plexus-classworlds', version: dependencyVersionClassworlds
+}
+
+task syncLibs(type: Sync) {
+    into "lib/default"
+    from configurations.runtime
+}
+
+def artefactPrefix = 'osmosis-' + version
+
+task distZip(type: Zip) {
+    description = 'Builds a zip file containing a self-contained distribution of the application.'
+    archiveName = artefactPrefix + '.zip'
+    destinationDir = new File(projectDir, 'build/distribution')
+    from('.') {
+    	exclude 'build*'
+    	exclude 'ivy.xml'
+    	exclude '.*'
+    }
+}
+distZip.dependsOn syncLibs
+
+task distTgz(type: Tar) {
+    description = 'Builds a tgz file containing a self-contained distribution of the application.'
+    archiveName = artefactPrefix + '.tgz'
+    destinationDir = new File(projectDir, 'build/distribution')
+    compression = Compression.GZIP
+    from('.') {
+    	exclude 'build*'
+    	exclude 'ivy.xml'
+    	exclude '.*'
+    }
+}
+distTgz.dependsOn syncLibs
+
+task assemble {
+    description = 'Generates a working application directory structure.'
+}
+assemble.dependsOn distZip, distTgz
+
+task build {
+	description = 'Assembles and tests this project.'
+}
+build.dependsOn assemble
+
+task clean(type: Delete) {
+    delete 'build'
+}
+
+artifacts {
+    archives distZip, distTgz
+}

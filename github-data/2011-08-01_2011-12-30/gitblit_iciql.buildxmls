@@ -1,0 +1,298 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="iciql" default="build" xmlns:mx="antlib:org.moxie">
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Retrieve Moxie Toolkit
+
+		documentation @ http://gitblit.github.io/moxie
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<property name="moxie.version" value="0.7.4" />
+	<property name="moxie.url" value="http://gitblit.github.io/moxie/maven" />
+	<property name="moxie.jar" value="moxie-toolkit-${moxie.version}.jar" />
+	<property name="moxie.dir" value="${user.home}/.moxie" />
+
+	<!-- Download Moxie from it's Maven repository to user.home -->
+	<mkdir dir="${moxie.dir}" />
+	<get src="${moxie.url}/org/moxie/moxie-toolkit/${moxie.version}/${moxie.jar}"
+		dest="${moxie.dir}" skipexisting="true" verbose="true" />
+
+	<!-- Register Moxie tasks -->
+	<taskdef uri="antlib:org.moxie">
+		<classpath location="${moxie.dir}/${moxie.jar}" />
+	</taskdef>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Initialize Moxie and setup build properties
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="prepare"  description="Retrieves dependencies and sets up build properties">
+
+		<mx:init mxroot="${moxie.dir}" />
+
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Clean
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="clean" depends="prepare" description="Cleans build directory">
+
+		<mx:clean />
+
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Compile
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="compile" depends="prepare" description="Compiles iciql from source">
+
+		<mx:javac />
+
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		TestSuite
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="testsuite" depends="compile" description="runs the benchmark test suite against all databases">
+		<echo/>
+		<echo>This will take a minute or two...</echo>
+		<echo/>
+		<mx:javac scope="test" />
+		<mx:run scope="test" classname="com.iciql.test.IciqlSuite">
+			<arg value="--dbFile" />
+			<arg value="${project.outputDirectory}/performance_db.txt" />
+
+			<arg value="--sqlFile" />
+			<arg value="${project.outputDirectory}/performance_sql.txt" />
+		</mx:run>
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Build
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="build" depends="compile" description="Packages iciql for deployment">
+
+		<!-- Package the jar, javadoc, sources, and zip distribution -->
+		<mx:package />
+
+		<!-- Deploy the artifacts into the version-controlled repository -->
+		<mx:deploy basedir="${basedir}/maven" allowSnapshots="false" />
+
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Upload artifacts to GoogleCode and the remote Maven repository
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="uploadArtifacts" depends="build">
+
+		<mx:gcupload
+				 username="${googlecode.user}"
+				 password="${googlecode.password}"
+				 projectname="iciql"
+				 filename="${project.targetDirectory}/${project.artifactId}-${project.version}.zip"
+				 targetfilename="${project.artifactId}-${project.version}.zip"
+				 summary="Version ${project.version} -- library, sources, and javadoc"
+				 labels="Featured, Type-Package, OpSys-All" />
+
+		<mx:ftp server="${ftp.server}" userid="${ftp.user}" password="${ftp.password}"
+			remotedir="${ftp.maven.dir}" verbose="yes" depends="yes" timediffauto="true"
+			preservelastmodified="true">
+			<fileset dir="${basedir}/maven">
+				<!-- exclude root files -->
+				<exclude name="*.md" />
+				<exclude name=".git*" />
+			</fileset>
+		</mx:ftp>
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Build the iciql website
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="buildSite" depends="build" description="Build the iciql website">
+		<!-- ensure we have performance data -->
+		<mx:if>
+			<not>
+				<available file="${project.outputDirectory}/performance_db.txt" />
+			</not>
+			<then>
+				<fail message="Please run the &quot;testsuite&quot; target!"/>
+			</then>
+		</mx:if>
+
+		<!-- Download links -->
+		<property name="gc.url" value="http://code.google.com/p/iciql/downloads/detail?name=" />
+		<property name="releaselog" value="${basedir}/releases.moxie" />
+
+		<mx:doc googleplusone="true" prettifyTheme="googlecode" minify="true"
+			templateDir="${project.siteSourceDirectory}/templates"
+			customless="custom.less" rssFeed="rss.xml" atomFeed="atom.xml">
+
+			<logo file="iciql_white.png" />
+			<favicon file="iciql-favicon.png" />
+
+			<load token="%DBPERFORMANCE%" file="${project.outputDirectory}/performance_db.txt" />
+			<regex searchPattern="\b(issue)(\s*[#]?|-){0,1}(\d+)\b"
+				replacePattern="&lt;a href='${project.issuesUrl}/detail?id=$3'&gt;issue $3&lt;/a&gt;" />
+
+			<structure>
+
+				<menu name="about" pager="true" pagerPlacement="bottom" pagerLayout="justified">
+					<page name="overview" src="index.mkd" out="index.html" />
+					<page name="performance" src="performance.mkd" out="performance.html" />
+					<page name="jaqu comparison" src="jaqu_comparison.mkd" out="jaqu_comparison.html" />
+				</menu>
+
+				<menu name="getting started" pager="true" pagerPlacement="bottom" pagerLayout="justified">
+					<page name="models" src="model_classes.mkd" out="model_classes.html" headerLinks="true" />
+					<page name="versioning" src="table_versioning.mkd" out="table_versioning.html" headerLinks="true" />
+					<page name="usage" src="usage.mkd" out="usage.html" headerLinks="true" />
+					<page name="examples" src="examples.mkd" out="examples.html" headerLinks="true" />
+					<page name="tools" src="tools.mkd" out="tools.html" headerLinks="true" />
+				</menu>
+
+				<page name="building" src="building.mkd" out="building.html" />
+				<page name="javadoc" src="javadoc.mkd" out="javadoc.html" />
+
+				<page name="release notes" out="releasenotes.html">
+					<template src="releasecurrent.ftl" data="${releaselog}" />
+				</page>
+				<page out="releases.html" navbarlink="false">
+					<template src="releasehistory.ftl" data="${releaselog}" />
+				</page>
+
+				<menu name="downloads">
+					<link name="${project.artifactId}-${project.releaseVersion}"
+						src="${gc.url}${project.artifactId}-${project.releaseVersion}.zip" />
+					<divider />
+					<link name="Maven Repository" src="${project.mavenUrl}" />
+				</menu>
+
+				<menu name="links">
+					<link name="Github" src="${project.scmUrl}" />
+					<link name="Issues" src="${project.issuesUrl}" />
+					<link name="Maven Repository" src="${project.mavenUrl}" />
+				</menu>
+				<divider />
+			</structure>
+
+			<!-- Generate RSS and Atom feeds from the release history -->
+			<page as="atom.xml">
+				<template src="atom.ftl" data="${releaselog}" />
+			</page>
+			<page as="rss.xml">
+				<template src="rss.ftl" data="${releaselog}" />
+			</page>
+
+		</mx:doc>
+
+		<!-- Copy standard javadoc -->
+		<mkdir dir="${project.siteTargetDirectory}/javadoc" />
+		<copy todir="${project.siteTargetDirectory}/javadoc">
+			<fileset dir="${project.javadocTargetDirectory}" />
+		</copy>
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Copy the built site to the gh-pages branch
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="updateGhpages" depends="buildSite">
+		<mx:ghpages obliterate="false" />
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Publish site to hosting service
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="publishSite" depends="updateGhpages" description="Publish the iciql site to a webserver" >
+
+		<echo>Uploading ${project.artifactId} ${project.version} website</echo>
+
+		<mx:ftp server="${ftp.server}"
+			userid="${ftp.user}"
+			password="${ftp.password}"
+			remotedir="${ftp.site.dir}"
+			passive="true"
+			verbose="yes">
+			<fileset dir="${project.siteTargetDirectory}" />
+		</mx:ftp>
+	</target>
+
+
+	<!--
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+		Tag a new version and prepare for the next development cycle.
+		~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+	-->
+	<target name="tagRelease" depends="prepare">
+		<!-- release -->
+		<property name="dryrun" value="false" />
+		<mx:version stage="release" dryrun="${dryrun}" />
+		<property name="project.tag" value="v${project.version}" />
+		<!-- commit build.moxie & releases.moxie (automatic) -->
+		<mx:commit showtitle="no">
+		    <message>Prepare ${project.version} release</message>
+			<tag name="${project.tag}">
+				<message>${project.name} ${project.version} release</message>
+			</tag>
+		</mx:commit>
+
+		<!-- create the release process script -->
+		<mx:if>
+			<os family="windows" />
+			<then>
+				<!-- Windows PowerShell script        -->
+				<!-- set-executionpolicy remotesigned -->
+				<property name="recipe" value="release_${project.version}.ps1" />
+			</then>
+			<else>
+				<!-- Bash script -->
+				<property name="recipe" value="release_${project.version}.sh" />
+			</else>
+		</mx:if>
+		<delete file="${recipe}" failonerror="false" quiet="true" verbose="false" />
+		<!-- Work-around for lack of proper ant property substitution in copy -->
+		<property name="dollar" value="$"/>
+		<copy file="release.template" tofile="${recipe}">
+			<filterset begintoken="${dollar}{" endtoken="}">
+				<filter token="project.version" value="${project.version}" />
+				<filter token="project.commitId" value="${project.commitId}" />
+				<filter token="project.tag" value="${project.tag}" />
+			</filterset>
+		</copy>
+		<chmod file="${recipe}" perm="ugo+rx" />
+
+		<!-- next cycle -->
+		<mx:version stage="snapshot" incrementNumber="minor" dryrun="${dryrun}" />
+		<mx:commit showtitle="no">
+		    <message>Reset build identifiers for next development cycle</message>
+		</mx:commit>
+	</target>
+
+
+</project>

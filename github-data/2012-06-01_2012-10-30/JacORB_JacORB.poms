@@ -1,0 +1,2282 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jacorb.demo</groupId>
+    <artifactId>maven</artifactId>
+    <version>1.1</version>
+    <packaging>jar</packaging>
+
+    <name>Maven-Demo</name>
+    <description>Example JacORB Maven Demo</description>
+
+    <licenses>
+        <license>
+            <name>GNU Lesser General Public License</name>
+            <url>https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html</url>
+        </license>
+    </licenses>
+
+    <properties>
+        <version.jacorb>3.4</version.jacorb>
+
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb</artifactId>
+            <version>${version.jacorb}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>idlj-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <compiler>jacorb</compiler>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.jacorb</groupId>
+                        <artifactId>jacorb-idl-compiler</artifactId>
+                        <version>${version.jacorb}</version>
+                        <scope>compile</scope>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration>
+                    <source>1.6</source>
+                    <target>1.6</target>
+                    <debug>true</debug>
+                    <showWarnings>true</showWarnings>
+                    <showDeprecation>true</showDeprecation>
+                    <compilerArgs>
+                        <arg>-Xbootclasspath/p:${settings.localRepository}/org/jacorb/jacorb-omgapi/${version.jacorb}/jacorb-omgapi-${version.jacorb}.jar</arg>
+                    </compilerArgs>
+                </configuration>
+            </plugin>
+
+
+            <!-- Utilising the antrun plugin to test as Ant allows for parallel execution of multiple processes -->
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>1.7</version>
+                <executions>
+                    <execution>
+                        <id>test</id>
+                        <phase>integration-test</phase>
+                        <configuration>
+                            <target>
+                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
+                                <tempfile property="ior.file" destdir="/tmp" prefix="server" suffix=".ior" />
+
+                                <parallel>
+                                    <sequential>
+                                        <java fork="true"
+                                              classpathref="maven.plugin.classpath"
+                                              className="org.jacorb.demo.maven.Server">
+                                            <jvmarg value="-Xbootclasspath/p:${plugin_classpath}:${classpath}:${sun.boot.class.path}" />
+                                            <jvmarg value="-Dorg.omg.CORBA.ORBClass=org.jacorb.orb.ORB" />
+                                            <jvmarg value="-Dorg.omg.CORBA.ORBSingletonClass=org.jacorb.orb.ORBSingleton" />
+                                            <arg value="${ior.file}"/>
+                                        </java>
+                                    </sequential>
+                                    <sequential>
+                                        <waitfor maxwait="30" maxwaitunit="second">
+                                            <available file="${ior.file}"/>
+                                        </waitfor>
+
+                                        <java fork="true"
+                                              classpathref="maven.plugin.classpath"
+                                              className="org.jacorb.demo.maven.Client">
+                                            <jvmarg value="-Xbootclasspath/p:${plugin_classpath}:${classpath}:${sun.boot.class.path}" />
+                                            <jvmarg value="-Dorg.omg.CORBA.ORBClass=org.jacorb.orb.ORB" />
+                                            <jvmarg value="-Dorg.omg.CORBA.ORBSingletonClass=org.jacorb.orb.ORBSingleton" />
+                                            <arg value="${ior.file}"/>
+                                        </java>
+                                    </sequential>
+                                </parallel>
+                            </target>
+                        </configuration>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.jacorb.demo</groupId>
+                        <artifactId>maven</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                    <dependency>
+                        <groupId>org.apache.ant</groupId>
+                        <artifactId>ant</artifactId>
+                        <version>1.8.2</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+        </plugins>
+
+        <pluginManagement>
+            <plugins>
+                <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
+                <plugin>
+                    <groupId>org.eclipse.m2e</groupId>
+                    <artifactId>lifecycle-mapping</artifactId>
+                    <version>1.0.0</version>
+                    <configuration>
+                        <lifecycleMappingMetadata>
+                            <pluginExecutions>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.codehaus.mojo
+                                        </groupId>
+                                        <artifactId>
+                                            idlj-maven-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [1.2.1,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>generate</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <execute/>
+                                    </action>
+                                </pluginExecution>
+                            </pluginExecutions>
+                        </lifecycleMappingMetadata>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>jacorb</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JacORB Core</name>
+    <description>JacORB Core code</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <mainArtifact>${env.JACORB_HOME}/lib/jacorb.jar</mainArtifact>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb-omgapi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipCompile">
+                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
+                                <ant antfile="${env.JACORB_HOME}/build.xml" inheritAll="true" inheritRefs="true" target="all">
+                                    <property name="sun.boot.class.path" value="${sun.boot.class.path}:${plugin_classpath}"/>
+                                    <property name="basedir" value="${env.JACORB_HOME}"/>
+                                </ant>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.commonjava.maven.plugins</groupId>
+                <artifactId>build-migration-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- Generate javadoc. Bound into the package phase for deployment purposes -->
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <skip>${skipJavadoc}</skip>
+                    <verbose>true</verbose>
+                    <sourcepath>${env.JACORB_HOME}/src:${env.JACORB_HOME}/src/generated</sourcepath>
+                    <subpackages>org.omg:org.jacorb</subpackages>
+                    <excludePackageNames>org.jacorb.concurrency:org.jacorb.collection:org.jacorb.dds:org.jacorb.events:org.jacorb.notification:org.jacorb.transaction:org.omg.BridgeTransactionMgmt:org.omg.CosBridgeAdmin:org.omg.CosCollection:org.omg.CosConcurrencyControl:org.omg.CosEventChannelAdmin:org.omg.CosEventComm:org.omg.CosNotification:org.omg.CosNotifyChannelAdmin:org.omg.CosNotifyChannelAdminAck:org.omg.CosNotifyComm:org.omg.CosNotifyCommAck:org.omg.CosNotifyFilter:org.omg.CosTime:org.omg.CosTrading:org.omg.CosTransactions:org.omg.CosTypedEventChannelAdmin:org.omg.CosTypedEventComm:org.omg.CosTypedEventNotifyComm:org.omg.CosTypedEventNotifyChannelAdmin:org.omg.CosTypedNotifyChannelAdmin:org.omg.CosTypedNotifyComm:org.omg.dds</excludePackageNames>
+                </configuration>
+            </plugin>
+
+
+            <!-- Package up the sources as well -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${env.JACORB_HOME}/src</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>
+                        <include>org/jacorb/**</include>
+                    </includes>
+                    <excludes>
+                        <exclude>org/jacorb/concurrency/**</exclude>
+                        <exclude>org/jacorb/collection/**</exclude>
+                        <exclude>org/jacorb/dds/**</exclude>
+                        <exclude>org/jacorb/events/**</exclude>
+                        <exclude>org/jacorb/notification/**</exclude>
+                        <exclude>org/jacorb/transaction/**</exclude>
+                   </excludes>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>jacorb-idl-compiler</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JacORB IDL Compiler</name>
+    <description>JacORB IDL Compiler</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <mainArtifact>${env.JACORB_HOME}/lib/idl.jar</mainArtifact>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.apache.ant</groupId>
+            <artifactId>ant</artifactId>
+            <scope>provided</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <!-- Normally we would just unzip the idl jar for the jar-plugin to repack. However, -->
+                    <!-- as the IDL compilation is quick we'll ensure we can rebuild it here -->
+                    <execution>
+                        <id>compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipCompile">
+                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
+                                <ant antfile="${env.JACORB_HOME}/build.xml" inheritAll="true" inheritRefs="true" target="compiler">
+                                    <property name="sun.boot.class.path" value="${sun.boot.class.path}:${plugin_classpath}"/>
+                                    <property name="basedir" value="${env.JACORB_HOME}"/>
+                                </ant>
+                            </target>
+                        </configuration>
+                    </execution>
+               </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.commonjava.maven.plugins</groupId>
+                <artifactId>build-migration-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- Generate javadoc. Bound into the package phase for deployment purposes -->
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <skip>${skipJavadoc}</skip>
+                    <verbose>true</verbose>
+                    <sourcepath>${env.JACORB_HOME}/src</sourcepath>
+                    <subpackages>org.jacorb.idl</subpackages>
+                </configuration>
+            </plugin>
+
+
+            <!-- Package up the sources as well -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${env.JACORB_HOME}/src</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>
+                        <include>org/jacorb/idl/*</include>
+                    </includes>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <configuration>
+                    <outputDirectory>${project.build.directory}/resources</outputDirectory>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>idl-sources</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>${project.artifactId}-${project.version}</finalName>
+                            <appendAssemblyId>true</appendAssemblyId>
+                            <descriptors>
+                                <descriptor>src/main/assembly/idl.zip.xml</descriptor>
+                            </descriptors>
+                            <archiverConfig>
+                                <defaultFileMode>0644</defaultFileMode>
+                                <defaultDirectoryMode>0755</defaultDirectoryMode>
+                            </archiverConfig>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
+        <resources>
+            <resource>
+                <directory>${basedir}/../../idl/jacorb</directory>
+            </resource>
+            <resource>
+                <directory>${basedir}/../../idl/omg</directory>
+            </resource>
+        </resources>
+
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>jacorb-omgapi</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JacORB OMG-API</name>
+    <description>JacORB OMG API Stubs</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <mainArtifact>${env.JACORB_HOME}/lib/jacorb-omgapi.jar</mainArtifact>
+    </properties>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.commonjava.maven.plugins</groupId>
+                <artifactId>build-migration-maven-plugin</artifactId>
+            </plugin>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>compile</id>
+                        <phase>compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target unless="skipCompile">
+                                <property name="plugin_classpath" refid="maven.plugin.classpath"/>
+                                <ant antfile="${env.JACORB_HOME}/build.xml" inheritAll="true" inheritRefs="true" target="all">
+                                    <property name="sun.boot.class.path" value="${sun.boot.class.path}:${plugin_classpath}"/>
+                                    <property name="basedir" value="${env.JACORB_HOME}"/>
+                                </ant>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Package up the sources as well -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${env.JACORB_HOME}/src/generated</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>
+                        <include>org/omg/**</include>
+                    </includes>
+                    <excludes>
+                        <exclude>org/omg/BridgeTransactionMgmt/**</exclude>
+                        <exclude>org/omg/CosBridgeAdmin/**</exclude>
+                        <exclude>org/omg/CosCollection/**</exclude>
+                        <exclude>org/omg/CosConcurrencyControl/**</exclude>
+                        <exclude>org/omg/CosEventChannelAdmin/**</exclude>
+                        <exclude>org/omg/CosEventComm/**</exclude>
+                        <exclude>org/omg/CosNotification/**</exclude>
+                        <exclude>org/omg/CosNotifyChannelAdmin/**</exclude>
+                        <exclude>org/omg/CosNotifyChannelAdminAck/**</exclude>
+                        <exclude>org/omg/CosNotifyComm/**</exclude>
+                        <exclude>org/omg/CosNotifyCommAck/**</exclude>
+                        <exclude>org/omg/CosNotifyFilter/**</exclude>
+                        <exclude>org/omg/CosTime/**</exclude>
+                        <exclude>org/omg/CosTrading/**</exclude>
+                        <exclude>org/omg/CosTransactions/**</exclude>
+                        <exclude>org/omg/CosTypedEventChannelAdmin/**</exclude>
+                        <exclude>org/omg/CosTypedEventComm/**</exclude>
+                        <exclude>org/omg/CosTypedEventNotifyComm/**</exclude>
+                        <exclude>org/omg/CosTypedEventNotifyChannelAdmin/**</exclude>
+                        <exclude>org/omg/CosTypedNotifyChannelAdmin/**</exclude>
+                        <exclude>org/omg/CosTypedNotifyComm/**</exclude>
+                        <exclude>org/omg/dds</exclude>
+                   </excludes>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <artifactId>jacorb-release</artifactId>
+    <packaging>pom</packaging>
+
+    <name>JacORB Release</name>
+    <description>JacORB Release Module for packaging distribution zips</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <skipCompile>true</skipCompile>
+        <skipJavadoc>true</skipJavadoc>
+        <skipTests>true</skipTests>
+    </properties>
+
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+                    <!-- Artifact signing. We want to create MD5 sums for the zips we create (src/bin) -->
+                    <!-- and (eventually) GPG sign the jar files -->
+                    <execution>
+                        <id>signing</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <checksum file="target/jacorb-${project.version}-source.zip"/>
+                                <checksum file="target/jacorb-${project.version}-binary.zip"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>initialize</phase>
+                        <id>parse-version</id>
+                        <goals>
+                            <goal>parse-version</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>assemble-result</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>common</finalName>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <attach>false</attach>
+                            <outputDirectory>${project.build.directory}/work</outputDirectory>
+                            <descriptors>
+                                <descriptor>src/main/assembly/common.xml</descriptor>
+                            </descriptors>
+                            <archiverConfig>
+                                <defaultFileMode>0644</defaultFileMode>
+                                <defaultDirectoryMode>0755</defaultDirectoryMode>
+                            </archiverConfig>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>binary-dist</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>jacorb-${project.version}</finalName>
+                            <appendAssemblyId>true</appendAssemblyId>
+                            <attach>false</attach>
+                            <descriptors>
+                                <descriptor>src/main/assembly/binary.zip.xml</descriptor>
+                            </descriptors>
+                            <archiverConfig>
+                                <defaultFileMode>0644</defaultFileMode>
+                                <defaultDirectoryMode>0755</defaultDirectoryMode>
+                            </archiverConfig>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>source-dist</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <finalName>jacorb-${project.version}</finalName>
+                            <appendAssemblyId>true</appendAssemblyId>
+                            <attach>false</attach>
+                            <descriptors>
+                                <descriptor>src/main/assembly/source.zip.xml</descriptor>
+                            </descriptors>
+                            <archiverConfig>
+                                <defaultFileMode>0644</defaultFileMode>
+                                <defaultDirectoryMode>0755</defaultDirectoryMode>
+                            </archiverConfig>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.jacorb</groupId>
+                                    <artifactId>jacorb</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${project.build.directory}/work/common/lib</outputDirectory>
+                                    <destFileName>jacorb.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.jacorb</groupId>
+                                    <artifactId>jacorb-services</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${project.build.directory}/work/common/lib</outputDirectory>
+                                    <destFileName>jacorb-services.jar</destFileName>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>org.jacorb</groupId>
+                                    <artifactId>jacorb-idl-compiler</artifactId>
+                                    <version>${project.version}</version>
+                                    <outputDirectory>${project.build.directory}/work/common/lib</outputDirectory>
+                                    <destFileName>idl.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Disable installation and deployment as this module is just for assembling the distribution zips -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>pdf-generation</id>
+            <activation>
+                <property>
+                    <name>!skipPDFGeneration</name>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <!-- Generate the ProgrammingGuide via http://akquinet.github.com/maven-latex-plugin -->
+                    <plugin>
+                        <groupId>de.akquinet.jbosscc.latex</groupId>
+                        <artifactId>maven-latex-plugin</artifactId>
+                        <version>1.2</version>
+                        <configuration>
+                            <settings>
+                                <!-- all tex main documents in this folder (including subfolders) will be processed -->
+                                <texDirectory>${basedir}/../../doc/ProgrammingGuide</texDirectory>
+                                <texCommandArgs>
+                                    <texCommandArg>"\newcommand{\JacORBVersion}{${project.version}}\newcommand{\JacORBDir}{jacorb-${parsedVersion.majorVersion}\_${parsedVersion.minorVersion}}\input{ProgrammingGuide}"</texCommandArg>
+                                    <texCommandArg>-interaction=nonstopmode</texCommandArg>
+                                    <texCommandArg>--src-specials</texCommandArg>
+                                </texCommandArgs>
+                           </settings>
+                        </configuration>
+                        <executions>
+                            <execution>
+                                <phase>generate-sources</phase>
+                                <goals>
+                                    <goal>latex</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>jacorb-services</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JacORB Services</name>
+    <description>JacORB ORB Services</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <mainArtifact>${env.JACORB_HOME}/lib/jacorb-services.jar</mainArtifact>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>antlr</groupId>
+            <artifactId>antlr</artifactId>
+            <version>2.7.2</version>
+        </dependency>
+        <dependency>
+            <groupId>picocontainer</groupId>
+            <artifactId>picocontainer</artifactId>
+            <version>1.2</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb-omgapi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+            </plugin>
+
+            <plugin>
+                <groupId>org.commonjava.maven.plugins</groupId>
+                <artifactId>build-migration-maven-plugin</artifactId>
+            </plugin>
+
+            <!-- Generate javadoc. Bound into the package phase for deployment purposes -->
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <skip>${skipJavadoc}</skip>
+                    <verbose>true</verbose>
+                    <sourcepath>${env.JACORB_HOME}/src:${env.JACORB_HOME}/src/generated</sourcepath>
+                    <subpackages>org.jacorb.concurrency:org.jacorb.collection:org.jacorb.dds:org.jacorb.events:org.jacorb.notification:org.jacorb.transaction:org.omg.BridgeTransactionMgmt:org.omg.CosBridgeAdmin:org.omg.CosCollection:org.omg.CosConcurrencyControl:org.omg.CosEventChannelAdmin:org.omg.CosEventComm:org.omg.CosNotification:org.omg.CosNotifyChannelAdmin:org.omg.CosNotifyChannelAdminAck:org.omg.CosNotifyComm:org.omg.CosNotifyCommAck:org.omg.CosNotifyFilter:org.omg.CosTime:org.omg.CosTrading:org.omg.CosTransactions:org.omg.CosTypedEventChannelAdmin:org.omg.CosTypedEventComm:org.omg.CosTypedEventNotifyComm:org.omg.CosTypedEventNotifyChannelAdmin:org.omg.CosTypedNotifyChannelAdmin:org.omg.CosTypedNotifyComm:org.omg.dds</subpackages>
+                </configuration>
+            </plugin>
+
+
+            <!-- Package up the sources as well -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${env.JACORB_HOME}/src</source>
+                                <source>${env.JACORB_HOME}/src/generated</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includes>
+                        <include>org/jacorb/concurrency/**</include>
+                        <include>org/jacorb/collection/**</include>
+                        <include>org/jacorb/dds/**</include>
+                        <include>org/jacorb/events/**</include>
+                        <include>org/jacorb/notification/**</include>
+                        <include>org/jacorb/transaction/**</include>
+                        <include>org/omg/BridgeTransactionMgmt/**</include>
+                        <include>org/omg/CosBridgeAdmin/**</include>
+                        <include>org/omg/CosCollection/**</include>
+                        <include>org/omg/CosConcurrencyControl/**</include>
+                        <include>org/omg/CosEventChannelAdmin/**</include>
+                        <include>org/omg/CosEventComm/**</include>
+                        <include>org/omg/CosNotification/**</include>
+                        <include>org/omg/CosNotifyChannelAdmin/**</include>
+                        <include>org/omg/CosNotifyChannelAdminAck/**</include>
+                        <include>org/omg/CosNotifyComm/**</include>
+                        <include>org/omg/CosNotifyCommAck/**</include>
+                        <include>org/omg/CosNotifyFilter/**</include>
+                        <include>org/omg/CosTime/**</include>
+                        <include>org/omg/CosTrading/**</include>
+                        <include>org/omg/CosTransactions/**</include>
+                        <include>org/omg/CosTypedEventChannelAdmin/**</include>
+                        <include>org/omg/CosTypedEventComm/**</include>
+                        <include>org/omg/CosTypedEventNotifyComm/**</include>
+                        <include>org/omg/CosTypedEventNotifyChannelAdmin/**</include>
+                        <include>org/omg/CosTypedNotifyChannelAdmin/**</include>
+                        <include>org/omg/CosTypedNotifyComm/**</include>
+                        <include>org/omg/dds</include>
+                   </includes>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <!--
+
+    JacORB POM Usage:
+
+    To skip compilation pass -DskipCompile=true
+    To skip tests pass -DskipTests=true
+    To skip javadoc pass -DskipJavadoc=true
+    To skip pdf generation (if e.g. pdflatex is not installed) -DskipPDFGeneration
+
+    To deploy and release pass -DperformRelease=true
+
+    Maven phases versus JacORB build rules:
+
+    clean=realclean
+    compile=all
+    test='clean run-all'
+    package= [ Distribution assembly ]
+
+    NOTE: JACORB_HOME must be passed in via -D or set in the environment.
+
+    -->
+
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.sonatype.oss</groupId>
+        <artifactId>oss-parent</artifactId>
+        <version>7</version>
+    </parent>
+
+    <groupId>org.jacorb</groupId>
+    <artifactId>jacorb-parent</artifactId>
+    <version>3.5-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <name>JacORB</name>
+    <description>JacORB CORBA Object Request Broker (ORB)</description>
+    <url>http://www.jacorb.org</url>
+
+    <licenses>
+        <license>
+            <name>GNU Lesser General Public License</name>
+            <url>https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html</url>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git@github.com:JacORB/JacORB.git</connection>
+        <developerConnection>scm:git:git@github.com@JacORB/JacORB.git</developerConnection>
+        <url>https://github.com/JacORB/JacORB</url>
+    </scm>
+
+    <issueManagement>
+        <system>Bugzilla</system>
+        <url>http://www.jacorb.org/cgi-bin/bugzilla/index.cgi</url>
+    </issueManagement>
+
+    <organization>
+        <name>JacORB</name>
+        <url>http://www.jacorb.org</url>
+    </organization>
+
+    <developers>
+        <developer>
+            <name>JacORB Core Team</name>
+        </developer>
+    </developers>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- GPG key ID we sign the builds with. This can be overridden by other developers -->
+        <gpg.keyname>6E0309600DC50C2E</gpg.keyname>
+        <failIfNoTests>false</failIfNoTests>
+
+        <!-- Enforce 1.6 compaatibility -->
+        <maven.compiler.target>1.6</maven.compiler.target>
+        <maven.compiler.source>1.6</maven.compiler.source>
+
+    </properties>
+
+
+    <modules>
+        <module>maven/idl-compiler</module>
+        <module>maven/omgapi</module>
+        <module>maven/core</module>
+        <module>maven/services</module>
+        <module>maven/release</module>
+        <module>test/regression</module>
+    </modules>
+
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.apache.ant</groupId>
+                <artifactId>ant</artifactId>
+                <version>1.8.2</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-api</artifactId>
+                <version>1.7.6</version>
+            </dependency>
+            <dependency>
+                <groupId>org.slf4j</groupId>
+                <artifactId>slf4j-jdk14</artifactId>
+                <version>1.7.6</version>
+            </dependency>
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>4.11</version>
+            </dependency>
+            <dependency>
+                <groupId>easymock</groupId>
+                <artifactId>easymock</artifactId>
+                <version>1.1</version>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>1.7</version>
+                    <executions>
+                        <execution>
+                            <id>getJACORB_HOMEValidation</id>
+                            <phase>validate</phase>
+                            <goals>
+                                <goal>run</goal>
+                            </goals>
+                            <configuration>
+                                <exportAntProperties>true</exportAntProperties>
+                                <target>
+                                    <!--Adjust the location below to your directory structure -->
+                                    <property name="env.JACORB_HOME" location="../.." />
+                                    <echo message="[validate] env.JACORB_HOME=${env.JACORB_HOME}"/>
+                                </target>
+                            </configuration>
+                        </execution>
+                        <execution>
+                            <id>getenv.JACORB_HOMEClean</id>
+                            <phase>pre-clean</phase>
+                            <goals>
+                                <goal>run</goal>
+                            </goals>
+                            <configuration>
+                                <exportAntProperties>true</exportAntProperties>
+                                <target>
+                                    <!--Adjust the location below to your directory structure -->
+                                    <property name="env.JACORB_HOME" location="../.." />
+                                    <echo message="[preclean] env.JACORB_HOME=${env.JACORB_HOME}"/>
+                                </target>
+                            </configuration>
+                        </execution>
+                    </executions>
+                    <dependencies>
+                        <dependency>
+                            <groupId>org.apache.ant</groupId>
+                            <artifactId>ant</artifactId>
+                            <version>1.8.2</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>org.apache.ant</groupId>
+                            <artifactId>ant-apache-regexp</artifactId>
+                            <version>1.8.2</version>
+                        </dependency>
+                        <dependency>
+                            <groupId>org.apache.ant</groupId>
+                            <artifactId>ant-junit</artifactId>
+                            <version>1.8.2</version>
+                        </dependency>
+                        <!-- To ensure we pick up the javac compiler -->
+                        <dependency>
+                            <groupId>com.sun</groupId>
+                            <artifactId>tools</artifactId>
+                            <version>1.6.0</version>
+                            <scope>system</scope>
+                            <systemPath>${toolsjar}</systemPath>
+                        </dependency>
+                    </dependencies>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>2.2.2</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>3.1</version>
+                    <configuration>
+                        <showDeprecation>true</showDeprecation>
+                        <showWarnings>true</showWarnings>
+                        <compilerArguments>
+                            <source>${maven.compiler.source}</source>
+                            <target>${maven.compiler.target}</target>
+                        </compilerArguments>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>2.6</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>2.7</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>2.6</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>2.1.2</version>
+                    <executions>
+                        <execution>
+                            <id>attach-sources</id>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>buildnumber-maven-plugin</artifactId>
+                    <version>1.2</version>
+                </plugin>
+
+                <!-- Helper plugin to override main artifact -->
+                <plugin>
+                    <groupId>org.commonjava.maven.plugins</groupId>
+                    <artifactId>build-migration-maven-plugin</artifactId>
+                    <version>0.3</version>
+                    <executions>
+                        <execution>
+                            <id>attach-main-artifact</id>
+                            <goals>
+                                <goal>main-artifact</goal>
+                            </goals>
+                            <configuration>
+                                <mainArtifact>${mainArtifact}</mainArtifact>
+                            </configuration>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <!-- Generate javadoc. Bound into the package phase for deployment purposes -->
+                <plugin>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>2.8.1</version>
+                    <configuration>
+                        <skip>${skipJavadoc}</skip>
+                        <verbose>true</verbose>
+                        <sourcepath>${env.JACORB_HOME}/src</sourcepath>
+                        <bootclasspath>${sun.boot.class.path}:${env.JACORB_HOME}/classes</bootclasspath>
+                    </configuration>
+                    <executions>
+                        <execution>
+                            <phase>package</phase>
+                            <goals>
+                                <goal>jar</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>build-helper-maven-plugin</artifactId>
+                    <version>1.7</version>
+                </plugin>
+
+                <!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
+                <plugin>
+                    <groupId>org.eclipse.m2e</groupId>
+                    <artifactId>lifecycle-mapping</artifactId>
+                    <version>1.0.0</version>
+                    <configuration>
+                        <lifecycleMappingMetadata>
+                            <pluginExecutions>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.codehaus.mojo
+                                        </groupId>
+                                        <artifactId>
+                                            idlj-maven-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [1.2.1,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>generate-test</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
+                                </pluginExecution>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.codehaus.gmaven
+                                        </groupId>
+                                        <artifactId>
+                                            gmaven-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [1.5,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>execute</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
+                                </pluginExecution>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.codehaus.mojo
+                                        </groupId>
+                                        <artifactId>
+                                            rmic-maven-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [1.2.1,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>test-rmic</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
+                                </pluginExecution>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.apache.maven.plugins
+                                        </groupId>
+                                        <artifactId>
+                                            maven-antrun-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [1.7,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>run</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
+                                </pluginExecution>
+                                <pluginExecution>
+                                    <pluginExecutionFilter>
+                                        <groupId>
+                                            org.apache.cxf
+                                        </groupId>
+                                        <artifactId>
+                                            cxf-codegen-plugin
+                                        </artifactId>
+                                        <versionRange>
+                                            [2.7,)
+                                        </versionRange>
+                                        <goals>
+                                            <goal>wsdl2java</goal>
+                                        </goals>
+                                    </pluginExecutionFilter>
+                                    <action>
+                                        <ignore></ignore>
+                                    </action>
+                                </pluginExecution>
+        			<pluginExecution>
+        			    <pluginExecutionFilter>
+        				<groupId>org.jacoco</groupId>
+        				<artifactId>
+        				    jacoco-maven-plugin
+        				</artifactId>
+        				<versionRange>
+        				    [0.6.4.201312101107,)
+        				</versionRange>
+        				<goals>
+        				    <goal>prepare-agent</goal>
+        				</goals>
+        			    </pluginExecutionFilter>
+        			    <action>
+        				<ignore></ignore>
+        			    </action>
+        			</pluginExecution>
+
+                            </pluginExecutions>
+                        </lifecycleMappingMetadata>
+                    </configuration>
+                </plugin>
+
+            </plugins>
+        </pluginManagement>
+
+
+        <plugins>
+            <!-- We can't remove the enforcer rule and rely on the maven-compiler-plugin
+                 source/target until the Ant compilation is removed. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>1.3.1</version>
+                <executions>
+                    <execution>
+                        <id>enforce-versions</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[1.6.0,1.7.0)</version>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <version>1.7</version>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>getJACORB_HOMEValidation</id>
+                        <phase>validate</phase>
+                        <configuration>
+                            <exportAntProperties>true</exportAntProperties>
+                            <target>
+                                <!--Adjust the location below to your directory structure -->
+                                <property name="env.JACORB_HOME" location="." />
+                                <echo message="[validate] env.JACORB_HOME=${env.JACORB_HOME}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>getenv.JACORB_HOMEClean</id>
+                        <phase>pre-clean</phase>
+                        <configuration>
+                            <exportAntProperties>true</exportAntProperties>
+                            <target>
+                                <!--Adjust the location below to your directory structure -->
+                                <property name="env.JACORB_HOME" location="." />
+                                <echo message="[preclean] env.JACORB_HOME=${env.JACORB_HOME}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                            <id>clean</id>
+                            <phase>clean</phase>
+                            <goals>
+                                <goal>run</goal>
+                            </goals>
+                            <configuration>
+                                <target>
+                                    <ant antfile="${env.JACORB_HOME}/build.xml" target="realclean">
+                                        <property name="basedir" value="${env.JACORB_HOME}"/>
+                                    </ant>
+                                </target>
+                            </configuration>
+                        </execution>
+                </executions>
+            </plugin>
+
+            <!-- We could use the maven jar plugin to rebuild the jar files for final packaging -->
+            <!-- For now, lets skip it and use the Ant version. -->
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-jar</id>
+                        <phase>DISABLED</phase>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-resources-plugin</artifactId>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <id>resources</id>
+                        <phase>process-sources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>${basedir}/src/generated</outputDirectory>
+                            <resources>
+                                <resource>
+                                    <directory>src/main/resources</directory>
+                                    <filtering>true</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>buildnumber-maven-plugin</artifactId>
+                <inherited>false</inherited>
+                <executions>
+                    <execution>
+                        <phase>validate</phase>
+                        <id>buildnumbers</id>
+                        <goals>
+                            <goal>create</goal>
+                        </goals>
+                        <configuration>
+                            <shortRevisionLength>8</shortRevisionLength>
+                            <timestampFormat>{0,date,dd MMMM yyyy HH:mm:ss}</timestampFormat>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <phase>validate</phase>
+                        <id>year</id>
+                        <goals>
+                            <goal>create-timestamp</goal>
+                        </goals>
+                        <configuration>
+                            <timestampFormat>yyyy</timestampFormat>
+                            <timestampPropertyName>releaseYear</timestampPropertyName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <profiles>
+        <!-- From http://stackoverflow.com/questions/3080437/jdk-tools-jar-as-maven-dependency -->
+        <profile>
+            <id>default-profile</id>
+            <activation>
+                <activeByDefault>true</activeByDefault>
+                <file>
+                    <exists>${java.home}/../lib/tools.jar</exists>
+                </file>
+            </activation>
+            <properties>
+                <toolsjar>${java.home}/../lib/tools.jar</toolsjar>
+            </properties>
+        </profile>
+        <profile>
+            <id>mac-profile</id>
+            <activation>
+                <activeByDefault>false</activeByDefault>
+                <file>
+                    <exists>${java.home}/../Classes/classes.jar</exists>
+                </file>
+            </activation>
+            <properties>
+                <toolsjar>${java.home}/../Classes/classes.jar</toolsjar>
+            </properties>
+        </profile>
+
+        <!-- Release profile -->
+        <profile>
+            <id>release-sign-artifacts</id>
+            <activation>
+                <property>
+                    <name>performRelease</name>
+                    <value>true</value>
+                </property>
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-gpg-plugin</artifactId>
+                        <version>1.4</version>
+                        <executions>
+                            <execution>
+                                <id>sign-artifacts</id>
+                                <phase>verify</phase>
+                                <goals>
+                                    <goal>sign</goal>
+                                </goals>
+                                <configuration>
+                                    <executable>gpg2</executable>
+                                    <useAgent>true</useAgent>
+                                    <ascDirectory>${project.build.directory}</ascDirectory>
+                                    <keyname>${gpg.keyname}</keyname>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                             http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.jacorb</groupId>
+        <artifactId>jacorb-parent</artifactId>
+        <version>3.5-SNAPSHOT</version>
+        <relativePath>../..</relativePath>
+    </parent>
+
+    <artifactId>jacorb-regression</artifactId>
+    <packaging>jar</packaging>
+
+    <name>JacORB Regression Tests</name>
+    <description>JacORB Regression Tests</description>
+    <url>http://www.jacorb.org</url>
+
+    <properties>
+        <spring.version>3.1.1.RELEASE</spring.version>
+        <cxf.version>2.7.5</cxf.version>
+        <byteman.version>2.1.4.1</byteman.version>
+        <jacoco.version>0.6.4.201312101107</jacoco.version>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb</artifactId>
+            <version>${project.version}</version>
+            <classifier>sources</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb-omgapi</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb-idl-compiler</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jacorb</groupId>
+            <artifactId>jacorb-services</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>easymock</groupId>
+            <artifactId>easymock</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-jdk14</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.4</version>
+        </dependency>
+
+        <!-- CXF/Spring is for Bug968 (CXF+Corba) -->
+        <dependency>
+            <groupId>org.apache.cxf</groupId>
+            <artifactId>cxf-rt-frontend-jaxws</artifactId>
+            <version>${cxf.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.apache.cxf</groupId>
+            <artifactId>cxf-rt-bindings-corba</artifactId>
+            <version>${cxf.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-context</artifactId>
+            <version>${spring.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman</artifactId>
+            <version>${byteman.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-submit</artifactId>
+            <version>${byteman.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-install</artifactId>
+            <version>${byteman.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-bmunit</artifactId>
+            <version>${byteman.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.sun</groupId>
+            <artifactId>tools</artifactId>
+            <version>1.6.0</version>
+            <scope>system</scope>
+            <systemPath>${toolsjar}</systemPath>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Disable installation and deployment as this module is just for assembling the distribution zips -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-install-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- Constrain the fork count to 1 on single processor machines -->
+            <plugin>
+                <groupId>org.codehaus.gmaven</groupId>
+                <artifactId>gmaven-plugin</artifactId>
+                <version>1.5</version>
+                <executions>
+                    <execution>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>execute</goal>
+                        </goals>
+                        <configuration>
+                            <source>
+                                def processorCount = Runtime.getRuntime().availableProcessors();
+                                log.info ("Processor count is $processorCount");
+                                if ( processorCount == 1 )
+                                {
+                                   project.properties['surefire.forkCount'] = "1";
+                                }
+                                else
+                                {
+                                   project.properties['surefire.forkCount'] = "0.5C";
+                                }
+                            </source>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>add-test-source</id>
+                        <phase>process-test-sources</phase>
+                        <goals>
+                            <goal>add-test-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/generated-test-sources/cxf</source>
+                                <source>${project.build.directory}/generated-test-sources/idl</source>
+                                <source>${basedir}/../listenendpoints/echo_corbaloc/src</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+
+                    <execution>
+                        <id>add-report-sources</id>
+                        <phase>pre-site</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/covered-sources</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.cxf</groupId>
+                <artifactId>cxf-corbatools-maven-plugin</artifactId>
+                <version>${cxf.version}</version>
+                <executions>
+                    <execution>
+                        <id>cfgService</id>
+                        <phase>generate-test-sources</phase>
+                        <goals>
+                            <goal>idl2wsdl</goal>
+                        </goals>
+                        <configuration>
+                            <outputDir>${project.build.directory}/test-classes</outputDir>
+                            <idltowsdlOptions>
+                                <idltowsdlOption>
+                                    <idl>${basedir}/src/test/idl/repro.idl</idl>
+                                    <extraargs>
+                                        <extraarg>-I</extraarg>
+                                        <extraarg>${basedir}/src/test/idl</extraarg>
+                                        <extraarg>-verbose</extraarg>
+                                    </extraargs>
+                                </idltowsdlOption>
+                            </idltowsdlOptions>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.cxf</groupId>
+                <artifactId>cxf-codegen-plugin</artifactId>
+                <version>${cxf.version}</version>
+                <executions>
+                    <execution>
+                        <id>generate-cxf-sources</id>
+                        <phase>generate-test-sources</phase>
+                        <configuration>
+                            <defaultOptions>
+                                <frontEnd>jaxws21</frontEnd>
+                                <packagenames>
+                                    <package>cxf.repro</package>
+                                </packagenames>
+                                <extraargs>
+                                    <extraarg>-client</extraarg>
+                                    <extraarg>-verbose</extraarg>
+                                </extraargs>
+                            </defaultOptions>
+                            <wsdlRoot>${project.build.directory}/test-classes</wsdlRoot>
+                            <sourceRoot>${project.build.directory}/generated-test-sources/cxf</sourceRoot>
+                        </configuration>
+                        <goals>
+                            <goal>wsdl2java</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>idlj-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <executions>
+
+                    <execution>
+                        <id>standard-compile</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>*.idl</include>
+                                    </includes>
+                                    <excludes>
+                                        <exclude>CallbackServer.idl</exclude>
+                                        <exclude>TimingServer.idl</exclude>
+                                        <exclude>antBugJac608.idl</exclude>
+                                        <exclude>SyncScopeServer.idl</exclude>
+                                        <exclude>_bugjac560.idl</exclude>
+                                        <exclude>_bugjac801.idl</exclude>
+                                        <exclude>ami_bug*.idl</exclude>
+                                    </excludes>
+                                    <additionalArguments>
+                                        <additionalArgument>-generate_helper</additionalArgument>
+                                        <additionalArgument>jacorb</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>ami-compile</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>CallbackServer.idl</include>
+                                        <include>TimingServer.idl</include>
+                                        <include>SyncScopeServer.idl</include>
+                                        <include>ami_bug*.idl</include>
+                                    </includes>
+                                    <additionalArguments>
+                                        <additionalArgument>-ami_callback</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>bugjac560</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>_bugjac560.idl</include>
+                                    </includes>
+                                    <additionalArguments>
+                                        <additionalArgument>-i2jpackage</additionalArgument>
+                                        <additionalArgument>Node:cerent.cms.idl.Node</additionalArgument>
+                                        <additionalArgument>-ami_callback</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>bugjac801</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>_bugjac801.idl</include>
+                                    </includes>
+                                    <additionalArguments>
+                                        <additionalArgument>-genEnhanced</additionalArgument>
+                                        <additionalArgument>-generate_helper</additionalArgument>
+                                        <additionalArgument>jacorb</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>bugjac608</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>antBugJac608.idl</include>
+                                    </includes>
+                                    <additionalArguments>
+                                        <additionalArgument>-i2jpackage</additionalArgument>
+                                        <additionalArgument>antBugJac608:org.jacorb.test.antBugJac608</additionalArgument>
+                                        <additionalArgument>-sloppy_identifiers</additionalArgument>
+                                        <additionalArgument>-generate_helper</additionalArgument>
+                                        <additionalArgument>jacorb</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                    <execution>
+                        <id>echocorbaloc</id>
+                        <goals>
+                            <goal>generate-test</goal>
+                        </goals>
+                        <configuration>
+                            <sourceDirectory>${basedir}/../listenendpoints/echo_corbaloc/idl</sourceDirectory>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>server.idl</include>
+                                    </includes>
+                                    <additionalArguments>
+                                        <additionalArgument>-i2jpackage</additionalArgument>
+                                        <additionalArgument>:org.jacorb</additionalArgument>
+                                        <additionalArgument>-generate_helper</additionalArgument>
+                                        <additionalArgument>jacorb</additionalArgument>
+                                    </additionalArguments>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+
+                </executions>
+                <configuration>
+                    <compiler>jacorb</compiler>
+                    <includeDirs>
+                        <includeDir>${basedir}/../../idl/omg</includeDir>
+                        <includeDir>${basedir}/idl</includeDir>
+                    </includeDirs>
+                </configuration>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.jacorb</groupId>
+                        <artifactId>jacorb-idl-compiler</artifactId>
+                        <version>${project.version}</version>
+                    </dependency>
+                </dependencies>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>rmic-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <executions>
+                    <execution>
+                        <id>rmi compilation</id>
+                        <goals>
+                            <goal>test-rmic</goal>
+                        </goals>
+                        <phase>process-test-classes</phase>
+                        <configuration>
+                            <keep>true</keep>
+                            <iiop>true</iiop>
+                            <poa>true</poa>
+                            <testOutputDirectory>${project.build.testOutputDirectory}</testOutputDirectory>
+                            <sources>
+                                <source>
+                                    <includes>
+                                        <include>org.jacorb.test.orb.rmi.RMITestImpl.class</include>
+                                        <include>org.jacorb.test.bugs.bugjac149.RemoteIPingImpl.class</include>
+                                    </includes>
+                                </source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <testSource>1.6</testSource>
+                    <testTarget>1.6</testTarget>
+                    <debug>true</debug>
+                    <showWarnings>true</showWarnings>
+                    <showDeprecation>true</showDeprecation>
+                    <compilerArgs>
+                        <arg>-Xbootclasspath/p:${settings.localRepository}/org/jacorb/jacorb-omgapi/${project.version}/jacorb-omgapi-${project.version}.jar</arg>
+                    </compilerArgs>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>default-testCompile</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <testExcludes>
+                                <testExclude>**/RMITestServant.java</testExclude>
+                            </testExcludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>rmi-compile</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <testIncludes>
+                                <testInclude>**/RMITestServant.java</testInclude>
+                            </testIncludes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.16</version>
+                <configuration>
+                    <systemPropertyVariables>
+                        <!-- Default timeout for a server to start -->
+                        <jacorb.test.timeout.server>60000</jacorb.test.timeout.server>
+                    </systemPropertyVariables>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <useManifestOnlyJar>false</useManifestOnlyJar>
+                            <forkCount>${surefire.forkCount}</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <argLine>${jacoco.agent.argLine} -Xbootclasspath/p:${settings.localRepository}/org/jacorb/jacorb-omgapi/${project.version}/jacorb-omgapi-${project.version}.jar -Djacorb.test.verbose=${jacorb.test.verbose}</argLine>
+                            <environmentVariables>
+                                <BYTEMAN_HOME></BYTEMAN_HOME>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>ssl</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>test</goal>
+                        </goals>
+                        <configuration>
+                            <useManifestOnlyJar>false</useManifestOnlyJar>
+                            <forkCount>${surefire.forkCount}</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <argLine>${jacoco.agent.argLine} -Xbootclasspath/p:${settings.localRepository}/org/jacorb/jacorb-omgapi/${project.version}/jacorb-omgapi-${project.version}.jar -Djacorb.test.verbose=${jacorb.test.verbose} -Djacorb.test.ssl=true</argLine>
+                            <reportsDirectory>${project.build.directory}/surefire-reports-ssl</reportsDirectory>
+                            <environmentVariables>
+                                <BYTEMAN_HOME></BYTEMAN_HOME>
+                            </environmentVariables>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>prepare-covered-classes</id>
+                        <goals>
+                            <goal>unpack-dependencies</goal>
+                        </goals>
+                        <phase>pre-site</phase>
+                        <configuration>
+                            <excludeClassifiers>sources</excludeClassifiers>
+                            <outputDirectory>${project.build.outputDirectory}</outputDirectory>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>prepare-covered-sources</id>
+                        <goals>
+                            <goal>unpack-dependencies</goal>
+                        </goals>
+                        <phase>pre-site</phase>
+                        <configuration>
+                            <includeClassifiers>sources</includeClassifiers>
+                            <outputDirectory>${project.build.directory}/covered-sources</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+                <configuration>
+                    <includeGroupIds>org.jacorb</includeGroupIds>
+                </configuration>
+            </plugin>
+            <!--
+                 This generates a nice aggregate report. It must be run locally from the regression directory.
+                 Unfortunately it seems invoking from $JACORB_HOME the maven-surefire-report-plugin does not work.
+                 Therefore to create an aggegrate test report invoke the tests and site plugin from the regression
+                 directory e.g.
+                 mvn -Dtest="BasicTest" clean test site
+                 Or if they have been invoked already (as part of a full build), then this could be invoked as:
+                 mvn site
+                 Finally, it can be viewed by invoking
+                 firefox target/site/index.html
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <version>3.3</version>
+                <executions>
+                    <!-- Run in both default-site phase and after all the tests -->
+                    <execution>
+                        <id>default-site</id>
+                        <phase>site</phase>
+                        <goals>
+                            <goal>site</goal>
+                        </goals>
+                    </execution>
+                </executions>
+                <configuration>
+                    <reportPlugins>
+                        <plugin>
+                            <!-- Generates some interesting reports and the root index.html -->
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-project-info-reports-plugin</artifactId>
+                            <version>2.7</version>
+                            <reportSets>
+                                <reportSet>
+                                    <reports>
+                                        <report>index</report>
+                                        <report>dependencies</report>
+                                        <report>dependency-management</report>
+                                        <report>plugins</report>
+                                        <report>plugin-management</report>
+                                    </reports>
+                                </reportSet>
+                            </reportSets>
+                        </plugin>
+                        <plugin>
+                            <groupId>org.apache.maven.plugins</groupId>
+                            <artifactId>maven-surefire-report-plugin</artifactId>
+                            <version>2.16</version>
+                            <configuration>
+                                <linkXRef>false</linkXRef>
+                                <aggregate>true</aggregate>
+                                <reportsDirectories>
+                                    <reportDirectory>${project.build.directory}/surefire-reports</reportDirectory>
+                                    <reportDirectory>${project.build.directory}/surefire-reports-ssl</reportDirectory>
+                                </reportsDirectories>
+                            </configuration>
+                            <reportSets>
+                                <reportSet>
+                                    <reports>
+                                        <report>report-only</report>
+                                    </reports>
+                                </reportSet>
+                            </reportSets>
+                        </plugin>
+
+                        <plugin>
+                            <groupId>org.jacoco</groupId>
+                            <artifactId>jacoco-maven-plugin</artifactId>
+                            <version>${jacoco.version}</version>
+                            <configuration>
+                                <dataFile>${project.build.directory}/coverage-reports/jacoco-ut.exec</dataFile>
+                                <includes>
+                                    <include>org/jacorb/**/*</include>
+                                </includes>
+                            </configuration>
+                            <reportSets>
+                                <reportSet>
+                                    <reports>
+                                        <report>report</report>
+                                    </reports>
+                                </reportSet>
+                            </reportSets>
+                        </plugin>
+
+                    </reportPlugins>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>${jacoco.version}</version>
+                <executions>
+                    <!--
+                        Prepares the property pointing to the JaCoCo runtime agent which
+                        is passed as VM argument when Maven the Surefire plugin is executed.
+                    -->
+                    <execution>
+                        <id>pre-unit-test</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                        <configuration>
+                            <!-- Sets the path to the file which contains the execution data. -->
+                            <destFile>${project.build.directory}/coverage-reports/jacoco-ut.exec</destFile>
+                            <append>true</append>
+                            <dumpOnExit>true</dumpOnExit>
+                            <output>file</output>
+                            <!--
+                                Sets the name of the property containing the settings
+                                for JaCoCo runtime agent.
+                            -->
+                            <propertyName>jacoco.agent.argLine</propertyName>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>

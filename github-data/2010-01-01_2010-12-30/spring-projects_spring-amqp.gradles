@@ -1,0 +1,388 @@
+description = 'Spring AMQP'
+
+apply plugin: 'base'
+apply plugin: 'project-report'
+apply plugin: 'idea'
+
+buildscript {
+	repositories {
+		maven { url 'http://repo.springsource.org/plugins-release' }
+	}
+	dependencies {
+		classpath 'org.springframework.build.gradle:docbook-reference-plugin:0.2.6'
+		classpath 'me.champeau.gradle:gradle-javadoc-hotfix-plugin:0.1'
+	}
+}
+
+ext {
+	linkHomepage = 'http://www.springsource.org/spring-amqp'
+	linkCi       = 'https://build.springsource.org/browse/AMQP'
+	linkIssue    = 'https://jira.springsource.org/browse/AMQP'
+	linkScmUrl           = 'https://github.com/SpringSource/spring-amqp'
+	linkScmConnection    = 'git://github.com/SpringSource/spring-amqp.git'
+	linkScmDevConnection = 'git@github.com:SpringSource/spring-amqp.git'
+}
+
+allprojects {
+	group = 'org.springframework.amqp'
+
+	repositories {
+		if (version.endsWith('BUILD-SNAPSHOT')) {
+			maven { url 'http://repo.spring.io/libs-snapshot' }
+		}
+		maven { url 'http://repo.springsource.org/libs-release' }
+	}
+	apply plugin: 'javadocHotfix'
+}
+
+ext {
+	expandPlaceholders = '**/quick-tour.xml'
+	javadocLinks = [
+		"http://docs.oracle.com/javase/6/docs/api",
+		"http://docs.oracle.com/javaee/6/api",
+		"http://docs.spring.io/spring/docs/3.1.x/javadoc-api"
+	] as String[]
+}
+
+subprojects { subproject ->
+
+	apply plugin: 'java'
+	apply from:   "${rootProject.projectDir}/publish-maven.gradle"
+	apply plugin: 'eclipse'
+	apply plugin: 'idea'
+	apply plugin: 'project-report'
+
+	// ensure JDK 6 compatibility
+	sourceCompatibility=1.6
+	targetCompatibility=1.6
+
+	ext {
+		cglibVersion = '3.1'
+		commonsIoVersion = '2.4'
+		erlangOtpVersion = '1.5.6'
+		hamcrestVersion = '1.3'
+		jacksonVersion = '1.9.13'
+		jackson2Version = '2.3.2'
+		junitVersion = '4.11'
+		log4jVersion = '1.2.17'
+		mockitoVersion = '1.9.5'
+		rabbitmqVersion = '3.2.4'
+
+		springVersion = project.hasProperty('springVersion') ? project.springVersion : '3.2.8.RELEASE'
+
+		springRetryVersion = '1.0.3.RELEASE'
+	}
+
+	eclipse {
+		project {
+			natures += 'org.springframework.ide.eclipse.core.springnature'
+		}
+	}
+
+	// See http://www.gradle.org/docs/current/userguide/dependency_management.html#sub:configurations
+	// and http://www.gradle.org/docs/current/dsl/org.gradle.api.artifacts.ConfigurationContainer.html
+	configurations {
+		jacoco //Configuration Group used by Sonar to provide Code Coverage using JaCoCo
+	}
+
+	// dependencies that are common across all java projects
+	dependencies {
+		testCompile "cglib:cglib-nodep:$cglibVersion"
+		testCompile ("junit:junit:$junitVersion") {
+			exclude group: 'org.hamcrest'
+		}
+		testCompile "log4j:log4j:$log4jVersion"
+		testCompile "org.hamcrest:hamcrest-all:$hamcrestVersion"
+		testCompile ("org.mockito:mockito-core:$mockitoVersion") {
+			exclude group: 'org.hamcrest'
+		}
+		testCompile "org.springframework:spring-test:$springVersion"
+
+		jacoco group: "org.jacoco", name: "org.jacoco.agent", version: "0.5.6.201201232323", classifier: "runtime"
+	}
+
+	// enable all compiler warnings; individual projects may customize further
+	ext.xLintArg = '-Xlint:all,-options'
+	[compileJava, compileTestJava]*.options*.compilerArgs = [xLintArg]
+
+	test {
+		// suppress all console output during testing unless running `gradle -i`
+		logging.captureStandardOutput(LogLevel.INFO)
+		jvmArgs "-javaagent:${configurations.jacoco.asPath}=destfile=${buildDir}/jacoco.exec,includes=org.springframework.*"
+	}
+
+	task testAll() {
+		doFirst {
+			tasks.test.systemProperty 'RUN_LONG_INTEGRATION_TESTS', 'true'
+		}
+		finalizedBy test
+	}
+
+	task sourcesJar(type: Jar) {
+		classifier = 'sources'
+		from sourceSets.main.allJava
+	}
+
+	task javadocJar(type: Jar) {
+		classifier = 'javadoc'
+		from javadoc
+	}
+
+	task checkTestConfigs << {
+		def configFiles = []
+		sourceSets.test.allSource.srcDirs.each {
+			fileTree(it).include('**/*.xml').exclude('**/log4j.xml').each { configFile ->
+				def configXml = new XmlParser(false, false).parse(configFile)
+
+				if (configXml.@'xsi:schemaLocation' ==~ /.*spring-[a-z-]*\d\.\d\.xsd.*/) {
+					configFiles << configFile
+				}
+			}
+		}
+		if (configFiles) {
+			throw new InvalidUserDataException('Hardcoded XSD version in the config files:\n' +
+					configFiles.collect {relativePath(it)}.join('\n') +
+					'\nPlease, use versionless schemaLocations for Spring XSDs to avoid issues with builds on different versions of dependencies.')
+		}
+	}
+
+	test.dependsOn checkTestConfigs
+
+	artifacts {
+		archives sourcesJar
+		archives javadocJar
+	}
+
+}
+
+project('spring-amqp') {
+	description = 'Spring AMQP Core'
+	dependencies {
+
+		compile "org.springframework:spring-core:$springVersion"
+		compile ("org.springframework:spring-oxm:$springVersion", optional)
+		compile ("org.springframework:spring-context:$springVersion", optional)
+		compile ("org.codehaus.jackson:jackson-core-asl:$jacksonVersion", optional)
+		compile ("org.codehaus.jackson:jackson-mapper-asl:$jacksonVersion", optional)
+		compile ("com.fasterxml.jackson.core:jackson-core:$jackson2Version", optional)
+		compile ("com.fasterxml.jackson.core:jackson-databind:$jackson2Version", optional)
+	}
+
+}
+
+project('spring-erlang') {
+	description = 'Spring Erlang Support'
+	dependencies {
+
+		compile "org.springframework:spring-beans:$springVersion"
+		compile "commons-io:commons-io:$commonsIoVersion"
+
+		compile ("javax.annotation:jsr250-api:1.0", optional)
+		compile "org.erlang.otp:jinterface:$erlangOtpVersion"
+
+	}
+
+}
+
+project('spring-rabbit') {
+	description = 'Spring RabbitMQ Support'
+	dependencies {
+
+		compile project(":spring-amqp")
+		testCompile project(":spring-erlang")
+
+		compile "com.rabbitmq:amqp-client:$rabbitmqVersion"
+
+		compile ("org.springframework:spring-aop:$springVersion", optional)
+		compile "org.springframework:spring-context:$springVersion"
+		compile "org.springframework:spring-tx:$springVersion"
+
+		compile "org.springframework.retry:spring-retry:$springRetryVersion"
+
+		testCompile "commons-cli:commons-cli:1.2"
+
+		compile ("log4j:log4j:$log4jVersion") { dep ->
+			optional dep
+			exclude group: 'javax.jms', module: 'jms'
+			exclude group: 'com.sun.jdmk', module: 'jmxtools'
+			exclude group: 'com.sun.jmx', module: 'jmxri'
+		}
+
+	}
+
+	// suppress deprecation warnings (@SuppressWarnings("deprecation") is not enough for javac)
+	compileJava.options.compilerArgs = ["${xLintArg},-deprecation"]
+
+}
+
+apply plugin: 'docbook-reference'
+
+reference {
+	sourceDir = file('src/reference/docbook')
+}
+
+apply plugin: 'sonar-runner'
+
+sonarRunner {
+	sonarProperties {
+		property "sonar.jacoco.reportPath", "${buildDir.name}/jacoco.exec"
+		property "sonar.links.homepage", linkHomepage
+		property "sonar.links.ci", linkCi
+		property "sonar.links.issue", linkIssue
+		property "sonar.links.scm", linkScmUrl
+		property "sonar.links.scm_dev", linkScmDevConnection
+		property "sonar.java.coveragePlugin", "jacoco"
+	}
+}
+
+task api(type: Javadoc) {
+	group = 'Documentation'
+	description = 'Generates aggregated Javadoc API documentation.'
+	title = "${rootProject.description} ${version} API"
+	options.memberLevel = org.gradle.external.javadoc.JavadocMemberLevel.PROTECTED
+	options.author = true
+	options.header = rootProject.description
+	options.overview = 'src/api/overview.html'
+	options.stylesheetFile = file("src/api/stylesheet.css")
+	options.links(rootProject.ext.javadocLinks)
+
+	source subprojects.collect { project ->
+		project.sourceSets.main.allJava
+	}
+	destinationDir = new File(buildDir, "api")
+	classpath = files(subprojects.collect { project ->
+		project.sourceSets.main.compileClasspath
+	})
+}
+
+task schemaZip(type: Zip) {
+	group = 'Distribution'
+	classifier = 'schema'
+	description = "Builds -${classifier} archive containing all " +
+		"XSDs for deployment at static.springframework.org/schema."
+
+	subprojects.each { subproject ->
+		def Properties schemas = new Properties();
+		def shortName = subproject.name.replaceFirst("${rootProject.name}-", '')
+
+		if (subproject.name.endsWith("-rabbit")) {
+			shortName = 'rabbit'
+		}
+
+		subproject.sourceSets.main.resources.find {
+			it.path.endsWith('META-INF/spring.schemas')
+		}?.withInputStream { schemas.load(it) }
+
+		for (def key : schemas.keySet()) {
+			File xsdFile = subproject.sourceSets.main.resources.find {
+				it.path.endsWith(schemas.get(key))
+			}
+			assert xsdFile != null
+			into ("${shortName}") {
+				from xsdFile.path
+			}
+		}
+	}
+}
+
+task docsZip(type: Zip) {
+		group = 'Distribution'
+		classifier = 'docs'
+		description = "Builds -${classifier} archive containing api and reference " +
+			"for deployment at static.springframework.org/spring-integration/docs."
+
+		from('src/dist') {
+			include 'changelog.txt'
+		}
+
+		from (api) {
+			into 'api'
+		}
+
+		from (reference) {
+			into 'reference'
+		}
+}
+
+task distZip(type: Zip, dependsOn: [docsZip, schemaZip]) {
+	group = 'Distribution'
+	classifier = 'dist'
+	description = "Builds -${classifier} archive, containing all jars and docs, " +
+		"suitable for community download page."
+
+	ext.baseDir = "${project.name}-${project.version}";
+
+	from('src/dist') {
+		include 'README.md'
+		include 'apache-license.txt'
+		include 'epl-license.txt'
+		include 'notice.txt'
+		into "${baseDir}"
+	}
+
+	from(zipTree(docsZip.archivePath)) {
+		into "${baseDir}/docs"
+	}
+
+	from(zipTree(schemaZip.archivePath)) {
+		into "${baseDir}/schema"
+	}
+
+	subprojects.each { subproject ->
+		into ("${baseDir}/libs") {
+			from subproject.jar
+			from subproject.sourcesJar
+			from subproject.javadocJar
+		}
+	}
+}
+
+// Create an optional "with dependencies" distribution.
+// Not published by default; only for use when building from source.
+task depsZip(type: Zip, dependsOn: distZip) { zipTask ->
+	group = 'Distribution'
+	classifier = 'dist-with-deps'
+	description = "Builds -${classifier} archive, containing everything " +
+		"in the -${distZip.classifier} archive plus all dependencies."
+
+	from zipTree(distZip.archivePath)
+
+	gradle.taskGraph.whenReady { taskGraph ->
+		if (taskGraph.hasTask(":${zipTask.name}")) {
+			def projectNames = rootProject.subprojects*.name
+			def artifacts = new HashSet()
+			subprojects.each { subproject ->
+				subproject.configurations.runtime.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+					def dependency = artifact.moduleVersion.id
+					if (!projectNames.contains(dependency.name)) {
+						artifacts << artifact.file
+					}
+				}
+			}
+
+			zipTask.from(artifacts) {
+				into "${distZip.baseDir}/deps"
+			}
+		}
+	}
+}
+
+task build(dependsOn: assemble) {
+}
+
+artifacts {
+	archives distZip
+	archives docsZip
+	archives schemaZip
+}
+
+task dist(dependsOn: assemble) {
+	group = 'Distribution'
+	description = 'Builds -dist, -docs and -schema distribution archives.'
+}
+
+task wrapper(type: Wrapper) {
+	description = 'Generates gradlew[.bat] scripts'
+	gradleVersion = '1.10'
+	distributionUrl = "http://services.gradle.org/distributions/gradle-${gradleVersion}-all.zip"
+}

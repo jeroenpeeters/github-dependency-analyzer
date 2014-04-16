@@ -1,0 +1,1754 @@
+<?xml version="1.0"?>
+<project name="Processing PDE" default="build">
+
+  <property name="generated" 
+	    value="${basedir}/generated/processing/mode/java/preproc" />
+  <mkdir dir="${generated}" />
+
+  <property name="grammars" 
+	    value="${basedir}/src/processing/mode/java/preproc" />
+
+  <property name="antlrjar" 
+	    value="${basedir}/lib/antlr.jar" />
+
+  <classloader taskname="antlr">
+    <classpath path="lib/antlr.jar" />
+  </classloader>
+
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="pde.jar" />
+    <delete>
+      <fileset dir="${generated}">
+	<include name="*.java" />
+	<include name="*.tokens" />
+	<include name="*.txt" />
+	<include name="*.g" />
+	<include name="*.smap" />
+      </fileset>
+    </delete>
+  </target>
+
+<!--<target name="preproc" depends="clean" description="Compile ANTLR grammar">-->
+  <target name="preproc" description="Compile ANTLR grammar">
+    <antlr target="${grammars}/java15.g" outputdirectory="${generated}">
+      <classpath path="${antlrjar}" />
+    </antlr>
+    <antlr target="${grammars}/pde.g" 
+	   outputdirectory="${generated}" 
+	   glib="${grammars}/java15.g">
+      <classpath path="${antlrjar}" />
+    </antlr>
+  </target>
+
+  <target name="compile" depends="preproc" description="Compile sources">
+    <condition property="core-built">
+      <available file="../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" 
+	  message="Please build the core library first and make sure it sits in ../core/library/core.jar" />
+
+    <mkdir dir="bin" />
+    <!-- in some cases, pde.jar was not getting built
+	 https://github.com/processing/processing/issues/1792 -->
+    <delete file="pde.jar" />
+
+    <!-- env used to set classpath below -->
+    <property environment="env" />
+
+    <!-- need to stay at 1.6 until we update ecj.jar -->
+    <javac source="1.6" 
+	   target="1.6" 
+	   destdir="bin" 
+	   excludes="**/tools/format/**" 
+	   encoding="UTF-8" 
+	   includeAntRuntime="false" 
+	   classpath="../core/library/core.jar; lib/ant.jar; lib/ant-launcher.jar; lib/antlr.jar; lib/apple.jar; lib/jdt-core.jar; lib/jna.jar; lib/org-netbeans-swing-outline.jar;lib/com.ibm.icu_4.4.2.v20110823.jar;lib/jdi.jar;lib/jdimodel.jar;lib/org.eclipse.osgi_3.8.1.v20120830-144521.jar"
+	   debug="on"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <src path="src" />
+      <src path="generated" />
+      <compilerclasspath path="../java/mode/ecj.jar" />
+    </javac>
+  </target>
+
+  <target name="build" depends="compile" description="Build PDE">
+    <jar basedir="bin" destfile="pde.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing" default="build">
+  
+  <!-- Sets properties for macosx/windows/linux depending on current system -->
+  <condition property="platform" value="macosx">
+    <os family="mac" /> 
+  </condition>
+
+  <condition property="platform" value="windows">
+    <os family="windows" /> 
+  </condition>
+
+  <condition property="platform" value="linux">
+    <and>
+      <os family="unix" />
+      <not>
+	<os family="mac" />
+      </not>
+    </and>
+  </condition>
+
+  <!-- Require Java 7 to bootstrap, otherwise there will be sadness. 
+       And I guess Java 8 should work too? Sorta? --> 
+  <fail message="Unsupported Java version: ${java.version}. Make sure that Java 7 (aka Java 1.7) is installed."> 
+    <condition> 
+      <not> 
+        <or> 
+          <contains string="${java.version}" substring="1.7" /> 
+          <contains string="${java.version}" substring="1.8" /> 
+        </or> 
+      </not> 
+    </condition> 
+  </fail> 
+
+  <!-- Figure out the JRE download location for Linux and Windows. -->
+  <condition property="jre.file" value="jre-7u40-${platform}-i586.tgz"> 
+    <equals arg1="${sun.arch.data.model}" arg2="32" />
+  </condition>
+  <condition property="jre.file" value="jre-7u40-${platform}-x64.tgz"> 
+    <equals arg1="${sun.arch.data.model}" arg2="64" />
+  </condition>
+
+  <fileset dir="windows/work/java" id="jre-optional-windows">
+    <include name="bin/dtplugin" />
+    <include name="bin/plugin2" />
+
+    <include name="bin/kinit.exe" />
+    <include name="bin/klist.exe" />
+    <include name="bin/ktab.exe" />
+
+    <include name="bin/keytool" />
+    <include name="bin/orbd" />
+    <include name="bin/policytool" />
+    <include name="bin/rmid" />
+    <include name="bin/rmiregistry" />
+    <include name="bin/servertool" />
+    <include name="bin/tnameserv" />
+
+    <include name="bin/javaws.exe" />
+    <include name="lib/javaws.jar" />
+
+    <include name="lib/ext/dnsns.jar" />
+    <include name="lib/cmm/PYCC.pf" />
+  </fileset>
+
+  <fileset dir="linux/work/java" id="jre-optional-linux">
+    <include name="bin/keytool" />
+    <include name="bin/orbd" />
+    <include name="bin/policytool" />
+    <include name="bin/rmid" />
+    <include name="bin/rmiregistry" />
+    <include name="bin/servertool" />
+    <include name="bin/tnameserv" />
+
+    <include name="bin/javaws" />
+    <include name="lib/javaws.jar" />
+
+    <include name="lib/ext/dnsns.jar" />
+    <include name="lib/cmm/PYCC.pf" />
+  </fileset>
+
+  <!-- There might be others, based on what was in the Java 6 docs, 
+       but that info isn't part of the Java 7 instructions.
+       http://www.oracle.com/technetwork/java/javase/jrereadme-182762.html -->
+
+  <!-- Unused JavaFX files that can be removed from the JRE on Windows 
+       and Linux. On Mac OS X, this is removed by the appbundler task.
+       www.oracle.com/technetwork/java/javase/jdk-7-readme-429198.html -->
+
+  <fileset dir="${platform}/work/java" id="javafx-basics">
+    <include name="THIRDPARTYLICENSEREADME-JAVAFX.txt" />
+    <include name="lib/javafx.properties" />
+    <include name="lib/jfxrt.jar" />
+    <include name="lib/security/javafx.policy" />
+  </fileset>
+
+  <fileset dir="windows/work/java" id="javafx-windows">
+    <include name="bin/decora-sse.dll" />
+    <include name="bin/fxplugins.dll" />
+    <include name="bin/glass.dll" />
+    <include name="bin/glib-lite.dll" />
+    <include name="bin/gstreamer-lite.dll" />
+    <include name="bin/javafx-font.dll" />
+    <include name="bin/javafx-iio.dll" />
+    <include name="bin/jfxmedia.dll" />
+    <include name="bin/jfxwebkit.dll" />
+    <include name="bin/libxml2.dll" />
+    <include name="bin/libxslt.dll" />
+  </fileset>
+
+  <fileset dir="linux/work/java" id="javafx-linux-32">
+    <include name="lib/i386/fxavcodecplugin-52.so" />
+    <include name="lib/i386/fxavcodecplugin-53.so" />
+    <include name="lib/i386/fxplugins.so" />
+    <include name="lib/i386/libglass.so" />
+    <include name="lib/i386/libgstplugins-lite.so" />
+    <include name="lib/i386/libgstreamer-lite.so" />
+    <include name="lib/i386/libjavafx-font.so" />
+    <include name="lib/i386/libjavafx-iio.so" />
+    <include name="lib/i386/libjfxmedia.so" />
+    <include name="lib/i386/libjfxwebkit.so" />
+    <include name="lib/i386/libprism-es2.so" />
+  </fileset>
+
+  <fileset dir="linux/work/java" id="javafx-linux-64">
+    <include name="lib/amd64/fxavcodecplugin-52.so" />
+    <include name="lib/amd64/fxavcodecplugin-53.so" />
+    <include name="lib/amd64/fxplugins.so" />
+    <include name="lib/amd64/libglass.so" />
+    <include name="lib/amd64/libgstplugins-lite.so" />
+    <include name="lib/amd64/libgstreamer-lite.so" />
+    <include name="lib/amd64/libjavafx-font.so" />
+    <include name="lib/amd64/libjavafx-iio.so" />
+    <include name="lib/amd64/libjfxmedia.so" />
+    <include name="lib/amd64/libjfxwebkit.so" />
+    <include name="lib/amd64/libprism-es2.so" />
+  </fileset>
+
+  <!--
+  <echo message="${java.class.path}" />
+  -->
+
+  <!-- Set a property named macosx, linux, or windows. 
+       The 'value' chosen is arbitrary. -->
+  <property name="${platform}" value="${platform}" />
+
+  <property environment="env" />
+
+  <!-- code signing hack, turns on code signing during dist -->
+  <condition property="codesign"> 
+    <equals arg1="${env.USER}" arg2="fry" />
+  </condition>
+
+  <!-- Set the version of Java that must be present to build. -->
+  <property name="jdk.update.macosx" value="51" />
+  <property name="jdk.path.macosx" value="/Library/Java/JavaVirtualMachines/jdk1.7.0_${jdk.update.macosx}.jdk" />
+
+  <available file="${jdk.path.macosx}" property="macosx_jdk_found" />
+
+  <fail if="macosx" unless="macosx_jdk_found"
+	message="JDK 7u${jdk.update.macosx} required.${line.separator}To build on OS X, you must install Oracle's JDK 7u${jdk.update.macosx} from${line.separator}http://www.oracle.com/technetwork/java/javase/downloads${line.separator}Note that only 7u${jdk.update.macosx} (not a later or earlier version) will work. ${line.separator}And it must be the JDK, not the JRE. And do not try to defy me again." />
+  <!--
+  <fail if="linux" unless="java_tools_found" 
+	message="The JAVA_HOME variable must be set to the location of a full JDK. For instance, on Ubuntu Linux, this might be /usr/lib/jvm/java-6-sun." />
+  -->
+	       
+  <!-- Figure out the platform-specific output directory for all this work. -->
+  <condition property="target.path" 
+	     value="macosx/work/Processing.app/Contents/Java">
+    <os family="mac" /> 
+  </condition>
+
+  <condition property="target.path" value="linux/work">
+    <os family="unix" />
+  </condition>
+
+  <condition property="target.path" value="windows/work">
+    <os family="windows" /> 
+  </condition>
+
+  <!-- Libraries required for running processing -->
+  <!-- also need to copy these to the bundleapp task for macosx -->
+  <fileset dir=".." id="runtime.jars">
+    <include name="app/pde.jar" />
+    <include name="app/lib/antlr.jar" />
+    <include name="app/lib/jna.jar" />
+    <include name="app/lib/ant.jar" />
+    <include name="app/lib/ant-launcher.jar" />
+    <include name="app/lib/org-netbeans-swing-outline.jar" />
+    <include name="app/lib/jdi.jar" />
+    <include name="app/lib/jdimodel.jar" />
+    <include name="app/lib/org.eclipse.osgi_3.8.1.v20120830-144521.jar" />
+    <include name="app/lib/com.ibm.icu_4.4.2.v20110823.jar" />
+  </fileset>
+
+  <target name="build" description="Build Processing.">
+    <antcall target="${platform}-build" />
+  </target>
+
+  <target name="run" description="Run Processing.">
+    <antcall target="${platform}-run" />
+  </target>
+
+  <target name="dist" depends="revision-check"
+	  description="Build Processing for distribution.">
+    <input message="Enter version number:" 
+	   addproperty="version"
+	   defaultvalue="${revision}" />
+    <antcall target="${platform}-dist" />
+  </target>
+
+  <!-- "§$§$&, ant doesn't have a built-in help target :(  -->
+  <target name="help" description="Show project help">
+    <java classname="org.apache.tools.ant.Main">
+      <arg value="-p" />
+    </java>
+  </target>
+  
+  <!-- - - - - - - - - - - - - - - - - - -->
+  <!-- Subprojects: Core, App, Libraries -->
+  <!-- - - - - - - - - - - - - - - - - - -->
+  
+  <target name="subprojects-clean">
+    <subant buildpath="../core" target="clean"/>
+    <subant buildpath="../app" target="clean"/>
+    <subant buildpath="../java/libraries/dxf" target="clean"/>
+    <subant buildpath="../java/libraries/net" target="clean"/>
+    <subant buildpath="../java/libraries/pdf" target="clean"/>
+    <subant buildpath="../java/libraries/serial" target="clean"/>
+    <subant buildpath="../java/libraries/video" target="clean"/>
+    <subant buildpath="shared/tools/MovieMaker" target="clean"/>
+  </target>
+  
+  <target name="subprojects-build">
+    <subant buildpath="../core" target="build"/>
+    <subant buildpath="../app" target="build"/>
+    <subant buildpath="../java/libraries/dxf" target="build"/>
+    <subant buildpath="../java/libraries/net" target="build"/>
+    <subant buildpath="../java/libraries/pdf" target="build"/>
+    <subant buildpath="../java/libraries/serial" target="build"/>
+    <subant buildpath="../java/libraries/video" target="build"/>
+    <subant buildpath="shared/tools/MovieMaker" target="build"/>
+  </target>
+  
+
+  <!-- - - - - - - - - -->
+  <!-- Basic Assembly  -->
+  <!-- - - - - - - - - -->
+ 
+  <target name="assemble" depends="version-clear, version-write">
+    <fail unless="target.path" 
+	  message="Do not call assemble from the command line." />
+    
+    <!-- copy shared tools folder -->
+    <copy todir="${target.path}/tools">
+      <fileset dir="shared/tools" />
+    </copy>
+
+    <copy todir="${target.path}/modes/java">
+      <fileset dir="../java">
+	<!-- don't include LWJGL, it's not operational -->
+	<exclude name="libraries/lwjgl/**" />
+<!--
+	<exclude name="**/bin/*" />
+	<exclude name="**/src/*" />
+	<exclude name="examples" />
+	<exclude name="**/cmd/**" />
+-->
+	<exclude name="reference.zip" />
+	<exclude name="**/._*" />
+
+	<exclude name="examples/**/applet/**" />
+      </fileset>
+    </copy>
+
+<!-- decided against this. 
+     see: http://code.google.com/p/processing/issues/detail?id=650 -->
+<!--
+    <get src="http://www.java.com/js/deployJava.js" 
+	 dest="${target.path}/modes/java/applet/deployJava.js"
+	 usetimestamp="true" />
+-->
+
+    <delete dir="${target.path}/modes/java/examples">
+      <include name="**/applet/**" />
+    </delete>
+<!--
+    <delete>
+      <fileset dir="${target.path}/modes/java/examples"
+	       includes="**/applet/**" />
+    </delete>
+-->
+
+<!--
+    not happy on windows, since cygwin may not be installed
+    <exec executable="find" dir="${target.path}/modes/java/examples"
+	  errorproperty="ignored">
+      <arg line=". -name applet -exec rm -rf {} ';'" />
+    </exec>
+-->
+
+<!--
+    <copy todir="${target.path}/modes/java/examples">
+      <fileset dir="../java/examples">
+	<exclude name="**/applet/**" />
+      </fileset>
+    </copy>
+-->
+
+<!--     <copy todir="${target.path}/modes/javascript">
+      <fileset dir="../javascript">
+      	<exclude name="**/._*" />
+      </fileset>
+    </copy> -->
+
+<!--
+    <copy todir="${target.path}/modes/android">
+      <fileset dir="../android">
+	<include name="android-core.zip" />
+	<include name="examples/**" />
+	<include name="icons/**" />
+	<include name="theme/**" />
+	<include name="keywords.txt" />
+	<exclude name="**/._*" />
+-->
+<!-- these had already been commented out 
+	<exclude name="**/bin/**" />
+	<exclude name="**/src/**" />
+	<exclude name="cmd" />
+	<exclude name="reference.zip" />
+-->
+<!--
+      </fileset>
+    </copy>
+-->
+    
+    <!-- copy libraries -->
+<!--
+    <copy todir="${target.path}/modes/java/libraries">
+      <fileset dir="../java/libraries">
+	<include name="**/library/**" />
+	<include name="**/src/**" />
+      </fileset>
+    </copy>
+-->
+
+    <!-- copy shared library folder -->
+<!--
+    <copy todir="${target.path}/modes/java/libraries">
+      <fileset dir="shared/modes/java/libraries" />
+    </copy>
+-->
+    
+    <!-- copy libraries for dxf, pdf, etc. -->
+<!--
+    <copy todir="${target.path}/modes/java/libraries/dxf">
+      <fileset dir="../dxf" includes="library/**,src/**" />
+    </copy>
+    <copy todir="${target.path}/modes/java/libraries/net">
+      <fileset dir="../net" includes="library/**,src/**" />
+    </copy>
+    <copy todir="${target.path}/modes/java/libraries/pdf">
+      <fileset dir="../pdf" includes="library/**,src/**" />
+    </copy>
+    <copy todir="${target.path}/modes/java/libraries/serial">
+      <fileset dir="../serial" includes="library/**,src/**" />
+    </copy>
+    <copy todir="${target.path}/modes/java/libraries/video">
+      <fileset dir="../video" includes="library/**,src/**" />
+    </copy>
+-->
+    
+    <!-- Unzip documentation + examples -->
+<!--
+    <unzip dest="${target.path}/modes/java" 
+	   src="shared/modes/java/examples.zip" 
+	   overwrite="false">
+      <patternset>
+	<exclude name="__MACOSX/**" />
+	<exclude name="**/._*" />
+      </patternset>
+    </unzip>
+-->
+    <unzip dest="${target.path}/modes/java" 
+	   src="../java/reference.zip" 
+	   overwrite="false">
+      <patternset>
+	<exclude name="__MACOSX/**" />
+	<exclude name="**/._*" />
+      </patternset>
+    </unzip>
+    
+    <!-- Write the revision file -->
+    <!-- is there a good way to do this? -->
+    <!--
+    <echo file="${target.path}/lib/version.txt" 
+	  message="${version}" 
+	  if="${version}" />
+    <delete file="${target.path}/lib/version.txt"
+	    unless="${version}" />
+    -->
+  </target>
+
+  <target name="version-clear">
+    <delete file="${target.path}/lib/version.txt" />
+  </target> 
+
+  <target name="version-write" if="version">
+    <echo file="${target.path}/lib/version.txt" message="${version}"/>
+  </target> 
+
+  
+  <!-- - - - - - - - - -->
+  <!-- Revision check  -->
+  <!-- - - - - - - - - -->
+  <target name="revision-check">
+    <!-- figure out the revision number -->
+    <loadfile srcfile="../todo.txt" property="revision">
+      <filterchain>
+	<headfilter lines="1"/>
+	<tokenfilter>
+	  <stringtokenizer suppressdelims="true"/>
+	  <!-- grab the thing from the first line that's 4 digits -->
+	  <containsregex pattern="(\d\d\d\d)" />
+	</tokenfilter>
+      </filterchain>
+    </loadfile>
+    <!-- <echo message="revision is ${revision}." /> -->
+    
+    <!-- figure out the revision number in base.java -->
+    <loadfile srcfile="../app/src/processing/app/Base.java" 
+	      property="revision.base">
+      <filterchain>
+	<tokenfilter>
+	  <linetokenizer />
+	  <containsregex pattern="String VERSION_NAME = "/>
+	  <replaceregex pattern="[^0-9]*" flags="g" replace=""/>
+	</tokenfilter>
+      </filterchain>
+    </loadfile>
+    <!-- <echo message="base revision is ${revision.base}." /> -->
+    
+    <condition property="revision.correct">
+      <!-- Using contains because I can't figure out how to get rid of the
+	   LF in revision.base. Please file a bug if you have a fix. -->
+      <contains string="${revision.base}" substring="${revision}"/>
+    </condition>
+    
+    <!-- the revision.base property won't be set
+	 if $revision wasn't found... -->
+    <fail unless="revision.correct" 
+	  message="Fix revision number in Base.java" />
+  </target>
+  
+  
+  <!-- - - - - - - - -->
+  <!-- Mac OS X      -->
+  <!-- - - - - - - - -->
+
+  <target name="macosx-clean" depends="subprojects-clean" description="Clean Mac OS X build">
+    <delete dir="macosx/work" />
+    <delete file="macosx/processing-*.dmg" />
+  </target>
+  
+  <target name="macosx-checkos" unless="macosx">
+    <echo>
+      =======================================================
+      Processing for Mac OS X can only be built on Mac OS X.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="macosx-build" if="macosx" depends="revision-check, macosx-checkos, subprojects-build" description="Build Mac OS X version">
+    <mkdir dir="macosx/work" />
+    
+    <!-- app bundler for OS X and Java 1.7 -->
+    <taskdef name="bundleapp"
+             classname="com.oracle.appbundler.AppBundlerTask"   
+             classpath="macosx/appbundler.jar" />
+
+    <!--icon="macosx/processing.icns"-->
+    <bundleapp outputDirectory="macosx/work"
+	       name="Processing"
+	       displayName="Processing"
+	       executableName="Processing"
+	       identifier="org.processing.app"
+	       signature="Pde2"
+	       icon="macosx/processing.icns"
+	       copyright="© The Processing Foundation"
+	       getInfo="${version}, Copyright © The Processing Foundation"
+	       shortVersion="${version}"
+	       version="${revision}"
+	       mainClassName="processing.app.Base">
+
+      <!-- The appbundler task needs a couple files (the Info.plist and
+           anything else outside /jre) from the full JDK, even though 
+	   it's primarily copying over the JRE folder. -->
+      <runtime dir="${jdk.path.macosx}/Contents/Home" />
+      <!-- Eventually we'll want to load the JRE directly from 
+	   the .tgz on the Oracle site, though it's in a folder called 
+	   jre1.7.0_40.jre, so we'll need to strip that out. -->
+
+      <!-- Same as runtime.jars, seen above; plus core.jar. -->
+      <classpath file="../app/pde.jar" />
+      <classpath file="../app/lib/antlr.jar" />
+      <classpath file="../app/lib/jna.jar" />
+      <classpath file="../app/lib/ant.jar" />
+      <classpath file="../app/lib/ant-launcher.jar" />
+      <classpath file="../app/lib/org-netbeans-swing-outline.jar" />
+      <classpath file="../app/lib/jdi.jar" />
+      <classpath file="../app/lib/jdimodel.jar" />
+      <classpath file="../app/lib/org.eclipse.osgi_3.8.1.v20120830-144521.jar" />
+      <classpath file="../app/lib/com.ibm.icu_4.4.2.v20110823.jar" />
+
+      <!-- plus core.jar... note that this is no longer shared -->
+      <classpath file="../core/library/core.jar" />
+
+      <arch name="x86_64"/>
+      <!-- no support for this with Java 7 from Oracle -->
+      <!--<arch name="i386"/>-->
+
+      <!--icon="macosx/template.app/Contents/Resources/pde.icns"-->
+      <!--icon="${bundle.icon}"-->
+      <bundledocument extensions="pde"
+		      icon="macosx/pde.icns"
+		      name="Processing Source Code"
+		      role="Editor">
+      </bundledocument>
+
+      <!-- Sets dock icon when debugging (not launched via launch svcs) -->
+      <option value="-Xdock:icon=Contents/Resources/processing.icns" />
+      <!-- Don't think these actually make any difference. -->
+      <!--
+      <option value="-Xdock:name=Processing" />
+      -->
+
+      <!-- Probably no longer needed? [fry 130917]
+      <option value="-Xms128M" />
+      <option value="-Xmx256M" />
+      -->
+
+      <option value="-Dapple.awt.application.name=Processing" />
+
+      <option value="-Dapple.laf.useScreenMenuBar=true" />
+      <option value="-Dcom.apple.macos.use-file-dialog-packages=true" />
+      <option value="-Dcom.apple.macos.useScreenMenuBar=true" />
+      <option value="-Dcom.apple.smallTabs=true" />
+
+<!--
+    the old options; most of these are probably no longer useful
+        <key>apple.laf.useScreenMenuBar</key>
+        <string>true</string>
+	<key>apple.awt.showGrowBox</key>
+	<string>true</string>
+	<key>com.apple.smallTabs</key>
+	<string>true</string>
+	<key>apple.awt.Antialiasing</key>
+	<string>false</string>
+	<key>apple.awt.TextAntialiasing</key>
+	<string>true</string>
+	<key>com.apple.hwaccel</key>
+	<string>true</string>
+	<key>apple.awt.use-file-dialog-packages</key>
+	<string>false</string>
+	<key>apple.awt.graphics.UseQuartz</key>
+	<string>true</string>
+-->
+    </bundleapp>
+
+    <copy todir="macosx/work/Processing.app/Contents/Java">
+      <fileset dir=".." includes="core/library/**" /> <!-- why this? -->
+      <fileset dir="shared" includes="launch4j/**" />
+      <fileset dir="shared" includes="lib/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+
+    <!--
+    Processing.app/Contents/PlugIns/jdk1.7.0_40.jdk/Contents/Home/jre/lib/fonts
+    -->
+    <copy todir="macosx/work/Processing.app/Contents/PlugIns/jdk1.7.0_${jdk.update.macosx}.jdk/Contents/Home/jre/lib/fonts">
+      <fileset dir="shared/lib/fonts" includes="*" />
+    </copy>
+
+    <property name="launch4j.dir" 
+	      value="macosx/work/Processing.app/Contents/Java/launch4j" />
+
+    <!-- rename the version we need -->
+    <move file="${launch4j.dir}/bin/windres-macosx"
+	  tofile="${launch4j.dir}/bin/windres" />
+    <move file="${launch4j.dir}/bin/ld-macosx"
+	  tofile="${launch4j.dir}/bin/ld" />
+
+    <!-- make executable (ant doesn't preserve) -->
+    <chmod perm="ugo+x" file="${launch4j.dir}/bin/windres" />
+    <chmod perm="ugo+x" file="${launch4j.dir}/bin/ld" />
+
+    <!-- remove the others -->
+    <delete>
+      <fileset dir="${launch4j.dir}/bin" includes="ld-*" />
+      <fileset dir="${launch4j.dir}/bin" includes="windres-*" />
+    </delete>
+
+    <antcall target="assemble">
+      <param name="target.path" 
+	     value="macosx/work/Processing.app/Contents/Java" />
+    </antcall>
+
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx32" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows32" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows64" />
+  </target>
+  
+  <target name="macosx-run" depends="macosx-build" 
+	  description="Run Mac OS X version">
+    <exec executable="open" dir="macosx/work" spawn="true">
+      <arg value="-a" />
+      <arg value="/Applications/Utilities/Terminal.app" />
+<!--      <arg value="Processing.app/Contents/MacOS/JavaApplicationStub" />-->
+      <arg value="Processing.app/Contents/MacOS/Processing" />
+    </exec>
+  </target>
+
+  <target name="macosx-dist-sign" if="codesign">
+    <echo>
+      Code signing will only work if you have a $99/yr Apple developer ID.
+
+      With a proper ID, if code signing fails, you may need to use:
+      export CODESIGN_ALLOCATE="/Applications/Xcode.app/Contents/Developer/usr/bin/codesign_allocate"
+    </echo>
+    <exec executable="codesign" dir="macosx/work">
+      <arg value="--deep" />
+      <arg value="--force" />
+      <arg value="--sign" />
+      <!-- 3rd party is for the app store, dev id is gatekeeper only -->
+<!--      <arg value="3rd Party Mac Developer Application" />-->
+      <arg value="Developer ID Application" />
+      <arg value="Processing.app" />
+    </exec>
+  </target>
+
+  <target name="macosx-dist" if="macosx" 
+	  depends="macosx-build" 
+	  description="Create a downloadable .zip for the Mac OS X version">
+
+    <!-- The ant copy command does not preserve permissions. -->
+    <chmod file="macosx/work/Processing.app/Contents/MacOS/JavaApplicationStub" perm="ugo+x" />
+
+    <!-- Now handled by the app bundler -->
+    <!--
+    <replace file="macosx/work/Processing.app/Contents/Info.plist"
+	     token="VERSION" value="${version}" />
+    <replace file="macosx/work/Processing.app/Contents/Info.plist"
+	     token="REVISION" value="${revision}" />
+    -->
+
+    <antcall target="macosx-dist-sign" />
+
+    <exec executable="ditto" dir="macosx/work">
+      <arg line="-c -k -rsrc . ../processing-${version}-macosx.zip" />
+    </exec>
+
+    <echo>
+      =======================================================
+      Processing for Mac OS X was built. Grab it from
+      
+      macosx/processing-${version}-macosx.zip
+      =======================================================
+    </echo>
+  </target>
+
+  
+  <!-- - - - - - - - -->
+  <!-- Linux         -->
+  <!-- - - - - - - - -->
+  
+  <target name="linux-clean" depends="subprojects-clean" description="Clean linux version">
+    <delete dir="linux/work" />
+  </target>
+  
+  <target name="linux-checkos" unless="linux">
+    <echo>
+      =======================================================
+      Processing for Linux can only be built on on unix systems.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="linux-build" depends="revision-check, linux-checkos, subprojects-build" description="Build linux version">
+    <mkdir dir="linux/work" />
+    
+    <copy todir="linux/work">
+      <fileset dir=".." includes="core/library/**" />
+      <fileset dir="shared" includes="launch4j/**" />
+      <fileset dir="shared" includes="lib/**" />
+      <fileset dir="shared" includes="modes/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+
+    <property name="launch4j.dir" value="linux/work/launch4j" />
+
+    <!-- rename the version we need -->
+    <move file="${launch4j.dir}/bin/windres-linux${sun.arch.data.model}"
+	  tofile="${launch4j.dir}/bin/windres" />
+    <move file="${launch4j.dir}/bin/ld-linux${sun.arch.data.model}"
+	  tofile="${launch4j.dir}/bin/ld" />
+
+    <!-- make executable (ant doesn't preserve) -->
+    <chmod perm="ugo+x" file="${launch4j.dir}/bin/windres" />
+    <chmod perm="ugo+x" file="${launch4j.dir}/bin/ld" />
+
+    <!-- remove the others -->
+    <delete>
+      <fileset dir="${launch4j.dir}/bin" includes="ld-*" />
+      <fileset dir="${launch4j.dir}/bin" includes="windres-*" />
+    </delete>
+    
+    <copy todir="linux/work/lib" flatten="true">
+      <fileset refid="runtime.jars" />
+    </copy>
+    
+    <antcall target="assemble">
+      <param name="target.path" value="linux/work" />
+    </antcall>
+
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx32" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx64" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows32" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows64" />
+
+    <copy file="linux/processing" todir="linux/work" />
+    <chmod perm="ugo+x" file="linux/work/processing" />
+
+    <!-- copy command line tool -->
+    <copy file="linux/processing" tofile="linux/work/processing-java" />
+    <chmod perm="ugo+x" file="linux/work/processing-java" />
+
+    <!--
+    <property name="jre.file" 
+	      value="jre-tools-6u37-linux${sun.arch.data.model}.tgz" />
+    -->
+
+    <get src="http://processing.googlecode.com/files/${jre.file}" 
+	 dest="linux/jre.tgz" 
+	 usetimestamp="true" />
+
+<!--	   
+    Cannot use ant version of tar because it doesn't preserve properties.
+    <untar compression="gzip" 
+	   dest="linux/work" 
+	   src="linux/jre.tgz" 
+	   overwrite="false"/>
+-->
+
+<!--
+    http://www.gnu.org/software/tar/manual/html_section/transform.html
+-->
+    <exec executable="tar" dir="linux">
+      <!-- Change directory -->
+      <!--
+      <arg value="-C" /> 
+      <arg value="linux/work" />
+      <arg value="-xzpf" />
+      -->
+      <arg value="xfz" />
+      <arg value="jre.tgz"/>
+    </exec>
+
+    <!--
+    We only want to move when the folder didn't exist before
+    <move file="linux/jre1.7.0_40" tofile="linux/work/java" />
+    -->
+    <exec executable="rsync" dir="linux">
+      <arg value="-a" />
+      <arg value="--delete" />
+      <arg value="jre1.7.0_40/" />
+      <arg value="work/java" />
+    </exec>
+    <delete dir="linux/jre1.7.0_40" />
+
+    <!-- Remove unused JRE bloat. -->
+    <delete> 
+      <fileset refid="javafx-basics" />
+      <fileset refid="javafx-linux-${sun.arch.data.model}" />
+      <fileset refid="jre-optional-linux" />
+    </delete>
+
+    <copy todir="linux/work/java/lib/fonts">
+      <fileset dir="shared/lib/fonts" includes="*" />
+    </copy>
+
+  </target>
+  
+  <target name="linux-run" depends="linux-build" 
+	  description="Run Linux version">
+    <exec executable="./processing" dir="linux/work" spawn="true"/>
+  </target>
+  
+  <target name="linux-dist" depends="linux-build" 
+	  description="Build .tar.gz of linux version">
+
+<!--
+    <tar compression="gzip" destfile="linux/processing-${version}.tgz">
+      <tarfileset dir="linux/work" prefix="processing-${version}" />
+    </tar>
+-->
+
+   <!-- rename the work folder temporarily -->
+   <move file="linux/work" tofile="linux/processing-${version}" />
+
+   <property name="linux.dist" value="linux/processing-${version}-linux${sun.arch.data.model}.tgz" />
+
+   <exec executable="tar">
+     <arg value="--directory=linux" />
+     <arg value="--file=${linux.dist}" />
+     <arg value="-cpz" />
+     <arg value="processing-${version}" />
+   </exec>
+
+   <!-- put... the candle... back -->
+   <!-- (rename the work processing-NNNN version to work) -->
+   <move file="linux/processing-${version}" tofile="linux/work" />
+
+    <echo>
+      =======================================================
+      Processing for Linux was built. Grab the archive from   
+      
+      ${linux.dist}
+      =======================================================
+    </echo>
+  </target>
+  
+  
+  <!-- - - - - - - - -->
+  <!-- Windows       -->
+  <!-- - - - - - - - -->
+  
+  <target name="windows-clean" depends="subprojects-clean"
+	  description="Clean windows version">
+    <delete dir="windows/work" />
+  </target>
+  
+  <target name="windows-checkos" unless="windows">
+    <echo>
+      =======================================================
+      Processing for Windows can only be built on windows.
+      
+      Bye. 
+      =======================================================
+    </echo>
+    
+    <fail message="wrong platform (${os.name})" />
+  </target>
+  
+  <target name="windows-build" 
+	  depends="revision-check, windows-checkos, subprojects-build" 
+	  description="Build windows version">
+    <mkdir dir="windows/work" />
+    
+    <!-- assemble the pde -->
+    <mkdir dir="windows/work/lib" />
+    <copy todir="windows/work/lib" flatten="true">
+      <fileset refid="runtime.jars" />
+    </copy>
+    
+    <copy todir="windows/work">
+      <fileset dir=".." includes="core/library/**" />
+      <fileset dir="shared" includes="launch4j/**" />
+      <fileset dir="shared" includes="lib/**" />
+      <fileset dir="shared" includes="modes/**" />
+      <fileset file="shared/revisions.txt" />
+    </copy>
+
+    <fixcrlf file="windows/work/revisions.txt" eol="crlf" encoding="UTF-8" />
+
+    <property name="launch4j.dir" value="windows/work/launch4j" />
+
+    <!-- rename the version we need -->
+    <move file="${launch4j.dir}/bin/windres-windows32.exe"
+	  tofile="${launch4j.dir}/bin/windres.exe" />
+    <move file="${launch4j.dir}/bin/ld-windows32.exe"
+	  tofile="${launch4j.dir}/bin/ld.exe" />
+
+    <!-- remove the others -->
+    <delete>
+      <fileset dir="${launch4j.dir}/bin" includes="ld-*" />
+      <fileset dir="${launch4j.dir}/bin" includes="windres-*" />
+    </delete>
+
+    <antcall target="assemble">
+      <param name="target.path" value="windows/work" />
+    </antcall>
+
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx32" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx64" />
+<!--
+    <echo message="the path is ${target.path}" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx32" failonerror="true" />
+    <delete dir="${target.path}/modes/java/libraries/video/library/macosx64" />
+    <exec executable="ls" dir="${target.path}/modes/java/libraries/video/library" />
+
+    <condition property="delete32"> 
+      <equals arg1="${sun.arch.data.model}" arg2="64" />
+    </condition>
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows32" />
+
+    <condition property="delete64"> 
+      <equals arg1="${sun.arch.data.model}" arg2="32" />
+    </condition>
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows64" />
+-->
+
+    <condition property="video.delete" value="32"> 
+      <equals arg1="${sun.arch.data.model}" arg2="64" />
+    </condition>
+    <condition property="video.delete" value="64"> 
+      <equals arg1="${sun.arch.data.model}" arg2="32" />
+    </condition>
+    <delete dir="${target.path}/modes/java/libraries/video/library/windows${video.delete}" />
+    
+    <taskdef name="launch4j" 
+	     classname="net.sf.launch4j.ant.Launch4jTask" 
+	     classpath="${launch4j.dir}/launch4j.jar; ${launch4j.dir}/lib/xstream.jar" />
+
+    <copy todir="windows/work">
+      <fileset dir="windows/launcher" 
+	       includes="about.bmp, application.ico, config.xml, config-cmd.xml"/>
+    </copy>
+
+    <launch4j configFile="windows/work/config.xml" />
+    <launch4j configFile="windows/work/config-cmd.xml" />
+
+    <delete dir="windows/work" 
+	    includes="about.bmp, application.ico, config.xml, config-cmd.xml" />
+
+<!--
+    <launch4j>
+      <config headerType="gui"
+	      outfile="windows/work/processing-java.exe"
+	      dontWrapJar="false"
+	      jarPath="../app/pde.jar">
+	<classPath mainClass="processing.mode.java.Commander">
+	  <cp>lib/pde.jar</cp>
+	  <cp>lib/antlr.jar</cp>
+	  <cp>lib/jdt-core.jar</cp>
+	  <cp>lib/jna.jar</cp>
+	  <cp>lib/ant.jar</cp>
+	  <cp>lib/ant-launcher.jar</cp>
+	  <cp>core/library/core.jar</cp>
+	  <cp>%JAVA_HOME%/lib/tools.jar</cp>
+	</classPath>
+	<jre minVersion="1.6.0" jdkPreference="jdkOnly">
+	</jre>
+      </config>
+    </launch4j>
+-->
+
+    <!-- cygwin requires html, dll, and exe to have the +x flag -->
+    <chmod perm="ugo+x">
+      <fileset dir="windows/work" includes="**/*.html, **/*.dll, **/*.exe" />
+    </chmod>
+
+    <!-- starting with 2.0a7, require the local JRE + tools.jar -->
+    <!--
+    <property name="jre.file" 
+	      value="jre-tools-6u37-windows${sun.arch.data.model}.zip" />
+    -->
+    <get src="http://processing.googlecode.com/files/${jre.file}" 
+	 dest="windows/jre.tgz" 
+	 usetimestamp="true" />
+
+    <!--
+    <unzip dest="windows/work" src="windows/jre.zip" overwrite="false"/>
+    -->
+    <!-- Hopefully this is OK with the permissions (unlike Linux), 
+	 since those shouldn't matter on Windows. -->
+    <untar compression="gzip"
+	   dest="windows/work" 
+	   src="windows/jre.tgz" 
+	   overwrite="false" />
+    <move file="windows/work/jre1.7.0_40" tofile="windows/work/java" />
+
+    <!-- Remove space-wasting JavaFX garbage. -->
+    <delete> 
+      <fileset refid="javafx-basics" />
+      <fileset refid="javafx-windows" />
+      <fileset refid="jre-optional-windows" />
+    </delete>
+
+    <copy todir="windows/work/java/lib/fonts">
+      <fileset dir="shared/lib/fonts" includes="*" />
+    </copy>
+  </target>
+  
+  <target name="windows-run" depends="windows-build" 
+	  description="Run windows version">
+    <exec executable="windows/work/processing.exe" 
+	  dir="windows/work" spawn="true"/>
+  </target>
+
+  <target name="windows-dist" depends="windows-build" 
+	  description="Create .zip files of windows version">
+    <!--
+    <zip basedir="windows/work" 
+	 prefix="processing-${version}"
+	 destfile="windows/processing-${version}.zip" />
+    <zip basedir="windows/work" 
+	 prefix="processing-${version}"
+	 destfile="windows/processing-${version}-expert.zip" 
+	 excludes="java/**" />
+    -->
+
+    <property name="windows.dist" value="windows/processing-${version}-windows${sun.arch.data.model}.zip" />
+
+    <zip destfile="${windows.dist}">
+      <zipfileset dir="windows/work" 
+		  prefix="processing-${version}" />
+    </zip>
+
+<!-- Expert is too much of a headache. Just nix it for 2.0. -->
+<!--
+    <zip destfile="windows/processing-${version}-windows-expert.zip">
+      <zipfileset dir="windows/work" 
+		  prefix="processing-${version}" 
+		  excludes="java/**" />
+    </zip>
+-->
+    
+    <echo>
+      =======================================================
+      Processing for Windows was built. Grab the archive from   
+
+      ${windows.dist}
+      =======================================================
+    </echo>
+  </target> 
+
+
+  <!-- - - - - - - - - - - - - - - - - - -->
+  <!-- Package source 'n tag the release -->
+  <!-- - - - - - - - - - - - - - - - - - -->
+
+<!--
+not ready to automate this yet, since we often have to reset the tag
+  <target name="dist-src" depends="dist">
+    <exec executable="git">
+remove the spaces for depth since it should be double dash, but screws up comments
+      <arg line="clone - -depth 1 git@github.com:processing/processing.git /tmp/processing-${version}-src" />
+    </exec>
+  </target>
+-->
+
+
+  <!-- - - - - - - - - -->
+  <!-- Developer Docs -->
+  <!-- - - - - - - - - -->
+
+  <target name="doc">
+
+    <!-- build doc for core -->
+    <exec executable="find" dir="javadoc" errorproperty="ignored">
+      <arg line="core -type f -exec rm -rf {} ';'" />
+    </exec>
+
+    <javadoc access="public" author="false" classpath="../core/library/jogl-all.jar:../core/bin:../core/library/gluegen-rt.jar" destdir="javadoc/core" nodeprecated="false" nodeprecatedlist="false" noindex="false" nonavbar="false" notree="false" source="1.6" splitindex="false" use="false" version="false">
+
+      <!-- provide links for java.* classes. 
+	   also suppresses the java.lang prefix in the text.  --> 
+      <link href="http://docs.oracle.com/javase/7/docs/api/" />
+
+      <!-- prevent files from always appearing to have changed -->
+      <arg value="-notimestamp" />
+
+      <packageset dir="../core/src">
+	<include name="processing/**" />
+      </packageset>
+
+    </javadoc>
+
+<!--
+    <copy file="javadoc/stylesheet.css" 
+	  tofile="javadoc/core/stylesheet.css" />
+    <copy file="javadoc/index.html" 
+	  tofile="javadoc/core/index.html" />
+-->
+
+    <!-- build everything else -->
+    <exec executable="find" dir="javadoc" errorproperty="ignored">
+      <arg line="everything -type f -exec rm -rf {} ';'" />
+    </exec>
+
+    <javadoc access="public" author="false" classpath="../java/libraries/video/library/jna.jar:../java/libraries/serial/bin:lib/antlr.jar:../core/library/jogl-all.jar:../java/libraries/video/bin:lib/apple.jar:lib/jna.jar:lib/ant-launcher.jar:../java/libraries/pdf/bin:lib/ant.jar:../core/bin:../java/libraries/pdf/library/itext.jar:../java/libraries/video/library/gstreamer-java.jar:lib/org-netbeans-swing-outline.jar:../java/libraries/dxf/bin:bin:../java/libraries/net/bin:../java/libraries/serial/library/jssc.jar:../core/library/gluegen-rt.jar:${java.home}/lib/tools.jar" destdir="javadoc/everything" nodeprecated="false" nodeprecatedlist="false" noindex="false" nonavbar="false" notree="false" source="1.6" splitindex="false" use="false" version="false" noqualifier="all">
+
+      <arg value="-notimestamp" />
+
+      <link href="http://docs.oracle.com/javase/7/docs/api/" />
+      
+      <packageset dir="../app/src">
+	<include name="antlr/**" />
+	<include name="processing/**" />
+      </packageset>
+
+      <packageset dir="../app/generated">
+	<include name="processing/**" />
+      </packageset>
+
+      <packageset dir="../core/src">
+	<include name="processing/**" />
+	<include name="japplemenubar/**" />
+      </packageset>
+    </javadoc>
+
+<!--
+    <copy file="javadoc/stylesheet.css" 
+	  tofile="javadoc/everything/stylesheet.css" />
+    <copy file="javadoc/index.html" 
+	  tofile="javadoc/everything/index.html" />
+-->
+
+    <!-- set the MIME type so that Google Code shows the files properly -->
+<!--
+    <exec executable="find" dir=".">
+      <arg line="javadoc -name '*.html' -exec svn propset svn:mime-type text/html {} ';'" />
+    </exec>
+-->
+
+  </target>
+
+<!-- no longer necessary because it comes straight from Google Code -->
+<!--
+  <target name="doc-upload">
+    <exec executable="rsync" dir="javadoc" spawn="true">
+      <arg value="-avz" />
+      <arg value="- -delete" />
+      <arg value="core/" />
+      <arg value="fry@processing.org:dev/reference/core/javadoc/" />
+    </exec>
+
+    <exec executable="rsync" dir="javadoc" spawn="true">
+      <arg value="-avz" />
+      <arg value="- -delete" />
+      <arg value="everything/" />
+      <arg value="fry@processing.org:dev/reference/core/everything/" />
+    </exec>
+
+    rsync -avz - -delete core/ fry@processing.org:dev/reference/core/javadoc/
+    rsync -avz - -delete everything/ fry@processing.org:dev/reference/everything/javadoc/
+  </target>
+-->
+
+  
+  <!-- - - - - - - - -->
+  <!-- Run It!       -->
+  <!-- - - - - - - - -->
+  
+  <target name="clean" description="Perform a spring cleaning" 
+	  depends="linux-clean, windows-clean, macosx-clean, subprojects-clean">
+  </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+Copyright 2012, Oracle and/or its affiliates. All rights reserved.
+
+DO NOT ALTER OR REMOVE COPYRIGHT NOTICES OR THIS FILE HEADER.
+
+This code is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 2 only, as
+published by the Free Software Foundation.  Oracle designates this
+particular file as subject to the "Classpath" exception as provided
+by Oracle in the LICENSE file that accompanied this code.
+
+This code is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
+version 2 for more details (a copy is included in the LICENSE file that
+accompanied this code).
+
+You should have received a copy of the GNU General Public License version
+2 along with this work; if not, write to the Free Software Foundation,
+Inc., 51 Franklin St, Fifth Floor, Boston, MA 02110-1301 USA.
+
+Please contact Oracle, 500 Oracle Parkway, Redwood Shores, CA 94065 USA
+or visit www.oracle.com if you need additional information or have any
+questions.
+-->
+
+<project name="appbundler" default="package">
+    <property environment="env"/>
+
+    <!--
+    <property file="build.properties"/>
+    version=1.0ea
+    -->
+    <property name="arch64" value="-arch x86_64" />
+    <property name="arch32" value="-arch i386" />
+    <property name="archppc" value="-arch ppc" />
+    <property name="cc" value="gcc" />
+
+    <property name="folder.src" value="src"/>
+    <property name="folder.native" value="native"/>
+    <property name="folder.bin" value="bin"/>
+<!--    <property name="folder.classes" value="${folder.bin}/classes"/>-->
+    <property name="folder.classes" value="${folder.bin}"/>
+    <property name="folder.res" value="res"/>
+
+    <!-- Compile target -->
+    <target name="compile">
+        <mkdir dir="${folder.classes}"/>
+        <javac destDir="${folder.classes}"
+            includejavaruntime="true"
+            includeantruntime="true"
+            deprecation="true"
+            debug="true"
+            encoding="UTF-8"
+            failonerror="true">
+            <src>
+                <dirset dir=".">
+                    <include name="${folder.src}"/>
+                </dirset>
+            </src>
+            <compilerarg line="-Xlint:all"/>
+            <classpath>
+                <dirset dir="${basedir}" includes="**/${folder.classes}"/>
+                <fileset dir="." includes="lib/**/*.jar"/>
+            </classpath>
+        </javac>
+        <copy todir="${folder.classes}" includeEmptyDirs="false">
+            <fileset dir="${folder.src}">
+                <exclude name="**/*.java"/>
+                <exclude name="**/package.html"/>
+            </fileset>
+        </copy>
+
+        <exec executable="${cc}">
+            <arg line="${arch64} ${arch32}"/>
+            <arg value="-I"/>
+            <arg value="${env.JAVA_HOME}/include"/>
+            <arg value="-I"/>
+            <arg value="${env.JAVA_HOME}/include/darwin"/>
+            <arg value="-o"/>
+            <arg value="${folder.classes}/com/oracle/appbundler/JavaAppLauncher"/>
+            <arg value="-framework"/>
+            <arg value="Cocoa"/>
+            <arg value="-F"/>
+            <arg value="${env.JAVA_HOME}/../.."/>
+            <arg value="-isysroot"/>                                           
+            <arg value="/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX10.8.sdk"/>
+            <arg value="-mmacosx-version-min=10.7"/> 
+            <arg value="native/main.m"/>
+        </exec>
+    </target>
+
+    <!-- Clean target -->
+    <target name="clean">
+        <delete dir="${folder.bin}"/>
+        <delete dir="HelloWorld.app"/>
+        <delete dir="SwingSet2.app"/>
+        <delete dir="SwingSet2Plugin.app"/>
+    </target>
+
+    <!-- Package target -->
+    <target name="package" depends="compile">
+        <zip destfile="${folder.classes}/com/oracle/appbundler/res.zip">
+            <fileset dir="${folder.res}"/>
+        </zip>
+
+        <jar destfile="../${ant.project.name}.jar" index="true">
+            <manifest>
+                <attribute name="Implementation-Vendor-Id" value="com.oracle"/>
+                <attribute name="Implementation-Vendor" value="Oracle"/>
+                <attribute name="Implementation-Title" value="App Bundler Ant Task"/>
+                <attribute name="Implementation-Version" value="${version}"/>
+            </manifest>
+            <fileset dir="${folder.classes}"/>
+            <fileset dir="${folder.bin}">
+                <include name="JavaAppLauncher"/>
+                <include name="*.zip"/>
+            </fileset>
+        </jar>
+    </target>
+
+    <!-- Test targets -->
+    <target name="test" depends="package">
+        <taskdef name="bundleapp" classname="com.oracle.appbundler.AppBundlerTask"
+            classpath="${folder.bin}/${ant.project.name}.jar"/>
+
+        <bundleapp outputdirectory="."
+            name="Test"
+            displayname="Test"
+            identifier="com.oracle.javafx.swing.Test"
+            shortversion="1.0"
+            applicationCategory="public.app-category.developer-tools"
+            mainclassname="com/javafx/main/Main">
+            <runtime dir="${env.JAVA_HOME}"/>
+            <classpath file="${user.home}/bin/javafx-samples-2.2.0/SwingInterop.jar"/>
+            <option value="-Dapple.laf.useScreenMenuBar=true"/>
+            <argument value="foo=bar"/>
+        </bundleapp>
+    </target>
+
+    <target name="test-plugin" depends="package">
+        <taskdef name="bundleapp" classname="com.oracle.appbundler.AppBundlerTask"
+            classpath="${folder.bin}/${ant.project.name}.jar"/>
+
+        <bundleapp outputdirectory="."
+            name="TestPlugin"
+            displayname="Test (Plugin)"
+            identifier="com.oracle.javafx.swing.TestPlugin"
+            shortversion="1.0"
+            applicationCategory="public.app-category.developer-tools"
+            mainclassname="com/javafx/main/Main">
+            <classpath file="${user.home}/bin/javafx-samples-2.2.0/SwingInterop.jar"/>
+            <option value="-Dapple.laf.useScreenMenuBar=true"/>
+            <argument value="foo=bar"/>
+        </bundleapp>
+    </target>
+
+    <!-- Trim whitespace target -->
+    <target name="trim-whitespace">
+        <fileset id="trimfiles" dir=".">
+            <include name="**/*.h"/>
+            <include name="**/*.html"/>
+            <include name="**/*.java"/>
+            <include name="**/*.m"/>
+            <include name="**/*.strings"/>
+            <include name="**/*.xml"/>
+        </fileset>
+        <replaceregexp match="[\t]" replace="    " flags="gm" byline="true">
+            <fileset refid="trimfiles"/>
+        </replaceregexp>
+        <replaceregexp match="[\t ]+$" replace="" flags="gm" byline="true">
+            <fileset refid="trimfiles"/>
+        </replaceregexp>
+    </target>
+</project>
+<?xml version="1.0"?>
+<project name="Movie Maker Tool" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="tool/MovieMaker.jar" />
+  </target>
+
+  <target name="compile" description="Compile sources">   
+    <mkdir dir="bin" />
+    <javac target="1.6" 
+	   source="1.6"
+	   srcdir="src" 
+	   destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../../app/bin" 
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../../../java/mode/ecj.jar" />
+    </javac>
+  </target>
+
+  <target name="build" depends="compile" description="Build Movie Maker Tool">
+    <mkdir dir="tool" />
+    <jar basedir="bin" destfile="tool/MovieMaker.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing Core" default="build">
+
+  <target name="clean" description="Clean out the build directories">
+    <delete dir="bin" />
+    <delete file="library/core.jar" />
+  </target>
+  
+  <target name="compile" description="Compile">
+    <taskdef name="methods" 
+	     classname="PAppletMethods" 
+	     classpath="methods/methods.jar" />
+    <methods dir="${basedir}/src/processing/core" recorder="true" />
+
+    <!-- Check for ecj.jar, since this is likely a PDE build. Using ECJ
+	 allows us to build the PDE with only a JRE on Windows and Linux.
+	 So that the core can be built independently of the PDE, 
+	 use javac (the "modern" compiler) if ecj is not present. -->
+    <property name="ecj.jar" value="../java/mode/ecj.jar" />
+    <condition property="build.compiler" 
+	       value="org.eclipse.jdt.core.JDTCompilerAdapter"
+	       else="modern">
+      <available file="${ecj.jar}" />
+    </condition>
+
+    <mkdir dir="bin" />
+    <javac source="1.7"
+	   target="1.7" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   debug="true"
+	   srcdir="src" destdir="bin"
+	   classpath="library/jogl-all.jar; library/gluegen-rt.jar"
+	   nowarn="true">
+      <!-- kinda gross, but if not using ecj, this just ignored anyway -->
+      <compilerclasspath path="${ecj.jar}" />
+    </javac>
+    
+    <!-- Copy the jnilib to the bin folder so it's included. -->
+    <copy todir="bin/japplemenubar" 
+	  file="src/japplemenubar/libjAppleMenuBar.jnilib" />
+
+    <!-- Copy shaders to bin. (Eclipse does this automatically.) -->
+    <copy todir="bin">
+      <fileset dir="src">
+	<include name="processing/opengl/*.glsl" />
+	<include name="icon/*.png" />
+      </fileset>
+    </copy>
+  </target>		
+
+  <target name="build" depends="compile" description="Build core library">
+    <jar basedir="bin" destfile="library/core.jar" />
+  </target>
+  
+</project>
+<project name="methods" default="task-lib">
+
+  <target name="compile">
+    <mkdir dir="bin" />
+    <!--		<javac target="1.5" srcdir="src" destdir="bin" classpath="../ant/ant.jar" debug="true"/>-->
+<!--    <javac target="1.5" srcdir="src" destdir="bin" classpath="/usr/share/ant/ant.jar" debug="true"/>-->
+    <javac target="1.5" 
+	   srcdir="src" destdir="bin" 
+	   debug="true" 
+	   includeantruntime="true"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../java/mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="task-lib" depends="compile">
+    <jar basedir="bin" destfile="methods.jar" />
+  </target>
+  
+  <target name="demo">
+    <taskdef name="methods" 
+	     classname="PAppletMethods" 
+	     classpath="methods.jar" />
+    <preproc dir="demo"/>
+  </target>
+  
+  <target name="clean">
+    <delete dir="bin" />
+    <delete file="methods.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing DXF Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/dxf.jar" />
+  </target>
+  
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+    
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build DXF library">
+    <jar basedir="bin" destfile="library/dxf.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing GLW Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/glw.jar" />
+  </target>
+  
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar; ../../../core/library/jogl-all.jar; ../../../core/library/gluegen-rt.jar" 
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build OpenGL LWJGL library">
+    <jar basedir="bin" destfile="library/glw.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing OpenGL LWJGL Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/opengl-lwjgl.jar" />
+  </target>
+  
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar; library/lwjgl.jar; library/lwjgl_util.jar" 
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build OpenGL LWJGL library">
+    <jar basedir="bin" destfile="library/opengl-lwjgl.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing Net Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/net.jar" />
+  </target>
+
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+    
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+
+  <target name="build" depends="compile" description="Build net library">
+    <jar basedir="bin" destfile="library/net.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing PDF Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/pdf.jar" />
+  </target>
+  
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+    
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar; library/itext.jar"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build PDF library">
+    <jar basedir="bin" destfile="library/pdf.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing Serial Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/serial.jar" />
+  </target>
+
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar; library/jssc.jar"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build serial library">
+    <jar basedir="bin" destfile="library/serial.jar" />
+  </target>
+</project>
+<?xml version="1.0"?>
+<project name="Processing Video Library" default="build">
+  
+  <target name="clean" description="Clean the build directories">
+    <delete dir="bin" />
+    <delete file="library/video.jar" />
+  </target>
+  
+  <target name="compile" description="Compile sources">
+    <condition property="core-built">
+      <available file="../../../core/library/core.jar" />
+    </condition>
+    <fail unless="core-built" message="Please build the core library first and make sure it sits in ../../../core/library/core.jar" />
+
+    <mkdir dir="bin" />
+    <javac source="1.6"
+	   target="1.6" 
+	   srcdir="src" destdir="bin" 
+	   encoding="UTF-8"
+	   includeAntRuntime="false"
+	   classpath="../../../core/library/core.jar; library/gstreamer-java.jar; library/jna.jar"
+	   nowarn="true"
+	   compiler="org.eclipse.jdt.core.JDTCompilerAdapter">
+      <compilerclasspath path="../../mode/ecj.jar" />
+    </javac>
+  </target>
+  
+  <target name="build" depends="compile" description="Build video library">
+    <jar basedir="bin" destfile="library/video.jar" />
+  </target>
+</project>

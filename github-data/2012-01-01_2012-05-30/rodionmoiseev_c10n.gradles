@@ -1,0 +1,439 @@
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ *  or more contributor license agreements.  See the NOTICE file
+ *  distributed with this work for additional information
+ *  regarding copyright ownership.  The ASF licenses this file
+ *  to you under the Apache License, Version 2.0 (the
+ *  "License"); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing,
+ *  software distributed under the License is distributed on an
+ *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *  KIND, either express or implied.  See the License for the
+ *  specific language governing permissions and limitations
+ *  under the License.
+ */
+
+configurations {
+  guice
+  guiceArchives
+  testCompile.extendsFrom guice
+}
+
+dependencies {
+  guice group: "org.reflections", name: "reflections", version: "0.9.8"
+  guice group: 'com.google.inject', name: 'guice', version: '3.0'
+  guice group: 'com.google.inject.extensions', name: 'guice-assistedinject', version: '3.0'
+
+  testCompile group: 'commons-io', name: 'commons-io', version: '2.3'
+}
+
+eclipse.classpath.plusConfigurations += configurations.guice
+
+idea.module {
+  sourceDirs += file("src/ext/guice/java")
+  scopes.COMPILE.plus += configurations.guice
+}
+
+sourceSets {
+  guice {
+    java {
+      srcDir "src/ext/guice/java"
+    }
+    compileClasspath += sourceSets.main.output
+    compileClasspath += configurations.provided
+    compileClasspath += configurations.guice
+  }
+  test {
+    compileClasspath += sourceSets.guice.output
+    runtimeClasspath += sourceSets.guice.output
+  }
+}
+
+jar {
+  appendix = "core"
+}
+
+sourcesJar {
+  appendix = "core"
+}
+
+task guiceJar(type: Jar, dependsOn: guiceClasses) {
+  appendix = "ext-guice"
+  from sourceSets.guice.output
+}
+
+task guiceSourcesJar(type: Jar, dependsOn: guiceClasses) {
+  appendix = "ext-guice"
+  classifier = "sources"
+  from sourceSets.guice.allSource
+}
+
+uploadGuiceArchives {
+  repositories {
+    mavenDeployer {
+      repository(url: project.releaseRepoUrl)
+      snapshotRepository(url: project.snapshotRepoUrl)
+    }
+  }
+}
+
+artifacts {
+  guiceArchives guiceJar
+  guiceArchives guiceSourcesJar
+}
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ *  or more contributor license agreements.  See the NOTICE file
+ *  distributed with this work for additional information
+ *  regarding copyright ownership.  The ASF licenses this file
+ *  to you under the Apache License, Version 2.0 (the
+ *  "License"); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing,
+ *  software distributed under the License is distributed on an
+ *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *  KIND, either express or implied.  See the License for the
+ *  specific language governing permissions and limitations
+ *  under the License.
+ */
+
+buildscript {
+  repositories {
+    maven {
+      url "https://raw.github.com/rodionmoiseev/maven-repo/master/repo/releases"
+    }
+  }
+  dependencies {
+    classpath group: 'org.rodion.gradle', name: 'idea-utils-plugin', version: '0.1'
+  }
+}
+
+apply plugin: 'idea-utils'
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.3'
+}
+
+group = "c10n"
+
+allprojects {
+  apply plugin: 'eclipse'
+  apply plugin: 'idea'
+  apply plugin: 'maven'
+
+  project.ext {
+    releaseRepoUrl = "file://${project(':').projectDir}/../c10n-mvn-repo/releases"
+    snapshotRepoUrl = "file://${project(':').projectDir}/../c10n-mvn-repo/snapshots"
+  }
+
+  uploadArchives {
+    repositories {
+      mavenDeployer {
+        repository(url: project.releaseRepoUrl)
+        snapshotRepository(url: project.snapshotRepoUrl)
+        pom.project {
+          inceptionYear '2012'
+          licenses {
+            license {
+              name 'The Apache Software License, Version 2.0'
+              url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+              distribution 'repo'
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+subprojects {
+  apply plugin: 'java'
+
+  version = "1.2-SNAPSHOT"
+
+  archivesBaseName = "c10n"
+
+  sourceCompatibility = '1.6'
+  [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+  //[compileJava, compileTestJava]*.options*.compilerArgs = ['-Xlint:all']
+
+  repositories {
+    mavenCentral()
+  }
+
+  configurations {
+    provided
+    testCompile.extendsFrom provided
+  }
+
+  dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+    testCompile group: 'org.hamcrest', name: 'hamcrest-all', version: '1.3'
+  }
+
+  task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+  }
+
+  artifacts {
+    archives sourcesJar
+  }
+
+  test.exclude '**/AllTests.class'
+
+  sourceSets.main.compileClasspath += configurations.provided
+  eclipse.classpath.plusConfigurations += configurations.provided
+  idea.module.scopes.PROVIDED.plus += configurations.provided
+}
+
+idea.project {
+  vcs {
+    vcs = 'Git'
+    directory = '$PROJECT_DIR$/..'
+  }
+  copyright {
+    name = 'Apache 2.0'
+    license = file("${project.projectDir}/license-preamble.txt")
+  }
+}
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ *  or more contributor license agreements.  See the NOTICE file
+ *  distributed with this work for additional information
+ *  regarding copyright ownership.  The ASF licenses this file
+ *  to you under the Apache License, Version 2.0 (the
+ *  "License"); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing,
+ *  software distributed under the License is distributed on an
+ *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *  KIND, either express or implied.  See the License for the
+ *  specific language governing permissions and limitations
+ *  under the License.
+ */
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+sourceCompatibility = '1.6'
+[compileJava,compileTestJava]*.options*.encoding = 'UTF-8'
+
+repositories{
+  mavenCentral()
+  maven{
+    url "https://raw.github.com/rodionmoiseev/c10n/master/c10n-mvn-repo/releases"
+  }
+  maven{
+    url "https://raw.github.com/rodionmoiseev/c10n/master/c10n-mvn-repo/snapshots"
+  }
+}
+
+dependencies {
+  compile group: 'c10n', name: 'c10n-core', version: '1.0'
+  compile group: 'c10n', name: 'c10n-ext-guice', version: '1.0'
+  compile 'junit:junit:4.10'
+}
+
+def licenseFile = "${project.projectDir}/../../master/license-preamble.txt"
+
+idea.project.ipr{
+  withXml { provider ->
+      //Setup Git root
+      def mapping = provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping
+      mapping.@vcs = 'Git'
+      mapping.@directory = '$PROJECT_DIR$/../..'
+      //Make sure IDEA sticks Apache 2.0 preamble for each file
+      def comp = provider.node.component.find { it.@name == 'CopyrightManager' }
+      comp.@default = 'Apache 2.0'
+      def copyright = comp.appendNode('copyright')
+      copyright.appendNode('option', [name: 'notice', value: file(licenseFile).text])
+      ['keyword': 'Copyright',
+       'allowReplaceKeyword': '',
+       'myName': 'Apache 2.0',
+       'myLocal': 'true'].each { name, value ->
+          copyright.appendNode('option', ['name': name, 'value': value])
+      }
+  }
+}
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ *  or more contributor license agreements.  See the NOTICE file
+ *  distributed with this work for additional information
+ *  regarding copyright ownership.  The ASF licenses this file
+ *  to you under the Apache License, Version 2.0 (the
+ *  "License"); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing,
+ *  software distributed under the License is distributed on an
+ *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *  KIND, either express or implied.  See the License for the
+ *  specific language governing permissions and limitations
+ *  under the License.
+ */
+
+apply plugin: 'java'
+apply plugin: 'scala'
+apply plugin: 'idea'
+
+sourceCompatibility = '1.6'
+[compileJava,compileTestJava]*.options*.encoding = 'UTF-8'
+
+repositories{
+  mavenCentral()
+  maven{
+    url "https://raw.github.com/rodionmoiseev/c10n/master/c10n-mvn-repo/releases"
+  }
+}
+
+configurations{
+  scalaAPI
+  compile.extendsFrom scalaAPI
+}
+
+dependencies {
+  compile group: 'c10n', name: 'c10n-core', version: '1.0'
+
+  // Libraries needed to run the scala tools
+  scalaTools 'org.scala-lang:scala-compiler:2.9.1'
+  scalaTools 'org.scala-lang:scala-library:2.9.1'
+
+  // Libraries needed for scala api
+  scalaAPI 'org.scala-lang:scala-library:2.9.1'
+}
+
+task show << {
+  configurations.scalaTools.files.each { println it }
+}
+
+def licenseFile = "${project.projectDir}/../../master/license-preamble.txt"
+
+def scalaLibVersion = '2.9.1'
+def scalaLibName = 'gradle-scala'
+def scalaCompilerLib = "${scalaLibName}-compiler-${scalaLibVersion}"
+def scalaAPILib = "${scalaLibName}-library-${scalaLibVersion}"
+
+idea.project.ipr{
+  withXml { provider ->
+      //Setup Scala Facet
+      def scalacSettingsComp = provider.node.appendNode('component')
+      scalacSettingsComp.@name = 'ScalacSettings'
+      ['COMPILER_LIBRARY_NAME': scalaCompilerLib,
+       'COMPILER_LIBRARY_LEVEL': 'Project',
+       'MAXIMUM_HEAP_SIZE': '512',
+       'VM_PARAMETERS': '-Xms128m -Xss1m -server'].each{ name, value ->
+          scalacSettingsComp.appendNode('option', ['name': name, 'value': value])
+      }
+      def libraryTableComp = provider.node.appendNode('component')
+      libraryTableComp.@name = 'libraryTable'
+      def scalaCompilerLibNode = libraryTableComp.appendNode('library')
+      scalaCompilerLibNode.@name = scalaCompilerLib
+      def scalaCompilerLibClassesNode = scalaCompilerLibNode.appendNode('CLASSES')
+      configurations.scalaTools.files.each { scalaCompilerLibJar ->
+        scalaCompilerLibClassesNode.appendNode('root', [url: "jar://${scalaCompilerLibJar}!/"])
+      }
+      def scalaAPILibNode = libraryTableComp.appendNode('library')
+      scalaAPILibNode.@name = scalaAPILib
+      def scalaAPILibClassesNode = scalaAPILibNode.appendNode('CLASSES')
+      configurations.scalaAPI.files.each { scalaAPILibJar ->
+        scalaAPILibClassesNode.appendNode('root', [url: "jar://${scalaAPILibJar}!/"])
+      }
+      //Enable Scala Type-aware highlighting
+      def highlightingAdvisorComp = provider.node.appendNode('component')
+      highlightingAdvisorComp.@name = 'HighlightingAdvisor'
+      ['SUGGEST_TYPE_AWARE_HIGHLIGHTING': 'false',
+       'TYPE_AWARE_HIGHLIGHTING_ENABLED': 'true'].each { name, value ->
+        highlightingAdvisorComp.appendNode('option', ['name': name, 'value': value])
+      }
+
+      //Setup Git root
+      def mapping = provider.node.component.find { it.@name == 'VcsDirectoryMappings' }.mapping
+      mapping.@vcs = 'Git'
+      mapping.@directory = '$PROJECT_DIR$/../..'
+
+      //Make sure IDEA sticks Apache 2.0 preamble for each file
+      def comp = provider.node.component.find { it.@name == 'CopyrightManager' }
+      comp.@default = 'Apache 2.0'
+      def copyright = comp.appendNode('copyright')
+      copyright.appendNode('option', [name: 'notice', value: file(licenseFile).text])
+      ['keyword': 'Copyright',
+       'allowReplaceKeyword': '',
+       'myName': 'Apache 2.0',
+       'myLocal': 'true'].each { name, value ->
+          copyright.appendNode('option', ['name': name, 'value': value])
+      }
+  }
+}
+
+idea.module{
+  scopes.COMPILE.minus += configurations.scalaAPI
+}
+
+idea.module.iml{
+  withXml { provider ->
+    //Setup Scala Facet in *.iml file
+    def facetComp = provider.node.appendNode('component')
+    facetComp.@name = 'FacetManager'
+    def facetNode = facetComp.appendNode('facet', [type: 'scala', name: 'Scala'])
+    def facetConfNode = facetNode.appendNode('configuration')
+    ['compilerLibraryLevel': 'Project',
+     'compilerLibraryName': scalaCompilerLib].each {name, value ->
+      facetConfNode.appendNode('option', ['name': name, 'value': value])
+    }
+
+    def moduleRootManagerComp = provider.node.component.find { it.@name == 'NewModuleRootManager' }
+    moduleRootManagerComp.appendNode('orderEntry', [type: 'library', name: scalaAPILib, level: 'project'])
+  }
+}
+/*
+ * Licensed to the Apache Software Foundation (ASF) under one
+ *  or more contributor license agreements.  See the NOTICE file
+ *  distributed with this work for additional information
+ *  regarding copyright ownership.  The ASF licenses this file
+ *  to you under the Apache License, Version 2.0 (the
+ *  "License"); you may not use this file except in compliance
+ *  with the License.  You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing,
+ *  software distributed under the License is distributed on an
+ *  "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ *  KIND, either express or implied.  See the License for the
+ *  specific language governing permissions and limitations
+ *  under the License.
+ */
+
+apply plugin: 'application'
+
+mainClassName = 'c10n.tools.codegen.Main'
+
+dependencies {
+  compile project(':core')
+  compile group: "org.reflections", name: "reflections", version: "0.9.8"
+  compile group: "com.google.code.javaparser", name: "javaparser", version: "1.0.8"
+
+  testCompile project(':core').sourceSets.test.output
+}
+
+jar {
+  appendix = "tools"
+}
+
+sourcesJar {
+  appendix = "tools"
+}

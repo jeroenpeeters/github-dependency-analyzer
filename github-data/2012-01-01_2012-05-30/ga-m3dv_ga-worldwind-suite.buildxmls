@@ -1,0 +1,957 @@
+<?xml version="1.0" ?>
+
+<project name="AndroidRemoteHelp" basedir="." default="run">
+
+	<property name="help_file" value="${basedir}/help.md" />
+	<property name="lib_dir" value="${basedir}/lib" />
+	<property name="output_dir" value="${basedir}/target" />
+	<property name="output_file" value="${output_dir}/help.html" />
+	<property name="android_file" value="${basedir}/../AndroidRemoteClient/res/raw/help.html" />
+	<property name="server_file" value="${basedir}/../AndroidRemoteServer/src/html/android.html" />
+
+	<path id="classpath">
+		<fileset dir="${lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="clean" description="Remove all generated files">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="generate">
+		<mkdir dir="${output_dir}" />
+		<java classpathref="classpath" classname="com.petebevin.markdown.MarkdownProcessor" input="${help_file}" output="${output_file}" />
+	</target>
+
+	<target name="copy" depends="generate">
+		<copy file="${output_file}" tofile="${android_file}" />
+		<copy file="${output_file}" tofile="${server_file}" />
+	</target>
+
+	<target name="run" depends="copy" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="AndroidRemoteServer" basedir="." default="run">
+
+	<property name="perform_unit_tests" value="false" />
+	<property name="javac_debug" value="false" />
+
+	<property name="application_dir" value="${basedir}/../.." />
+	<property name="viewer_dir" value="${application_dir}/Viewer" />
+	<property name="viewer_package_dir" value="${viewer_dir}/target/executable" />
+
+	<property name="shared_dir" value="${basedir}/../AndroidRemoteShared" />
+	<property name="shared_package_dir" value="${shared_dir}/target/package" />
+
+	<property name="src_dir" value="${basedir}/src" />
+	<property name="lib_dir" value="${basedir}/lib" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="server-uberjar.jar" />
+	<property name="batch_name" value="run.bat" />
+
+	<path id="classpath">
+		<fileset dir="${lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${shared_package_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${viewer_package_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean" description="Remove all generated files">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="dependencies">
+		<ant antfile="${viewer_dir}/build.xml" target="executable" dir="${viewer_dir}" inheritall="false">
+			<property name="javac_debug" value="${javac_debug}" />
+			<property name="perform_unit_tests" value="${perform_unit_tests}" />
+			<property name="user.dir" value="${viewer_dir}" />
+		</ant>
+		<ant antfile="${shared_dir}/build.xml" target="run" dir="${shared_dir}" inheritall="false">
+			<property name="javac_debug" value="${javac_debug}" />
+			<property name="perform_unit_tests" value="${perform_unit_tests}" />
+			<property name="user.dir" value="${shared_dir}" />
+		</ant>
+	</target>
+
+	<target name="build" depends="dependencies">
+		<mkdir dir="${build_dir}" />
+		<copy todir="${build_dir}">
+			<fileset dir="${src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="package" depends="build">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+
+			<zipgroupfileset dir="${lib_dir}">
+				<include name="**/*.jar" />
+				<patternset refid="manifest_exclude" />
+			</zipgroupfileset>
+			<zipgroupfileset dir="${shared_package_dir}">
+				<include name="**/*.jar" />
+				<patternset refid="manifest_exclude" />
+			</zipgroupfileset>
+			<zipgroupfileset dir="${viewer_package_dir}">
+				<include name="**/*.jar" />
+				<patternset refid="manifest_exclude" />
+			</zipgroupfileset>
+
+			<fileset dir="${build_dir}" />
+
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.androidremote.server.Executable" />
+			</manifest>
+		</jar>
+
+		<echo file="${package_dir}/${batch_name}">java -Dsun.java2d.noddraw=true -Xmx1024m -jar ./${jar_name}</echo>
+	</target>
+
+	<target name="run" depends="package" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="AndroidRemoteShared" basedir="." default="run">
+
+	<property name="javac_debug" value="true" />
+
+	<property name="src_dir" value="${basedir}/src" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="android-remote-shared.jar" />
+	<property name="copy_dir" value="${basedir}/../AndroidRemoteClient/libs" />
+
+	<property name="lib_dir" value="${basedir}/lib" />
+
+	<path id="classpath">
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="build">
+		<mkdir dir="${build_dir}" />
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="package" depends="build">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+			<fileset dir="${build_dir}" />
+		</jar>
+	</target>
+
+	<target name="copy" depends="package">
+		<copy file="${package_dir}/${jar_name}" todir="${copy_dir}" />
+	</target>
+
+	<target name="run" depends="copy" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="Animator" basedir="." default="run">
+
+	<property name="perform_unit_tests" value="true" />
+	<property name="javac_debug" value="false" />
+
+	<property name="application_name" value="Animator" />
+
+	<property name="src_dir" value="${basedir}/src/main/java" />
+	<property name="resources_dir" value="${basedir}/src/main/resources" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="animator.jar" />
+
+	<property name="test_src_dir" value="${basedir}/src/test/java" />
+	<property name="test_build_dir" value="${target_dir}/test-classes" />
+	<property name="test_results_dir" value="${target_dir}/test-results" />
+	<property name="test_reports_dir" value="${target_dir}/test-reports" />
+
+	<property name="executable_dir" value="${target_dir}/executable" />
+	<property name="executable_jar_name" value="animator-all-in-one.jar" />
+	<property name="executable_batch_name" value="run.bat" />
+
+	<property name="webstart_dir" value="${target_dir}/webstart" />
+	<property name="webstart_unsigned_dir" value="${webstart_dir}/unsigned" />
+	<property name="webstart_selfsigned_dir" value="${webstart_dir}/selfsigned" />
+	<property name="webstart_resources_jar_name" value="resources.jar" />
+
+	<!-- Keystore configuration -->
+	<property name="keystore_file" value="${basedir}/keystore" />
+	<property name="keystore_alias" value="selfsigned" />
+	<property name="keystore_password" value="password" />
+
+	<property name="common_dir" value="${basedir}/../Common" />
+	<property name="common_lib_dir" value="${common_dir}/lib" />
+	<property name="common_package_lib_dir" value="${common_lib_dir}/package" />
+	<property name="common_include_lib_dir" value="${common_lib_dir}/include" />
+	<property name="common_test_lib_dir" value="${common_lib_dir}/test" />
+	<property name="common_test_build_dir" value="${common_dir}/target/test-classes" />
+
+	<property name="common_build_script" value="${common_dir}/build.xml" />
+	<property name="common_package_dir" value="${common_dir}/target/package" />
+	<property name="common_jar_name" value="common.jar" />
+
+	<path id="classpath">
+		<fileset dir="${common_package_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${common_include_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<pathelement location="${common_package_dir}/${common_jar_name}" />
+	</path>
+
+	<path id="test_classpath">
+		<path refid="classpath" />
+		<fileset dir="${common_test_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<path path="${build_dir}" />
+		<path path="${common_test_build_dir}" />
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="package-common">
+		<ant antfile="${common_build_script}" target="run" dir="${common_dir}" inheritall="false">
+			<property name="javac_debug" value="${javac_debug}" />
+			<property name="perform_unit_tests" value="${perform_unit_tests}" />
+			<property name="user.dir" value="${common_dir}" />
+		</ant>
+	</target>
+
+	<target name="build" depends="package-common">
+		<mkdir dir="${build_dir}" />
+		<copy todir="${build_dir}">
+			<fileset dir="${resources_dir}" />
+		</copy>
+		<copy todir="${build_dir}">
+			<fileset dir="${src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="build-test" depends="build" if="${perform_unit_tests}">
+		<mkdir dir="${test_build_dir}" />
+		<copy todir="${test_build_dir}">
+			<fileset dir="${test_src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${test_build_dir}" classpathref="test_classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${test_src_dir}" />
+		</javac>
+	</target>
+
+	<target name="test" depends="build-test" if="${perform_unit_tests}">
+		<mkdir dir="${test_results_dir}" />
+		<mkdir dir="${test_reports_dir}" />
+		<junit printsummary="on" failureproperty="junit.failure">
+			<classpath>
+				<path refid="test_classpath" />
+				<path path="${test_build_dir}" />
+			</classpath>
+			<batchtest todir="${test_results_dir}">
+				<fileset dir="${test_build_dir}">
+					<include name="**/*Test.class" />
+				</fileset>
+				<formatter type="xml" />
+			</batchtest>
+		</junit>
+		<!--junitreport todir="${test_reports_dir}">
+			<fileset dir="${test_results_dir}" />
+			<report todir="${test_reports_dir}" />
+		</junitreport -->
+		<fail if="junit.failure" message="Unit test(s) failed. See reports!" />
+	</target>
+
+	<target name="package" depends="test">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.animator.application.Application" />
+				<attribute name="SplashScreen-Image" value="images/animator-splash-400x230.png" />
+				<attribute name="Application-Name" value="${application_name}" />
+				<attribute name="Codebase" value="*" />
+				<attribute name="Permissions" value="all-permissions" />
+			</manifest>
+			<fileset dir="${build_dir}" />
+		</jar>
+	</target>
+
+	<target name="unzip_package_natives">
+		<unzip dest="${executable_temp_dir}">
+			<fileset dir="${common_include_lib_dir}">
+				<include name="**/*natives*${osarch}*.jar" />
+			</fileset>
+			<patternset refid="manifest_exclude" />
+			<globmapper from="*" to="native/${osarch}/*" />
+		</unzip>
+	</target>
+
+	<target name="executable" depends="package">
+		<mkdir dir="${executable_dir}" />
+
+		<property name="executable_temp_dir" value="${executable_dir}/temp" />
+		<mkdir dir="${executable_temp_dir}" />
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="linux-amd64" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="linux-i586" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="macosx-universal" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="windows-amd64" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="windows-i586" />
+		</antcall>
+
+		<jar destfile="${executable_dir}/${executable_jar_name}">
+			<fileset dir="${build_dir}" />
+
+			<zipgroupfileset dir="${common_package_dir}">
+				<include name="${common_jar_name}" />
+			</zipgroupfileset>
+
+			<zipgroupfileset dir="${common_package_lib_dir}">
+				<include name="**/*.jar" />
+			</zipgroupfileset>
+			<zipgroupfileset dir="${common_include_lib_dir}">
+				<include name="**/*.jar" />
+				<exclude name="**/*natives*.jar" />
+			</zipgroupfileset>
+			<fileset dir="${common_package_lib_dir}" excludes="**/*.jar" />
+
+			<fileset dir="${executable_temp_dir}" />
+
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.animator.application.Executable" />
+				<attribute name="SplashScreen-Image" value="images/animator-splash-400x230.png" />
+			</manifest>
+		</jar>
+
+		<delete dir="${executable_temp_dir}" />
+
+		<echo file="${executable_dir}/${executable_batch_name}">java -Dsun.java2d.noddraw=true -Xmx1024m -jar ./${executable_jar_name}</echo>
+	</target>
+
+	<target name="webstart" depends="package">
+		<mkdir dir="${webstart_unsigned_dir}" />
+
+		<copy todir="${webstart_unsigned_dir}">
+			<fileset dir="${package_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="${common_package_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="${common_package_lib_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+		</copy>
+
+		<jar destfile="${webstart_unsigned_dir}/${webstart_resources_jar_name}">
+			<fileset dir="${common_package_lib_dir}">
+				<exclude name="**/*.jar" />
+				<exclude name="native/" />
+			</fileset>
+		</jar>
+
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-windows-i586.jar">
+			<fileset dir="${common_package_lib_dir}/native/windows-i586" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-windows-amd64.jar">
+			<fileset dir="${common_package_lib_dir}/native/windows-amd64" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-macosx-universal.jar">
+			<fileset dir="${common_package_lib_dir}/native/macosx-universal" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-linux-i586.jar">
+			<fileset dir="${common_package_lib_dir}/native/linux-i586" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-linux-amd64.jar">
+			<fileset dir="${common_package_lib_dir}/native/linux-amd64" />
+		</jar>
+	</target>
+
+	<target name="sign" depends="webstart">
+		<mkdir dir="${webstart_selfsigned_dir}" />
+
+		<signjar destDir="${webstart_selfsigned_dir}" keystore="${keystore_file}" alias="${keystore_alias}" storepass="${keystore_password}">
+			<path>
+				<fileset dir="${webstart_unsigned_dir}" includes="**/*.jar" />
+			</path>
+			<flattenmapper />
+		</signjar>
+	</target>
+
+	<target name="run" depends="executable, sign" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="Common" basedir="." default="run">
+
+	<property name="perform_unit_tests" value="true" />
+	<property name="javac_debug" value="false" />
+
+	<property name="src_dir" value="${basedir}/src/main/java" />
+	<property name="resources_dir" value="${basedir}/src/main/resources" />
+	<property name="test_src_dir" value="${basedir}/src/test/java" />
+	<property name="test_resources_dir" value="${basedir}/src/test/resources" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="test_build_dir" value="${target_dir}/test-classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="common.jar" />
+
+	<property name="lib_dir" value="${basedir}/lib" />
+	<property name="package_lib_dir" value="${lib_dir}/package" />
+	<property name="include_lib_dir" value="${lib_dir}/include" />
+	<property name="test_lib_dir" value="${lib_dir}/test" />
+
+	<property name="test_results_dir" value="${target_dir}/test-results" />
+	<property name="test_reports_dir" value="${target_dir}/test-reports" />
+
+	<path id="classpath">
+		<fileset dir="${package_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${include_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<path id="test_classpath">
+		<path refid="classpath" />
+		<fileset dir="${test_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<path path="${build_dir}" />
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="build">
+		<mkdir dir="${build_dir}" />
+		<copy todir="${build_dir}">
+			<fileset dir="${resources_dir}" />
+			<fileset dir="${src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="build-test" depends="build" if="${perform_unit_tests}">
+		<mkdir dir="${test_build_dir}" />
+		<copy todir="${test_build_dir}">
+			<fileset dir="${test_src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<copy todir="${test_build_dir}">
+			<fileset dir="${test_resources_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${test_build_dir}" classpathref="test_classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${test_src_dir}" />
+		</javac>
+	</target>
+
+	<target name="test" depends="build-test" if="${perform_unit_tests}">
+
+		<mkdir dir="${test_results_dir}" />
+		<mkdir dir="${test_reports_dir}" />
+		<junit printsummary="on" fork="true" forkmode="once" failureproperty="junit.failure" dir="${user.dir}">
+			<jvmarg value="-Duser.dir=${user.dir}" />
+			<classpath>
+				<path refid="test_classpath" />
+				<path path="${test_build_dir}" />
+			</classpath>
+			<batchtest todir="${test_results_dir}">
+				<fileset dir="${test_build_dir}">
+					<include name="**/*Test.class" />
+				</fileset>
+				<formatter type="xml" />
+			</batchtest>
+		</junit>
+		<!--<junitreport todir="${test_reports_dir}">
+			<fileset dir="${test_results_dir}" />
+			<report todir="${test_reports_dir}" />
+		</junitreport>-->
+		<fail if="junit.failure" message="Unit test(s) failed. See reports!" />
+	</target>
+
+	<target name="package" depends="test">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+			<fileset dir="${build_dir}" />
+		</jar>
+	</target>
+
+	<target name="run" depends="package" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="Tiler" basedir="." default="run">
+
+	<property name="javac_debug" value="true" />
+
+	<property name="src_dir" value="${basedir}/src/main/java" />
+	<property name="resources_dir" value="${basedir}/src/main/resources" />
+
+	<property name="lib_dir" value="${basedir}/lib" />
+	<property name="build_lib_dir" value="${lib_dir}/build" />
+	<property name="package_lib_dir" value="${lib_dir}/package" />
+	
+	<property name="gdal_dir" value="${basedir}/gdal" />
+	<property name="data_dir" value="${basedir}/gdal/data" />
+	<property name="mapnik_dir" value="${basedir}/mapnik" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="tiler.jar" />
+
+	<property name="executable_dir" value="${target_dir}/executable" />
+	<property name="executable_jar_name" value="tiler-all-in-one.jar" />
+	<property name="executable_gui_batch_name" value="gui.bat" />
+	<property name="executable_console_batch_name" value="console.bat" />
+	<property name="executable_ribbon_batch_name" value="ribbon.bat" />
+	<property name="executable_linesimplify_batch_name" value="linesimplify.bat" />
+	
+	<property name="splash_image_name" value="tiler-splash-400x230.png"/>
+
+	<path id="classpath">
+		<fileset dir="${build_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${package_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean" description="Remove all generated files">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="build" description="Compile the application source code">
+		<mkdir dir="${build_dir}" />
+		<copy todir="${build_dir}">
+			<fileset dir="${resources_dir}" />
+		</copy>
+		<copy todir="${build_dir}">
+			<fileset dir="${src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="package" depends="build" description="Create the tiler JAR file">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.tiler.application.Executable" />
+				<attribute name="SplashScreen-Image" value="images/${splash_image_name}" />
+			</manifest>
+			<fileset dir="${build_dir}" />
+		</jar>
+	</target>
+
+	<target name="executable" depends="package" description="Create the executable distros">
+		<mkdir dir="${executable_dir}" />
+
+		<antcall target="-create-platform-executable">
+			<param name="platform" value="windows-x86"/>
+		</antcall>
+		<antcall target="-create-platform-executable">
+			<param name="platform" value="windows-x64"/>
+		</antcall>
+	</target>
+
+	<!-- Private - Should only be invoked from the 'executable' target -->
+	<target name="-create-platform-executable" description="Create a platform-specific executable distro named in the 'platform' param">
+		<property name="target_platform_dir" value="${executable_dir}/tiler-${platform}"/>
+		<property name="gdal_platform_dir" value="${gdal_dir}/gdal-${platform}"/>
+		<property name="plugins_platform_dir" value="${gdal_platform_dir}/plugins"/>
+		
+		<jar destfile="${target_platform_dir}/${executable_jar_name}">
+			<fileset dir="${build_dir}" />
+
+			<zipgroupfileset dir="${package_lib_dir}">
+				<include name="**/*.jar" />
+				<patternset refid="manifest_exclude" />
+			</zipgroupfileset>
+			<zipgroupfileset dir="${gdal_platform_dir}">
+				<include name="**/*.jar" />
+				<patternset refid="manifest_exclude" />
+			</zipgroupfileset>
+
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.tiler.application.Executable" />
+				<attribute name="SplashScreen-Image" value="images/${splash_image_name}" />
+			</manifest>
+		</jar>
+		
+		<!-- Copy the splash image -->
+		<copy todir="${target_platform_dir}">
+			<fileset dir="${resources_dir}/images">
+				<include name="${splash_image_name}"/>
+			</fileset>
+		</copy>
+		
+		<!-- Copy the appropriate GDAL package -->
+		<copy todir="${target_platform_dir}/gdal">
+			<fileset dir="${gdal_platform_dir}">
+				<include name="**/*.dll" />
+			</fileset>
+		</copy>
+		<copy todir="${target_platform_dir}/gdal/data">
+			<fileset dir="${data_dir}" />
+		</copy>
+		
+		<!-- Copy mapnik package -->
+		<copy todir="${target_platform_dir}/mapnik">
+			<fileset dir="${mapnik_dir}" />
+		</copy>
+		<copy todir="${target_platform_dir}">
+			<fileset dir="${basedir}">
+				<include name="7za.exe" />
+			</fileset>
+		</copy>
+
+		<!-- Create the bat scripts -->
+		<echo file="${target_platform_dir}/${executable_gui_batch_name}">@echo off ${line.separator}SET PATH=.\gdal;%PATH% ${line.separator}java -Xmx1024m -cp ${executable_jar_name} -splash:${splash_image_name} -Djava.library.path=gdal au.gov.ga.worldwind.tiler.application.Executable %*</echo>
+		<echo file="${target_platform_dir}/${executable_console_batch_name}">@echo off ${line.separator}SET PATH=.\gdal;%PATH% ${line.separator}java -Xmx1024m -cp ${executable_jar_name} -Djava.library.path=gdal au.gov.ga.worldwind.tiler.application.Console %*</echo>
+		<echo file="${target_platform_dir}/${executable_ribbon_batch_name}">@echo off ${line.separator}SET PATH=.\gdal;%PATH% ${line.separator}java -Xmx1024m -cp ${executable_jar_name} -Djava.library.path=gdal au.gov.ga.worldwind.tiler.ribbon.RibbonTiler %*</echo>
+		<echo file="${target_platform_dir}/${executable_linesimplify_batch_name}">@echo off ${line.separator}SET PATH=.\gdal;%PATH% ${line.separator}java -Xmx1024m -cp ${executable_jar_name} -Djava.library.path=gdal au.gov.ga.worldwind.tiler.ribbon.LineSimplifier %*</echo>
+	</target>
+	
+	<target name="run" depends="executable" />
+
+</project>
+<?xml version="1.0" ?>
+
+<project name="Viewer" basedir="." default="run">
+
+	<property name="perform_unit_tests" value="true" />
+	<property name="javac_debug" value="false" />
+
+	<property name="application_name" value="3D Data Viewer" />
+
+	<property name="src_dir" value="${basedir}/src/main/java" />
+	<property name="resources_dir" value="${basedir}/src/main/resources" />
+
+	<property name="target_dir" value="${basedir}/target" />
+	<property name="build_dir" value="${target_dir}/classes" />
+	<property name="package_dir" value="${target_dir}/package" />
+	<property name="jar_name" value="viewer.jar" />
+
+	<property name="test_src_dir" value="${basedir}/src/test/java" />
+	<property name="test_build_dir" value="${target_dir}/test-classes" />
+	<property name="test_results_dir" value="${target_dir}/test-results" />
+	<property name="test_reports_dir" value="${target_dir}/test-reports" />
+
+	<property name="executable_dir" value="${target_dir}/executable" />
+	<property name="executable_jar_name" value="viewer-all-in-one.jar" />
+	<property name="executable_batch_name" value="run.bat" />
+
+	<property name="webstart_dir" value="${target_dir}/webstart" />
+	<property name="webstart_unsigned_dir" value="${webstart_dir}/unsigned" />
+	<property name="webstart_selfsigned_dir" value="${webstart_dir}/selfsigned" />
+	<property name="webstart_resources_jar_name" value="resources.jar" />
+
+	<!-- Keystore configuration -->
+	<property name="keystore_file" value="${basedir}/keystore" />
+	<property name="keystore_alias" value="selfsigned" />
+	<property name="keystore_password" value="password" />
+
+	<property name="common_dir" value="${basedir}/../Common" />
+	<property name="common_lib_dir" value="${common_dir}/lib" />
+	<property name="common_package_lib_dir" value="${common_lib_dir}/package" />
+	<property name="common_include_lib_dir" value="${common_lib_dir}/include" />
+	<property name="common_test_lib_dir" value="${common_lib_dir}/test" />
+	<property name="common_test_build_dir" value="${common_dir}/target/test-classes" />
+
+	<property name="common_build_script" value="${common_dir}/build.xml" />
+	<property name="common_package_dir" value="${common_dir}/target/package" />
+	<property name="common_jar_name" value="common.jar" />
+
+	<path id="classpath">
+		<fileset dir="${common_package_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="${common_include_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<pathelement location="${common_package_dir}/${common_jar_name}" />
+	</path>
+
+	<path id="test_classpath">
+		<path refid="classpath" />
+		<fileset dir="${common_test_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+		<path path="${build_dir}" />
+		<path path="${common_test_build_dir}" />
+	</path>
+
+	<patternset id="manifest_exclude">
+		<exclude name="META-INF/**" />
+	</patternset>
+
+	<target name="clean">
+		<delete dir="${target_dir}" />
+	</target>
+
+	<target name="package-common">
+		<ant antfile="${common_build_script}" target="run" dir="${common_dir}" inheritall="false">
+			<property name="javac_debug" value="${javac_debug}" />
+			<property name="perform_unit_tests" value="${perform_unit_tests}" />
+			<property name="user.dir" value="${common_dir}" />
+		</ant>
+	</target>
+
+	<target name="build" depends="package-common">
+		<mkdir dir="${build_dir}" />
+		<copy todir="${build_dir}">
+			<fileset dir="${resources_dir}" />
+		</copy>
+		<copy todir="${build_dir}">
+			<fileset dir="${src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${build_dir}" classpathref="classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${src_dir}" />
+		</javac>
+	</target>
+
+	<target name="build-test" depends="build" if="${perform_unit_tests}">
+		<mkdir dir="${test_build_dir}" />
+		<copy todir="${test_build_dir}">
+			<fileset dir="${test_src_dir}">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" destdir="${test_build_dir}" classpathref="test_classpath" listfiles="no" fork="true" debug="${javac_debug}" includeantruntime="no">
+			<src path="${test_src_dir}" />
+		</javac>
+	</target>
+
+	<target name="test" depends="build-test" if="${perform_unit_tests}">
+		<mkdir dir="${test_results_dir}" />
+		<mkdir dir="${test_reports_dir}" />
+		<junit printsummary="on" failureproperty="junit.failure">
+			<classpath>
+				<path refid="test_classpath" />
+				<path path="${test_build_dir}" />
+			</classpath>
+			<batchtest todir="${test_results_dir}">
+				<fileset dir="${test_build_dir}">
+					<include name="**/*Test.class" />
+				</fileset>
+				<formatter type="xml" />
+			</batchtest>
+		</junit>
+		<!--<junitreport todir="${test_reports_dir}">
+			<fileset dir="${test_results_dir}" />
+			<report todir="${test_reports_dir}" />
+		</junitreport>-->
+		<fail if="junit.failure" message="Unit test(s) failed. See reports!" />
+	</target>
+
+	<target name="package" depends="test">
+		<mkdir dir="${package_dir}" />
+		<jar destfile="${package_dir}/${jar_name}">
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.viewer.application.Application" />
+				<attribute name="SplashScreen-Image" value="images/viewer-splash-400x230.png" />
+				<attribute name="Application-Name" value="${application_name}" />
+				<attribute name="Codebase" value="*" />
+				<attribute name="Permissions" value="all-permissions" />
+			</manifest>
+			<fileset dir="${build_dir}" />
+		</jar>
+	</target>
+
+	<target name="unzip_package_natives">
+		<unzip dest="${executable_temp_dir}">
+			<fileset dir="${common_include_lib_dir}">
+				<include name="**/*natives*${osarch}*.jar" />
+			</fileset>
+			<patternset refid="manifest_exclude" />
+			<globmapper from="*" to="native/${osarch}/*" />
+		</unzip>
+	</target>
+
+	<target name="executable" depends="package">
+		<mkdir dir="${executable_dir}" />
+
+		<property name="executable_temp_dir" value="${executable_dir}/temp" />
+		<mkdir dir="${executable_temp_dir}" />
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="linux-amd64" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="linux-i586" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="macosx-universal" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="windows-amd64" />
+		</antcall>
+		<antcall target="unzip_package_natives">
+			<param name="osarch" value="windows-i586" />
+		</antcall>
+
+		<jar destfile="${executable_dir}/${executable_jar_name}">
+			<fileset dir="${build_dir}" />
+
+			<zipgroupfileset dir="${common_package_dir}">
+				<include name="${common_jar_name}" />
+			</zipgroupfileset>
+
+			<zipgroupfileset dir="${common_package_lib_dir}">
+				<include name="**/*.jar" />
+			</zipgroupfileset>
+			<zipgroupfileset dir="${common_include_lib_dir}">
+				<include name="**/*.jar" />
+				<exclude name="**/*natives*.jar" />
+			</zipgroupfileset>
+			<fileset dir="${common_package_lib_dir}" excludes="**/*.jar" />
+
+			<fileset dir="${executable_temp_dir}" />
+
+			<manifest>
+				<attribute name="Main-Class" value="au.gov.ga.worldwind.viewer.application.Executable" />
+				<attribute name="SplashScreen-Image" value="images/viewer-splash-400x230.png" />
+			</manifest>
+		</jar>
+
+		<delete dir="${executable_temp_dir}" />
+
+		<echo file="${executable_dir}/${executable_batch_name}">java -Dsun.java2d.noddraw=true -Xmx1024m -jar ./${executable_jar_name}</echo>
+	</target>
+
+	<target name="webstart" depends="package">
+		<mkdir dir="${webstart_unsigned_dir}" />
+
+		<copy todir="${webstart_unsigned_dir}">
+			<fileset dir="${package_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="${common_package_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="${common_package_lib_dir}">
+				<include name="**/*.jar" />
+			</fileset>
+		</copy>
+
+		<jar destfile="${webstart_unsigned_dir}/${webstart_resources_jar_name}">
+			<fileset dir="${common_package_lib_dir}">
+				<exclude name="**/*.jar" />
+				<exclude name="native/" />
+			</fileset>
+		</jar>
+
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-windows-i586.jar">
+			<fileset dir="${common_package_lib_dir}/native/windows-i586" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-windows-amd64.jar">
+			<fileset dir="${common_package_lib_dir}/native/windows-amd64" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-macosx-universal.jar">
+			<fileset dir="${common_package_lib_dir}/native/macosx-universal" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-linux-i586.jar">
+			<fileset dir="${common_package_lib_dir}/native/linux-i586" />
+		</jar>
+		<jar destfile="${webstart_unsigned_dir}/worldwind-natives-linux-amd64.jar">
+			<fileset dir="${common_package_lib_dir}/native/linux-amd64" />
+		</jar>
+	</target>
+
+	<target name="sign" depends="webstart">
+		<mkdir dir="${webstart_selfsigned_dir}" />
+
+		<signjar destDir="${webstart_selfsigned_dir}" keystore="${keystore_file}" alias="${keystore_alias}" storepass="${keystore_password}">
+			<path>
+				<fileset dir="${webstart_unsigned_dir}" includes="**/*.jar" />
+			</path>
+			<flattenmapper />
+		</signjar>
+	</target>
+
+	<target name="run" depends="executable, sign" />
+
+</project>

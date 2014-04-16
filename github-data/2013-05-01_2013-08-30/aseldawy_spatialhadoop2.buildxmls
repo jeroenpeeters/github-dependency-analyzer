@@ -1,0 +1,178 @@
+<project name="SpatialHadoop" default="compile" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+  <description>Compiles SpatialHadoop and builds packages to be installed on an existing Hadoop cluster</description>
+  <!-- set global properties for this build -->
+  <property name="src" location="src"/>
+	<property name="res" location="res"/>
+  <property name="doc" location="doc"/>
+  <property name="build" location="bin"/>
+  <property name="dist"  location="dist"/>
+  <property name="dist2"  location="dist2"/>
+  <property name="version" value="2.1"/>
+  
+  <path id="hdflib.path.ref">
+    <fileset dir="lib/hdflib" includes="*.jar"/>
+  </path>
+
+	<path id="lib.path.ref">
+    <fileset dir="lib" includes="*.jar"/>
+  </path>
+  
+  <target name="resolve" description="--> retrieve dependencies with ivy">
+    <ivy:retrieve />
+  </target>
+  
+  <target name="init" depends="resolve">
+    <!-- Create the time stamp -->
+    <tstamp/>
+    <!-- Create the build directory structure used by compile -->
+    <mkdir dir="${build}"/>
+  </target>
+  
+  <target name="compile" depends="init"
+        description="compile the source " >
+    <!-- Compile the java code from ${src} into ${build} -->
+    <javac srcdir="${src}" destdir="${build}"
+    	  classpath="${toString:hdflib.path.ref}:${toString:lib.path.ref}"
+    	  target="1.6" source="1.6" debug="true" debuglevel="lines,vars,source"/>
+    <copy todir="${build}">
+    	<fileset dir="${res}">
+    		<include name="spatial-default.xml"/>
+    		<include name="zoom_view.html"/>
+        <include name="gistic_logo.png"/>
+        <include name="gistic_logo_license.txt"/>
+    	</fileset>
+  	</copy>
+  </target>
+	
+  <target name="doc" depends="init"
+      description="Generates JavaDoc for the source code">
+    <mkdir dir="${doc}"/>
+    <javadoc sourcepath="${src}" destdir="${doc}"/>
+  </target>
+  
+  <target name="dist" depends="compile"
+        description="generate the distribution" >
+    <!-- Create the distribution directory -->
+    <mkdir dir="${dist}"/>
+
+    <!-- Put everything in ${build} into the spatialhadoop-${version}.jar file -->
+    <jar jarfile="${dist}/spatialhadoop-${version}.jar" basedir="${build}">
+      <manifest>
+        <attribute name="Manifest-Version" value="1.0"/>
+        <attribute name="Main-Class" value="edu.umn.cs.spatialHadoop.operations.Main"/>
+      </manifest>
+  	</jar>
+
+  	<!-- For backward compatibility, provide a jar that contains just the main class-->
+    <jar jarfile="${dist}/spatialhadoop-main.jar">
+    	<fileset dir="${build}" includes="edu/umn/cs/spatialHadoop/operations/Main.class"/>
+    	<manifest>
+        <attribute name="Manifest-Version" value="1.0"/>
+        <attribute name="Main-Class" value="edu.umn.cs.spatialHadoop.operations.Main"/>
+    	</manifest>
+  	</jar>
+  </target>
+
+  <target name="package" depends="dist"
+      description="create a package files for the distribution">
+    <!-- Create the package directory -->
+    <mkdir dir="${dist}/package"/>
+    
+    <!-- Build the tar file -->
+    <tar destfile="${dist}/package/spatialhadoop-${version}.tar.gz"
+         compression="gzip">
+      <tarfileset dir=".">
+        <include name="README.md"/>
+        <include name="LICENSE.txt"/>
+      </tarfileset>
+    	
+    	<tarfileset dir="${res}" filemode="755">
+        <include name="bin/shadoop"/>
+      </tarfileset>
+      <tarfileset dir="${res}">
+        <include name="webapps/**"/>
+    		<include name="conf/spatial-site.xml"/>
+    	</tarfileset>
+      
+    	<tarfileset dir="lib" prefix="lib/">
+        <include name="esri-geometry-api-*.jar"/>
+        <exclude name="*sources.jar"/>
+        <exclude name="*javadoc.jar"/>
+        <include name="jts-*.jar"/>
+      </tarfileset>
+
+      <tarfileset dir="${dist}" prefix="lib/">
+        <include name="spatialhadoop-${version}.jar"/>
+      </tarfileset>
+
+      <tarfileset dir="${dist}">
+        <include name="spatialhadoop-main.jar"/>
+      </tarfileset>
+
+    	<tarfileset dir="lib/hdflib" prefix="lib/"/>
+    </tar>
+  </target>
+
+	<target name="install" depends="package"
+	    description="Install SpatialHadoop on an existing Hadoop installation">
+	  <!-- Extract the constructed package file (tar) in the destination directory -->
+		<untar src="${dist}/package/spatialhadoop-${version}.tar.gz"
+           dest="${hadoop.dir}" compression="gzip"/>
+  </target>
+
+	<!-- Build targets for Hadoop 2 -->
+
+	<target name="package2" depends="dist">
+    <!-- Build the tar file -->
+    <tar destfile="${dist}/package/spatialhadoop-${version}-2.tar.gz"
+         compression="gzip">
+      <tarfileset dir=".">
+        <include name="README.md"/>
+        <include name="LICENSE.txt"/>
+      </tarfileset>
+      
+      <tarfileset dir="${res}" filemode="755">
+        <include name="bin/shadoop"/>
+      </tarfileset>
+    	
+      <tarfileset dir="${res}" prefix="etc/hadoop">
+        <include name="conf/spatial-site.xml"/>
+      </tarfileset>    	
+    	
+      <tarfileset dir="${res}" prefix="hadoop/hdfs/webapps/hdfs">
+        <include name="webapps/**"/>
+      </tarfileset>
+      
+      <tarfileset dir="lib" prefix="share/hadoop/common/lib/">
+        <include name="esri-geometry-api-*.jar"/>
+        <exclude name="*sources.jar"/>
+        <exclude name="*javadoc.jar"/>
+        <include name="jts-*.jar"/>
+      </tarfileset>
+
+      <tarfileset dir="${dist}" prefix="share/hadoop/common/lib/">
+        <include name="spatialhadoop-${version}.jar"/>
+      </tarfileset>
+
+      <tarfileset dir="${dist}">
+        <include name="spatialhadoop-main.jar"/>
+      </tarfileset>
+
+      <tarfileset dir="lib/hdflib" prefix="share/hadoop/common/lib/"/>
+    </tar>
+	</target>
+
+  <target name="install2" depends="package2"
+    description="Install SpatialHadoop on an existing Hadoop 2 installation">
+    <!-- Extract the constructed package file (tar) in the destination directory -->
+    <untar src="${dist2}/package/spatialhadoop-${version}-2.tar.gz"
+           dest="${hadoop2.dir}" compression="gzip"/>
+  </target>
+
+	<target name="clean" description="clean up" >
+    <!-- Delete the ${build} and ${dist} directory trees -->
+    <delete dir="${build}"/>
+    <delete dir="${dist}"/>
+    <delete dir="${dist2}"/>
+  </target>
+</project>

@@ -1,0 +1,149 @@
+buildscript {
+    repositories {
+        maven { url 'http://repo.springsource.org/plugins-release' }
+    }
+    dependencies {
+        classpath 'org.springframework.build.gradle:propdeps-plugin:0.0.5'
+    }
+}
+
+apply plugin: 'eclipse'
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'propdeps'
+apply plugin: 'propdeps-eclipse'
+apply plugin: 'propdeps-idea'
+apply plugin: 'propdeps-maven'
+apply plugin: 'signing'
+
+group = 'com.github.pukkaone'
+
+sourceCompatibility = 1.6
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    provided 'javax.el:el-api:2.2'
+    provided 'javax.servlet:servlet-api:2.5'
+    provided 'javax.servlet.jsp:jsp-api:2.2'
+    testCompile 'junit:junit:4.11'
+}
+
+// Gets version from tag.
+def readVersion() {
+    def output = new ByteArrayOutputStream()
+    def result = exec {
+        commandLine = ['git', 'describe']
+        standardOutput = output
+        ignoreExitValue = true
+    }
+    def version = (result.getExitValue() == 0) ?
+            output.toString().trim() : 'UNKNOWN'
+    println "Version ${version}"
+    return version
+}
+
+def assignVersion() {
+    project.version = readVersion()
+}
+
+def allProcessResourcesTasks() {
+    sourceSets*.processResourcesTaskName.collect {
+        tasks[it]
+    }
+}
+
+afterEvaluate { project ->
+    assignVersion()
+
+    jar {
+        manifest {
+            attributes('Implementation-Version': project.version)
+        }
+    }
+
+    configure(allProcessResourcesTasks()) {
+        filter(
+                org.apache.tools.ant.filters.ReplaceTokens,
+                tokens: [WAE_VERSION: project.version])
+    }
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: 'https://oss.sonatype.org/service/local/staging/deploy/maven2/') {
+                authentication(userName: sonatypeUsername, password: sonatypePassword)
+            }
+
+            pom.project {
+                name 'webappenhance'
+                packaging 'jar'
+                description 'Java web application enhancements library'
+                url 'https://github.com/pukkaone/webappenhance'
+
+                scm {
+                    connection 'scm:git:git@github.com:pukkaone/webappenhance.git'
+                    developerConnection 'scm:git:git@github.com:pukkaone/webappenhance.git'
+                    url 'https://github.com/pukkaone/webappenhance'
+                }
+
+                licenses {
+                    license {
+                        name 'The BSD 2-Clause License'
+                        url 'http://opensource.org/licenses/BSD-2-Clause'
+                        distribution 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'pukkaone'
+                        name 'Chin Huang'
+                    }
+                }
+            }
+        }
+    }
+}
+
+import org.gradle.plugins.ide.eclipse.model.SourceFolder
+
+eclipse.classpath.file {
+    whenMerged { classpath ->
+        classpath.entries.findAll {
+            it instanceof SourceFolder &&
+            it.path.startsWith('src/main/')
+        }*.output = 'build/classes/main'
+
+        classpath.entries.findAll {
+            it instanceof SourceFolder &&
+            it.path.startsWith('src/test/')
+        }*.output = 'build/classes/test'
+    }
+}

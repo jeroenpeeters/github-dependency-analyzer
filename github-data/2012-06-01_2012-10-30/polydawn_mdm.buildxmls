@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE ant-project>
+<project name="mdm" basedir="." default="dist">
+	<description>
+  Modern Dependancy Management automates the organization of a project and the 
+  libraries it depends on with clever git submodules, giving you a project
+  structure that is:
+   - strongly versioned and guaranteed repeatable builds!
+   - checking out a project gives you exactly everything you need to do a build!
+   - your repository doesn't bloat over time and doing a fresh clone ships you 
+     the bare minimum number of bytes that you need!
+	</description>
+	<property name="app" value="mdm"/>
+
+	<property name="exus.build.java.version.source" value="1.6"/>
+	<property name="exus.build.java.version.target" value="1.6"/>
+
+	<import file="lib/exus-build/build-exultant.xml"/>
+	<import file="lib/exus-build/build-exultant-java.xml"/>
+
+
+	<target name="init" depends="exusInit">
+	</target>
+
+
+	<path id="mdm.path.deps.main" cache="true">
+		<pathelement location="${lib}/jgit/org.eclipse.jgit.jar"/>
+		<pathelement location="${lib}/ahslib/ahslib-core.jar"/>
+		<pathelement location="${lib}/argparse4j/argparse4j.jar"/>
+		<pathelement location="${lib}/jsch/jsch.jar"/>
+	</path>
+	<path id="mdm.path.main">
+		<path refid="mdm.path.deps.main" />
+		<pathelement location="${target.javac}/main" />
+	</path>
+	<path id="mdm.path.deps.test">
+		<path refid="mdm.path.main" />
+		<pathelement location="${lib}/junit/junit.jar"/>
+		<pathelement location="${target.javac}/test-fixtures" />
+	</path>
+	<path id="mdm.path.test">
+		<path refid="mdm.path.deps.test" />
+		<pathelement location="${target.javac}/test-unit" />
+		<pathelement location="${target.javac}/test-integration" />
+	</path>
+
+
+	<target name="compile" depends="init" description="compile the source">
+		<exusJavac
+			classes="net/polydawn/${app}/Mdm.java"
+			depends="${toString:mdm.path.deps.main}"
+		/>
+	</target>
+
+
+	<target name="dist"
+		depends="compile"
+		description="pack distributable artifacts">
+		<exusPack destfile="${dist}/${app}.jar">
+			<manifest>
+				<attribute name="Main-Class" value="net.polydawn.${app}.Mdm"/>
+			</manifest>
+			<fileset file="${target.javac}/main/**"/>
+			<zipfileset src="${lib}/jgit/org.eclipse.jgit.jar" includes="**/*.class org/**/*.properties"/>
+			<zipfileset src="${lib}/ahslib/ahslib-core.jar" includes="**/*.class"/>
+			<zipfileset src="${lib}/argparse4j/argparse4j.jar" includes="**/*.class"/>
+			<zipfileset src="${lib}/jsch/jsch.jar" includes="**/*.class"/>
+		</exusPack>
+		<chmod file="${dist}/${app}.jar" perm="755"/>
+		<concat destfile="${dist}/${app}" encoding="UTF-8">
+			<concat>
+				#!/bin/bash
+				DIR="$(dirname "${BASH_SOURCE[0]}")"
+				java -jar "$DIR"/mdm.jar "$@"
+			</concat>
+			<filterchain>
+				<deletecharacters chars="\t"/>
+				<headfilter lines="-1" skip="1"/>
+			</filterchain>
+		</concat>
+		<chmod file="${dist}/${app}"     perm="755"/>
+	</target>
+
+
+	<target name="dist-packed" depends="dist"
+		description="minify distributable artifact to contain only needed classes">
+		<move file="${dist}/${app}.jar" tofile="${dist}/${app}-loose.jar"/>
+		<taskdef resource="proguard/ant/task.properties"
+			 classpath="lib/proguard/proguard.jar" />
+		<proguard>
+			-libraryjars ${java.home}/lib/rt.jar
+			-injars      ${dist}/${app}-loose.jar
+			-outjars     ${dist}/${app}.jar
+			
+			-dontoptimize
+			-dontobfuscate
+			-dontwarn
+			
+			-keepclasseswithmembers public class * {
+				public static void main(java.lang.String[]);
+			}
+			
+			-keepclassmembers enum * {
+				public static **[] values();
+				public static ** valueOf(java.lang.String);
+			}
+		</proguard>
+		<delete file="${dist}/${app}-loose.jar"/>
+		<chmod file="${dist}/${app}.jar" perm="755"/>
+	</target>
+
+
+	<target name="clean" description="clean up">
+		<delete dir="${target}"/>
+	</target>
+
+
+	<target name="run-mdma"
+		depends="dist-packed"
+		description="runs the 'mdma' acceptance test script"
+		>
+		<!-- actually, just running this in a shell can be nicer since then you don't have ant dicking up your output buffering in strange ways:
+			ant clean dist && export MDM=$(pwd)/dist/mdm MDMA=$(pwd)/mdma.sh && ( cd /tmp/ ;  rm -rf mdm-demo/ ; $MDMA -t )
+		-->
+		<delete dir="mdm-demo" />
+		<exec executable="mdma.sh" failonerror="true">
+			<env key="MDM" value="${basedir}/${dist}/${app}" />
+			<arg value="-t" />
+		</exec>
+	</target>
+
+
+	<target name="compile-test" depends="compile">
+		<exusJavac
+			tree="test-fixtures"
+			depends="${toString:mdm.path.deps.test}"
+		/>
+		<exusJavac
+			tree="test-unit"
+			depends="${toString:mdm.path.deps.test}"
+		/>
+		<exusJavac
+			tree="test-integration"
+			depends="${toString:mdm.path.deps.test}"
+		/>
+	</target>
+
+
+	<target name="run-test"
+		depends="compile, compile-test"
+		description="runs junit tests"
+		>
+		<property name="mdm.test.dir" value="${java.io.tmpdir}/mdm-test"/>
+		<mkdir dir="${mdm.test.dir}"/>
+		<property name="keep" value="false"/>
+		<junit printsummary="off" haltonfailure="yes" dir="${mdm.test.dir}" newenvironment="true">
+			<sysproperty key="keep" value="${keep}"/>
+			<formatter type="plain" usefile="false" />
+			<classpath refid="mdm.path.test"/>
+			<batchtest fork="yes">
+				<fileset dir="${target.javac}/test-unit">
+					<include name="**/*Test*.class"/>
+				</fileset>
+				<fileset dir="${target.javac}/test-integration">
+					<include name="**/*Test*.class"/>
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+
+	<target name="release" depends="clean, dist-packed">
+		<exec executable="${dist}/mdm">
+			<arg value="release" />
+			<arg value="--version=${version}" />
+			<arg value="--files=${dist}" />
+		</exec>
+	</target>
+</project>

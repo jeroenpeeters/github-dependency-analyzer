@@ -1,0 +1,113 @@
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'idea'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+configurations {
+    source {
+        extendsFrom archives
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile gradleApi()
+    compile localGroovy()
+
+    def CUCUMBER_VERSION = '1.1.5'
+    compile 'info.cukes:cucumber-core:' + CUCUMBER_VERSION
+    testCompile 'junit:junit:4.11'
+    testCompile 'info.cukes:cucumber-junit:' + CUCUMBER_VERSION
+    testCompile 'info.cukes:cucumber-java:' + CUCUMBER_VERSION
+    testCompile 'commons-io:commons-io:2.4'
+    testCompile 'org.hamcrest:hamcrest-all:1.3'
+}
+
+task jarSources(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+task jarJavadoc(type: Jar, dependsOn: 'javadoc') {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives jarSources
+    archives jarJavadoc
+}
+
+signing {
+    sign configurations.archives
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: project.version.contains('-SNAPSHOT') ? "https://oss.sonatype.org/content/repositories/snapshots" : "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: project.properties['sonatypeUsername'], password: project.properties['sonatypePassword'])
+            }
+
+            pom.project {
+                name 'gradle-cucumber-plugin'
+                packaging 'jar'
+                description 'A Gradle plugin to run Cucumber tests'
+                url 'https://github.com/samueltbrown/gradle-cucumber-plugin/'
+
+                scm {
+                    url 'scm:git@github.com:samueltbrown/gradle-cucumber-plugin.git'
+                    connection 'scm:git@github.com:samueltbrown/gradle-cucumber-plugin.git'
+                    developerConnection 'scm:git@github.com:samueltbrown/gradle-cucumber-plugin.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The MIT License'
+                        url 'https://raw.github.com/samueltbrown/gradle-cucumber-plugin/master/LICENSE'
+                        distribution 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'samueltbrown'
+                        name 'Samuel Brown'
+                    }
+                    developer {
+                        id 'lucas1000001'
+                        name 'Matthew Lucas'
+                    }
+                    developer {
+                        id 'viphe'
+                        name 'Philippe Vosges'
+                    }
+                    developer {
+                        id 'pbellchambers'
+                        name 'Paul Bellchambers'
+                    }
+                    developer {
+                        id 'klunk'
+                        name 'Simon Wiehe'
+                    }
+                }
+            }
+        }
+    }
+}
+
+task createWrapper(type: Wrapper) {
+    gradleVersion = '1.10'
+}
+
+task printMainRuntimeClasspath {
+    description 'Prints the runtime classpath of the built artifact (used by Cucumber acceptance tests)'
+} << {
+    sourceSets.main.runtimeClasspath.each { println it }
+}

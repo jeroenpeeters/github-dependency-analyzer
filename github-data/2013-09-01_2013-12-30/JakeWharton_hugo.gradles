@@ -1,0 +1,247 @@
+allprojects {
+  buildscript {
+    repositories {
+      mavenCentral()
+    }
+  }
+
+  dependencies {
+    repositories {
+      mavenCentral()
+    }
+  }
+
+  group = GROUP
+  version = VERSION_NAME
+
+  apply plugin: 'maven'
+}
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.11'
+}
+
+task cleanExample(type: Exec) {
+  executable = 'gradle'
+  workingDir = project.file('hugo-example')
+  args = [ 'clean' ]
+}
+
+task assembleExample(type: Exec) {
+  executable = 'gradle'
+  workingDir = project.file('hugo-example')
+  args = [ 'assemble' ]
+}
+
+task installExample(type: Exec) {
+  executable = 'gradle'
+  workingDir = project.file('hugo-example')
+  args = [ 'installDebug' ]
+}
+buildscript {
+  dependencies {
+    classpath 'org.gradle.api.plugins:gradle-nexus-plugin:0.2'
+  }
+}
+
+apply plugin: 'java'
+apply plugin: 'nexus'
+
+targetCompatibility = JavaVersion.VERSION_1_6
+sourceCompatibility = JavaVersion.VERSION_1_6
+
+modifyPom {
+  project {
+    name "Hugo Annotations"
+    description POM_DESCRIPTION
+    url POM_URL
+
+    scm {
+      url POM_SCM_URL
+      connection POM_SCM_CONNECTION
+      developerConnection POM_SCM_DEV_CONNECTION
+    }
+
+    licenses {
+      license {
+        name POM_LICENCE_NAME
+        url POM_LICENCE_URL
+        distribution POM_LICENCE_DIST
+      }
+    }
+
+    developers {
+      developer {
+        id POM_DEVELOPER_ID
+        name POM_DEVELOPER_NAME
+      }
+    }
+  }
+}
+buildscript {
+  dependencies {
+    repositories {
+      mavenCentral()
+
+      // NOTE: This is only needed when developing the plugin!
+      mavenLocal()
+    }
+
+    classpath 'com.android.tools.build:gradle:0.9.+'
+    classpath 'com.jakewharton.hugo:hugo-plugin:1.0.2-SNAPSHOT'
+  }
+}
+
+dependencies {
+  repositories {
+    mavenCentral()
+
+    // NOTE: This is only needed when developing the plugin!
+    mavenLocal()
+  }
+}
+
+apply plugin: 'android'
+apply plugin: 'hugo'
+
+android {
+  compileSdkVersion 19
+  buildToolsVersion '19.0.3'
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_7
+    targetCompatibility JavaVersion.VERSION_1_7
+  }
+
+  buildTypes {
+    dev {
+      packageNameSuffix '.dev'
+    }
+  }
+}
+buildscript {
+  dependencies {
+    classpath 'org.gradle.api.plugins:gradle-nexus-plugin:0.2'
+  }
+}
+
+apply plugin: 'groovy'
+apply plugin: 'nexus'
+
+dependencies {
+  compile gradleApi()
+  compile localGroovy()
+  compile 'com.android.tools.build:gradle:0.7.+'
+  compile 'org.aspectj:aspectjtools:1.7.4'
+  compile 'org.aspectj:aspectjrt:1.7.4'
+}
+
+modifyPom {
+  project {
+    name "Hugo Plugin"
+    description POM_DESCRIPTION
+    url POM_URL
+
+    scm {
+      url POM_SCM_URL
+      connection POM_SCM_CONNECTION
+      developerConnection POM_SCM_DEV_CONNECTION
+    }
+
+    licenses {
+      license {
+        name POM_LICENCE_NAME
+        url POM_LICENCE_URL
+        distribution POM_LICENCE_DIST
+      }
+    }
+
+    developers {
+      developer {
+        id POM_DEVELOPER_ID
+        name POM_DEVELOPER_NAME
+      }
+    }
+  }
+}
+import com.android.build.gradle.LibraryPlugin
+import org.aspectj.bridge.IMessage
+import org.aspectj.bridge.MessageHandler
+import org.aspectj.tools.ajc.Main
+
+buildscript {
+  dependencies {
+    classpath 'com.android.tools.build:gradle:0.9.+'
+    classpath 'org.aspectj:aspectjtools:1.7.4'
+  }
+}
+
+apply plugin: 'android-library'
+
+dependencies {
+  compile 'org.aspectj:aspectjrt:1.7.4'
+  compile project(':hugo-annotations')
+}
+
+android {
+  compileSdkVersion 19
+  buildToolsVersion '19.0.3'
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_7
+    targetCompatibility JavaVersion.VERSION_1_7
+  }
+}
+
+android.libraryVariants.all { variant ->
+  LibraryPlugin plugin = project.plugins.getPlugin(LibraryPlugin)
+  JavaCompile javaCompile = variant.javaCompile
+  javaCompile.doLast {
+    String[] args = [
+        "-showWeaveInfo",
+        "-1.5",
+        "-inpath", javaCompile.destinationDir.toString(),
+        "-aspectpath", javaCompile.classpath.asPath,
+        "-d", javaCompile.destinationDir.toString(),
+        "-classpath", javaCompile.classpath.asPath,
+        "-bootclasspath", plugin.runtimeJarList.join(File.pathSeparator)
+    ]
+
+    MessageHandler handler = new MessageHandler(true);
+    new Main().run(args, handler)
+
+    def log = project.logger
+    for (IMessage message : handler.getMessages(null, true)) {
+      switch (message.getKind()) {
+        case IMessage.ABORT:
+        case IMessage.ERROR:
+        case IMessage.FAIL:
+          log.error message.message, message.thrown
+          break;
+        case IMessage.WARNING:
+        case IMessage.INFO:
+          log.info message.message, message.thrown
+          break;
+        case IMessage.DEBUG:
+          log.debug message.message, message.thrown
+          break;
+      }
+    }
+  }
+}
+
+// Use Maven to install the aar into our local maven repo. Quick and easy (and dirty).
+task install(type: Exec, dependsOn: assemble) {
+  // TODO get aar path dynamically when i'm not being lazy
+  executable = 'mvn'
+  args = [
+      "install:install-file",
+      "-DgroupId=com.jakewharton.hugo",
+      "-DartifactId=hugo-runtime",
+      "-Dversion=${version}",
+      "-Dpackaging=aar",
+      "-Dfile=build/libs/hugo-runtime-${version}.aar"
+  ]
+}
+
+apply from: 'https://raw.github.com/chrisbanes/gradle-mvn-push/master/gradle-mvn-push.gradle'

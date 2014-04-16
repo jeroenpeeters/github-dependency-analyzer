@@ -1,0 +1,157 @@
+<?xml version="1.0"?>
+<!-- build file for MIT Kerberos Java GSS-API bindings" -->
+<project name="kerberos-java-gssapi" default="build" basedir=".">
+
+    <!-- default value useful for dev environment-->
+    <property name="lib.dir" value="lib/"/>
+    <property name="src.dir" value="src/java/"/>
+    <property name="build.dir" value="build"/>
+    <property name="examples.dir" value="examples/"/>
+    <property name="examples.build.dir" value="examples/build"/>
+    <property name="swiggen.dir" value="src/java/edu/mit/jgss/swig"/>
+    <property name="swignative.dir" value="native"/>
+    <property name="test.dir" value="src/test/"/>
+    <property name="test.build.dir" value="build/test"/>
+
+    <path id="classpath">
+      <fileset dir="${lib.dir}" includes="*.jar">
+        <include name="kerberos-java-gssapi.jar"/>
+      </fileset>
+      <fileset dir="${test.dir}" includes="*.jar">
+        <include name="junit-4.10.jar"/>
+      </fileset>
+      <fileset dir="/usr/share/java/" includes="ant-junit.jar" />
+    </path>
+
+    <target name="init" depends="clean, default-javac-flags">
+      <mkdir dir="${build.dir}"/>
+      <mkdir dir="${lib.dir}"/>
+      <mkdir dir="${examples.build.dir}"/>
+      <mkdir dir="${test.build.dir}"/>
+    </target>
+
+    <target name="clean">
+      <delete dir="${test.build.dir}"/>
+      <delete dir="${build.dir}"/>
+      <delete dir="${lib.dir}"/>
+      <delete dir="${examples.build.dir}"/>
+      <delete>
+        <fileset dir="." includes="TEST-*" />
+      </delete>
+    </target>
+    
+    <target name="swig">
+        <mkdir dir="${swiggen.dir}" />
+
+        <exec
+            executable="swig"
+            failonerror="true" >
+            
+            <arg value="-java" />
+
+            <arg value="-package" />
+
+            <arg value="edu.mit.jgss.swig" />
+
+            <arg value="-outdir" />
+
+            <arg value="${swiggen.dir}" />
+
+            <arg value="-o" />
+
+            <arg value="./native/gsswrapper_wrap.c" />
+
+            <arg value="./gsswrapper.i" />
+        </exec>
+        
+        <echo message="Wrapper generated."/>
+
+    </target>
+
+    <target name="cleanswig">
+      <delete>
+        <fileset dir="${swiggen.dir}" includes="*.java"/>
+        <fileset dir="${swignative.dir}" includes="gsswrapper_wrap.o,gsswrapper_wrap.c,libgsswrapper.so,libgsswrapper.dylib"/>
+      </delete>
+    </target>
+
+    <target name="build" depends="init, swig, compile, jar, examples, test"/>
+
+    <target name="compile">
+      <javac
+       srcdir="${src.dir}"
+       destdir="${build.dir}"
+       debug="${java.debug}"
+       debuglevel="${java.debuglevel}"
+       deprecation="${java.deprecation}"
+       optimize="${java.optimize}"
+       source="${java.source}"
+       target="${java.target}"
+       classpathref="classpath"
+       includeantruntime="false" />
+    </target>
+
+    <target name="default-javac-flags"
+            description="Set the javac flags that will produce a debug jar with no compiler optimisation and all debug symbols" >
+      <property name="java.debug" value="true"/>
+      <property name="java.debuglevel" value="source,lines,vars"/>
+      <property name="java.deprecation" value="false"/>
+      <property name="java.optimize" value="false"/>
+      <property name="java.source" value="1.5"/>
+      <property name="java.target" value="1.5"/>
+    </target>
+
+    <target name="jar">
+      <jar jarfile="${lib.dir}/kerberos-java-gssapi.jar" basedir="${build.dir}">
+      </jar>
+    </target>
+
+    <target name="examples">
+      <javac
+       srcdir="${examples.dir}"
+       destdir="${examples.build.dir}"
+       debug="${java.debug}"
+       debuglevel="${java.debuglevel}"
+       deprecation="${java.deprecation}"
+       optimize="${java.optimize}"
+       source="${java.source}"
+       target="${java.target}"
+       classpathref="classpath"
+       includeantruntime="false" />
+    </target>
+
+    <target name="build-test">
+      <javac
+       srcdir="${test.dir}"
+       destdir="${test.build.dir}"
+       debug="${java.debug}"
+       debuglevel="${java.debuglevel}"
+       deprecation="${java.depreciation}"
+       optimize="${java.optimize}"
+       source="${java.source}"
+       target="${java.target}"
+       classpathref="classpath"
+       includeantruntime="false" />
+    </target>
+
+    <target name="test" depends="build-test">
+      <property name="bootclasspath" refid="classpath" />
+      <junit printsummary="yes" showoutput="yes" haltonfailure="yes">
+        <formatter type="plain"/>
+        <classpath>
+          <pathelement location="test/junit-4.10.jar" />
+          <pathelement location="build/" />
+          <pathelement location="build/test" />
+        </classpath>
+        <jvmarg value="-Xbootclasspath/p:${lib.dir}kerberos-java-gssapi.jar" />
+        <sysproperty key="sun.boot.library.path" value="$JAVA_HOME/bin:${swignative.dir}" />
+        <env key="LD_LIBRARY_PATH" path="$LD_LIBRARY_PATH:{swignative.dir}:/usr/local/lib" />
+        <batchtest fork="yes">
+          <fileset dir="${test.dir}">
+            <include name="**/*Test*.java"/>
+          </fileset>
+        </batchtest>
+      </junit>
+    </target>
+
+</project>

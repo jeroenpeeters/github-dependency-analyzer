@@ -1,0 +1,284 @@
+<?xml version="1.0" standalone="yes"?>
+<!-- build configuration -->
+<project name="narya" default="compile" xmlns:artifact="urn:maven-artifact-ant">
+  <property name="deploy.dir"   location="dist"/>
+  <property name="src.dir"      location="core/src/main/java"/>
+  <property name="asrc.dir"     location="aslib/src/main/as"/>
+  <property name="tsrc.dir"     location="core/src/test/java"/>
+  <property name="classes.dir"  location="${deploy.dir}/classes"/>
+  <property name="tclasses.dir" location="${deploy.dir}/test-classes"/>
+
+  <property name="ooo-build.vers" value="2.9"/>
+  <ant antfile="etc/bootstrap.xml"/>
+  <import file="${user.home}/.m2/ooo-build/${ooo-build.vers}/ooo-build.xml"/>
+
+  <target name="-prepare" depends="-init-ooo">
+    <mavendep pom="core/pom.xml" id="pom"/>
+    <!-- we can't use <mavendep> here because we need to exclude our pom depends -->
+    <artifact:dependencies filesetId="aslib.fileset" cacheDependencyRefs="true" type="swc"
+      dependencyRefsBuildFile="${deploy.dir}/aslib-pom.dependencies">
+      <pom file="aslib/pom.xml"/>
+    </artifact:dependencies>
+    <pathconvert pathsep="," property="aslib.path" refid="aslib.fileset"/>
+    <mavendep pom="core/pom.xml" id="test" scope="test"/>
+    <mkdir dir="${deploy.dir}"/>
+    <mkdir dir="${deploy.dir}/lib"/>
+    <mkdir dir="${classes.dir}"/>
+    <mkdir dir="${tclasses.dir}"/>
+    <!--
+    <copy todir="${classes.dir}">
+      <fileset dir="core/src/main/resources" includes="**"/>
+    </copy>
+    -->
+    <path id="built.classpath">
+      <path refid="pom.path"/>
+      <pathelement location="${classes.dir}"/>
+    </path>
+    <path id="test.classpath">
+      <path refid="test.path"/>
+      <pathelement location="${classes.dir}"/>
+      <pathelement location="${tclasses.dir}"/>
+    </path>
+  </target>
+
+  <target name="-preptools" depends="-prepare">
+    <!-- Turn off generation checking if enablegencheck hasn't already set this property -->
+    <property name="gencheck" value="false"/>
+    <artifact:dependencies pathId="tools.classpath">
+      <dependency groupId="com.threerings" artifactId="narya-tools" version="1.11"/>
+    </artifact:dependencies>
+    <taskdef resource="com/threerings/presents/tools.properties" classpathref="tools.classpath"/>
+  </target>
+
+  <target name="clean" depends="-init-ooo" description="Cleans out build results">
+    <delete dir="${classes.dir}"/>
+    <delete dir="${tclasses.dir}"/>
+    <delete dir="${deploy.dir}/docs"/>
+    <delete failonerror="false"><fileset dir="${deploy.dir}" includes="*.jar"/></delete>
+    <delete failonerror="false"><fileset dir="${deploy.dir}" includes="*.swc"/></delete>
+    <cleanmavendepcache pom="pom.xml"/>
+    <cleanmavendepcache pom="aslib/pom.xml"/>
+    <cleanmavendepcache id="test"/>
+  </target>
+
+  <target name="distclean" description="Scorched earth clean">
+    <delete dir="${deploy.dir}"/>
+  </target>
+
+  <target name="compile" depends="-prepare" description="Builds the Java code.">
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="pom.path"/>
+    <copy todir="${tclasses.dir}"><fileset dir="core/src/test/resources" includes="**"/></copy>
+    <ooojavac srcdir="${tsrc.dir}" destdir="${tclasses.dir}"
+        version="1.5" classpathref="test.classpath"/>
+  </target>
+
+  <target name="aslib" depends="-prepare" description="Builds the ActionScript code">
+    <maventaskdef groupId="com.threerings.ant" artifactId="actionscript" version="1.4"/>
+    <compc srcdir="${asrc.dir}" libpath="${aslib.path}"
+        dest="${deploy.dir}/${ant.project.name}lib.swc"/>
+  </target>
+
+  <target name="javadoc" depends="-prepare" description="Builds the Java documentation">
+    <mkdir dir="${deploy.dir}/docs"/>
+    <javadoc sourcepath="${src.dir}" packagenames="com.threerings.*"
+             destdir="${deploy.dir}/docs" stylesheetfile="docs/stylesheet.css"
+             link="http://www.threerings.net/code/narya/docs/api"
+             additionalparam="-breakiterator" classpathref="built.classpath">
+      <link href="http://download.oracle.com/javase/6/docs/api/"/>
+      <link href="http://docs.guava-libraries.googlecode.com/git/javadoc/"/>
+      <link href="http://samskivert.googlecode.com/svn/apidocs"/>
+      <link href="http://depot.googlecode.com/svn/apidocs/"/>
+      <link href="http://www.jajakarta.org/ant/ant-1.6.1/docs/ja/manual/api/"/>
+    </javadoc>
+  </target>
+
+  <target name="asdoc" depends="-prepare" description="Builds the ActionScript documention">
+    <maventaskdef groupId="com.threerings.ant" artifactId="actionscript" version="1.4"/>
+    <mkdir dir="${deploy.dir}/asdocs"/>
+    <asdoc srcdir="${asrc.dir}" libpath="${aslib.path}" destdir="${deploy.dir}/asdocs"/>
+  </target>
+
+  <property name="test" value=""/>
+  <target name="tests" depends="compile"
+          description="Runs unit tests. Use -Dtest=Foo to run only FooTest.">
+    <taskdef name="unit" classpathref="test.path"
+      classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask"/>
+    <mkdir dir="${deploy.dir}/test-reports"/>
+    <unit printsummary="off" haltonfailure="yes">
+      <classpath refid="test.classpath"/>
+      <sysproperty key="test_dir" value="${tclasses.dir}"/>
+      <formatter type="brief" usefile="false"/>
+      <formatter type="xml"/>
+      <batchtest todir="${deploy.dir}/test-reports">
+        <fileset dir="${tsrc.dir}" includes="**/*${test}*Test.java"/>
+      </batchtest>
+    </unit>
+  </target>
+
+  <target name="dist" depends="compile,procstream" description="Builds jar files.">
+    <!-- build our main jar file -->
+    <jar destfile="${deploy.dir}/${ant.project.name}.jar">
+      <fileset dir="${classes.dir}" includes="**"/>
+      <!-- we export a small selection of classes for use by GWT -->
+      <fileset dir="${src.dir}">
+        <include name="**/web/server/*Exception.java"/>
+        <include name="**/web/client/*.java"/>
+        <include name="**/web/gwt/*.java"/>
+        <include name="**/web/*.gwt.xml"/>
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="genrecord" depends="-prepare"
+          description="Generates fields for persistent record classes.">
+    <taskdef name="grecord" classname="com.samskivert.depot.tools.GenRecordTask"
+             classpathref="built.classpath"/>
+    <!-- make sure the record class files are all compiled -->
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="pom.path">
+      <include name="**/*Record.java"/>
+    </ooojavac>
+    <!-- now update the source files -->
+    <grecord classpathref="built.classpath">
+      <fileset dir="${src.dir}" includes="**/*Record.java"/>
+    </grecord>
+  </target>
+
+  <target name="enablegencheck"
+      description="Makes the code generators fail the build if they would produce new code">
+      <property name="gencheck" value="true"/>
+  </target>
+  <target name="gencheck" depends="enablegencheck,gencode"
+      description="Fails the build if any new code would be generated"/>
+  <target name="gencode" depends="gendobj,genservice,genreceiver,gencppstream"
+      description="Runs all code generators"/>
+
+  <target name="gendobj" depends="-preptools"
+          description="Generates additional methods for distributed object classes">
+    <!-- make sure the dobject class files are all compiled -->
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="pom.path">
+      <include name="**/*Object.java"/>
+    </ooojavac>
+    <!-- now generate the associated files -->
+    <gendobj classpathref="built.classpath" checking="${gencheck}">
+      <fileset dir="${src.dir}" includes="**/*Object.java"/>
+    </gendobj>
+  </target>
+
+  <target name="genservice" depends="-preptools"
+          description="Generates marshaller and dispatcher classes for all invocation services">
+    <!-- make sure the service class files are all compiled -->
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="pom.path">
+      <include name="**/*Service.java"/>
+      <exclude name="**/InvocationService.java"/>
+    </ooojavac>
+    <ooojavac srcdir="${tsrc.dir}" destdir="${tclasses.dir}" classpathref="test.classpath">
+      <include name="**/*Service.java"/>
+    </ooojavac>
+    <!-- generate services with an actionscript counterpart-->
+    <genservice header="etc/SOURCE_HEADER" asroot="${asrc.dir}" classpathref="built.classpath"
+        checking="${gencheck}">
+      <fileset dir="${src.dir}" includes="**/*Service.java">
+        <exclude name="**/RegistrationService.java"/>
+        <exclude name="**/InvocationService.java"/>
+        <exclude name="**/peer/**"/>
+        <exclude name="**/admin/**"/>
+      </fileset>
+      <providerless service="ChatService"/>
+      <providerless service="SimulatorService"/>
+      <providerless service="TimeBaseService"/>
+    </genservice>
+    <!-- generate java-only services -->
+    <genservice header="etc/SOURCE_HEADER" classpathref="built.classpath" checking="${gencheck}">
+      <fileset dir="${src.dir}" includes="**/peer/**/*Service.java"/>
+      <fileset dir="${src.dir}" includes="**/admin/**/*Service.java"
+          excludes="**/gwt/ConfigService.java"/>
+    </genservice>
+    <genservice header="etc/SOURCE_HEADER" classpathref="test.classpath" checking="${gencheck}">
+      <fileset dir="${tsrc.dir}" includes="**/*Service.java"/>
+    </genservice>
+    <gencppservice header="etc/SOURCE_HEADER" classpathref="built.classpath"
+                   cpproot="cpplib/src" checking="${gencheck}">
+        <fileset dir="${src.dir}" includes="**/RegistrationService.java"/>
+    </gencppservice>
+  </target>
+
+  <target name="genreceiver" depends="-preptools"
+          description="Generates sender and decoder classes for all invocation receivers">
+    <!-- make sure the receiver class files are all compiled -->
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="pom.path">
+      <include name="**/*Receiver.java"/>
+      <exclude name="**/InvocationReceiver.java"/>
+    </ooojavac>
+    <!-- now generate the associated files -->
+    <genreceiver header="etc/SOURCE_HEADER" classpathref="built.classpath" checking="${gencheck}"
+        asroot="${asrc.dir}">
+      <fileset dir="${src.dir}" includes="**/*Receiver.java"
+        excludes="**/InvocationReceiver.java,**/SignalReceiver.java"/>
+    </genreceiver>
+  </target>
+
+  <!-- C++ streamable generation depends on a diverse enough set of classes that we just compile
+       everything for it -->
+  <target name="gencppstream" depends="-preptools,compile"
+          description="Generates C++ streamable classes.">
+    <gencppstreamable classpathref="built.classpath" cpproot="cpplib/src" checking="${gencheck}">
+      <generate class="com.threerings.presents.client.InvocationReceiver$Registration"/>
+      <generate class="com.threerings.presents.data.ClientObject"/>
+      <generate class="com.threerings.presents.dobj.DEvent"/>
+      <generate class="com.threerings.presents.dobj.DObject"/>
+      <generate class="com.threerings.presents.dobj.EntryAddedEvent"/>
+      <generate class="com.threerings.presents.dobj.EntryEvent"/>
+      <generate class="com.threerings.presents.dobj.EntryRemovedEvent"/>
+      <generate class="com.threerings.presents.dobj.EntryUpdatedEvent"/>
+      <generate class="com.threerings.presents.dobj.InvocationNotificationEvent"/>
+      <generate class="com.threerings.presents.dobj.InvocationRequestEvent"/>
+      <generate class="com.threerings.presents.dobj.NamedEvent"/>
+      <generate class="com.threerings.presents.net.AuthRequest"/>
+      <generate class="com.threerings.presents.net.AuthResponse"/>
+      <generate class="com.threerings.presents.net.AuthResponseData"/>
+      <generate class="com.threerings.presents.net.BootstrapData"/>
+      <generate class="com.threerings.presents.net.BootstrapNotification"/>
+      <generate class="com.threerings.presents.net.Credentials"/>
+      <generate class="com.threerings.presents.net.DownstreamMessage"/>
+      <generate class="com.threerings.presents.net.EventNotification"/>
+      <generate class="com.threerings.presents.net.ForwardEventRequest"/>
+      <generate class="com.threerings.presents.net.ObjectResponse"/>
+      <generate class="com.threerings.presents.net.PingRequest"/>
+      <generate class="com.threerings.presents.net.PongResponse"/>
+      <generate class="com.threerings.presents.net.UpstreamMessage"/>
+      <generate class="com.threerings.presents.net.UsernamePasswordCreds"/>
+      <generate class="com.threerings.util.Name"/>
+    </gencppstreamable>
+  </target>
+
+  <target name="procstream" depends="-preptools"
+          description="Adds readField and writeField methods to Streamable classes">
+    <instream outdir="${classes.dir}">
+      <path refid="built.classpath"/>
+      <fileset dir="${classes.dir}" includes="**/data/*.class"/>
+      <fileset dir="${classes.dir}" includes="**/net/*.class"/>
+      <fileset dir="${classes.dir}" includes="**/dobj/*.class"/>
+      <fileset dir="${classes.dir}" includes="**/util/*.class"/>
+    </instream>
+  </target>
+
+  <target name="install" depends="dist,aslib"
+          description="Installs artifacts to local Maven repository.">
+    <maveninstall file="pom.xml" pom="pom.xml"/>
+    <maveninstall file="${deploy.dir}/${ant.project.name}.jar" pom="core/pom.xml"/>
+    <maveninstall file="${deploy.dir}/${ant.project.name}lib.swc" pom="aslib/pom.xml"/>
+  </target>
+
+  <target name="deploy" depends="dist,aslib,tests,javadoc"
+          description="Deploys our build artifacts to a Maven repository.">
+    <mavendeploy file="pom.xml" pom="pom.xml"/>
+    <mavendeploy file="${deploy.dir}/${ant.project.name}.jar" pom="core/pom.xml"
+                 srcdir="${src.dir}" docdir="${deploy.dir}/docs"/>
+    <mavendeploy file="${deploy.dir}/${ant.project.name}lib.swc" pom="aslib/pom.xml"/>
+  </target>
+</project>

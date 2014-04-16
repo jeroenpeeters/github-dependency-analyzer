@@ -1,0 +1,877 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-common</artifactId>
+
+    <parent>
+        <groupId>org.jboss.migr.as</groupId>
+        <artifactId>WindRide-root</artifactId>
+        <version>1.1.1-SNAPSHOT</version>
+    </parent>
+    
+  <name>WindRide common</name>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-engine</artifactId>
+
+    <parent>
+        <groupId>org.jboss.migr.as</groupId>
+        <artifactId>WindRide-root</artifactId>
+        <version>1.1.1-SNAPSHOT</version>
+    </parent>
+    
+    <name>WindRide engine</name>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- User input defaults -->
+        <download>eap6</download> <!-- "as7" or "eap6" -->
+        <surefire.debug.port />
+        <surefire.debug.args /> <!-- Not used now, kept for Arq-launched AS. -->
+        <surefire.system.args>${surefire.debug.args}</surefire.system.args>
+        
+        <!-- Build flow control -->
+        <as.jvm.args />
+        <arq.asContainer.version>7.2.0.Final</arq.asContainer.version>
+    </properties>
+    
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/java</directory>
+                <filtering>false</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+        <testResources>
+            <testResource>
+                <directory>src/test/java</directory>
+                <filtering>true</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </testResource>
+        </testResources>
+        
+        <plugins>
+            <!-- Security issue - see http://jira.codehaus.org/browse/MOJO-1951
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>properties-maven-plugin</artifactId>
+                <version>1.0-alpha-2</version>
+                <executions> <execution> <id>write-MavenTestEnv.properties</id>
+                    <phase>process-test-resources</phase> <goals> <goal>write-project-properties</goal> </goals>
+                    <configuration> <outputFile>${project.build.testOutputDirectory}/MavenTestEnv.properties</outputFile> </configuration>
+                </execution> </executions>
+            </plugin>
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration combine.self="override"> <source>7</source> <target>7</target> </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <version>2.2.1</version>
+                <executions> <execution> <id>src-jar</id> <goals> <goal>jar</goal> </goals> </execution> </executions>
+            </plugin>
+            <!-- Surefire -->
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>2.15</version>
+                <configuration>
+                    <!--
+                    <redirectTestOutputToFile>${testLogToFile}</redirectTestOutputToFile>
+                    <argLine>${surefire.system.args}</argLine>
+                    -->
+                    <!--<forkMode>always</forkMode> <!- - For for each test class. Deprecated. -->
+                    <forkCount>1</forkCount> <!-- For for each test class. -->
+                    <reuseForks>false</reuseForks>
+                    <debugForkedProcess>${surefire.system.args}</debugForkedProcess>
+                    <systemPropertyVariables>
+                        <arq.as.jvm.args>${as.jvm.args}</arq.as.jvm.args>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>exec-maven-plugin</artifactId>
+                <version>1.2.1</version>
+                <configuration>
+                    <mainClass>org.jboss.loom.MigratorApp</mainClass>
+                </configuration>
+            </plugin>
+            <!-- Application JAR. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>2.4</version>
+                <executions>
+                    <execution>
+                        <id>package-jar-with-dependencies</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <appendAssemblyId>false</appendAssemblyId>
+                            <descriptorRefs>
+                                <descriptorRef>jar-with-dependencies</descriptorRef>
+                            </descriptorRefs>
+                            <archive>
+                                <manifest>
+                                    <mainClass>org.jboss.loom.MigratorApp</mainClass>
+                                </manifest>
+                            </archive>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <!-- Download AS 7 for Arquillian tests. 
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution> <id>get-AS7</id> <phase>process-test-classes</phase>
+                        <goals> <goal>unpack</goal> </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>org.jboss.as</groupId>
+                                    <artifactId>jboss-as-dist</artifactId>
+                                    <version>7.1.1.Final</version>
+                                    <type>zip</type>
+                                    <overWrite>false</overWrite>
+                                    <outputDirectory>target</outputDirectory>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            -->
+        </plugins>
+    </build>
+    
+    <repositories>
+        <repository>
+            <id>JBoss</id>
+            <url>http://repository.jboss.org/nexus/content/groups/public</url>
+        </repository>
+    </repositories>
+    
+    <profiles>
+        <!-- Download AS or EAP for Arquillian tests. -->
+        <profile>  <id>DownloadContainer</id>
+            <activation> 
+                <activeByDefault>true</activeByDefault> 
+                <property>  <name>download</name>  </property> 
+            </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-dependency-plugin</artifactId>
+                        <executions>
+                            <execution> <id>as-dist.download</id> <phase>generate-test-resources</phase>
+                                <goals> <goal>get</goal> </goals>
+                                <configuration>
+                                    <artifact>org.jboss.as:jboss-as-dist:${as.download.version}:zip</artifact>
+                                    <destination>${project.build.directory}/jboss-as-dist-${as.download.version}.zip</destination>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>1.7</version>
+                        <executions>
+                            <execution>  <id>as-dist.unzip</id>
+                                <phase>generate-test-resources</phase>
+                                <goals> <goal>run</goal> </goals>
+                                <configuration>
+                                    <target>
+                                        <unzip src="target/jboss-as-dist-${as.download.version}.zip" dest="target/as-dist">
+                                            <cutdirsmapper dirs="1" />
+                                        </unzip>
+                                    </target>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+        
+        <!-- Download AS 7 for Arquillian tests. -->
+        <profile>  <id>DownloadAS</id>
+            <activation> <property> <name>download</name> <value>as7</value> </property> </activation>
+            <repositories>
+                <repository>
+                    <id>JBossPublic</id>
+                    <url>http://repository.jboss.org/nexus/content/groups/public</url>
+                </repository>
+            </repositories>
+            <properties>
+                <as.download.version>7.1.1.Final</as.download.version>
+                <arq.asContainer.version>7.1.1.Final</arq.asContainer.version>
+            </properties>
+        </profile>
+        
+        <!-- Download EAP 6 for Arquillian tests. -->
+        <profile>  <id>DownloadEAP</id>
+            <activation>
+                <property> <name>download</name> <value>eap6</value> </property> 
+                <activeByDefault>true</activeByDefault>
+            </activation>
+            <repositories>
+                <repository>
+                    <id>RedHat</id>
+                    <url>http://maven.repository.redhat.com/earlyaccess/all</url>
+                </repository>
+            </repositories>
+            <properties>
+                <as.download.version>7.2.0.Alpha1-redhat-4</as.download.version>
+                <arq.asContainer.version>7.2.0.Final</arq.asContainer.version>
+            </properties>
+        </profile>
+
+        <!-- License headers. -->
+        <profile> <id>Headers</id>
+            <activation> <property> <name>headers</name> </property> </activation>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>com.mycila.maven-license-plugin</groupId>
+                        <artifactId>maven-license-plugin</artifactId>
+                        <version>1.10.b1</version>
+                        <configuration>
+                            <header>src/main/licenseHeader.txt</header>
+                            <includes>
+                                <include>src/main/**/*.java</include>
+                            </includes>
+                            <excludes>
+                                <exclude>src/main/**/I*.java</exclude>
+                            </excludes>
+                            <!-- We already have comment stars.
+                            <mapping>
+                                <java>PLAIN</java>
+                            </mapping>
+                            <headerDefinitions>
+                                <headerDefinition>
+                                    
+                                </headerDefinition>
+                            </headerDefinitions>
+                            -->
+                            <properties>
+                                <year>2013</year>
+                            </properties>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>    
+            <pluginRepositories>
+                <pluginRepository>
+                    <id>mc-release</id>
+                    <name>Local Maven repository of releases</name>
+                    <url>http://mc-repo.googlecode.com/svn/maven2/releases</url>
+                </pluginRepository>
+            </pluginRepositories>  
+        </profile>
+        
+        <profile> <id>compileGroovy</id>
+            <activation> <activeByDefault>false</activeByDefault> </activation>
+            <!-- Compiling at build time-->
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.gmaven</groupId>
+                        <artifactId>gmaven-plugin</artifactId>
+                        <version>1.5</version>
+                        <executions>
+                            <execution> <id>compile-groovy-classes</id>
+                                <goals> <goal>compile</goal> </goals>
+                                <phase>compile</phase>
+                                <configuration>
+                                    <sources>
+                                        <fileset>
+                                            <directory>${project.basedir}/src/main/java</directory>
+                                            <includes> <include>**/*.groovy</include> </includes>
+                                        </fileset>
+                                    </sources>
+                                </configuration>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <providerselection>1.7</providerselection>
+                        </configuration>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.codehaus.gmaven.runtime</groupId> <artifactId>gmaven-runtime-1.7</artifactId> <version>1.5</version>
+                                <exclusions> <exclusion> <groupId>org.codehaus.groovy</groupId> <artifactId>groovy-all</artifactId> </exclusion> </exclusions>
+                            </dependency>
+                            <dependency>
+                                <groupId>org.codehaus.groovy</groupId>
+                                <artifactId>groovy-all</artifactId>
+                                <version>2.1.5</version>
+                            </dependency>
+                        </dependencies>
+                    </plugin>
+                    
+                    <!-- NetBeans added this, thinking it's a Groovy project.
+                    <plugin>
+                        <artifactId>maven-compiler-plugin</artifactId>
+                        <dependencies>
+                            <dependency>
+                                <groupId>org.codehaus.groovy</groupId>
+                                <artifactId>groovy-eclipse-compiler</artifactId>
+                                <version>2.7.0-01</version>
+                            </dependency>
+                        </dependencies>
+                        <configuration>
+                            <compilerId>groovy-eclipse-compiler</compilerId>
+                        </configuration>
+                    </plugin>
+                    <plugin>
+                        <groupId>org.codehaus.groovy</groupId>
+                        <artifactId>groovy-eclipse-compiler</artifactId>
+                        <version>2.7.0-01</version>
+                        <extensions>true</extensions>
+                    </plugin>
+                    -->
+
+                </plugins>
+            </build>
+        </profile>
+        
+        <!-- Debugging profile. -->
+        <profile> <id>debug</id>
+            <activation><property><name>debug</name></property></activation>
+            <properties>
+                <surefire.debug.port>4000</surefire.debug.port>
+                <surefire.debug.args>-agentlib:jdwp=transport=dt_socket,address=${surefire.debug.port},server=y,suspend=y</surefire.debug.args>
+            </properties>
+        </profile>
+        
+    </profiles>
+
+    <dependencies>
+        
+        <!-- WindUp -->
+        <dependency>
+            <groupId>org.jboss.windup</groupId>
+            <artifactId>windup-engine</artifactId>
+            <version>0.7.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.windup</groupId>
+            <artifactId>windup-rules</artifactId>
+            <version>0.7.0</version>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.windup</groupId>
+            <artifactId>windup-reporting</artifactId>
+            <version>0.7.0</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- JAXB impl -->
+        <dependency>
+            <groupId>org.eclipse.persistence</groupId>
+            <artifactId>org.eclipse.persistence.moxy</artifactId>
+            <version>2.5.1</version>
+            <scope>compile</scope>
+        </dependency>
+
+        <!-- JBoss CLI -->
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-cli</artifactId>
+            <version>7.2.0.Final</version>
+        </dependency>
+
+        <!-- Commons -->
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <version>2.4</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.6</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-collections</groupId>
+            <artifactId>commons-collections</artifactId>
+            <version>3.2.1</version>
+        </dependency>
+        <!--
+        <dependency>
+            <groupId>commons-codec</groupId>
+            <artifactId>commons-codec</artifactId>
+            <version>1.8</version>
+        </dependency>
+        -->
+        <dependency>
+            <groupId>commons-beanutils</groupId>
+            <artifactId>commons-beanutils-core</artifactId>
+            <version>1.8.3</version>
+        </dependency>
+        
+        <!-- FreeMarker -->
+        <dependency>
+            <groupId>org.freemarker</groupId>
+            <artifactId>freemarker</artifactId>
+            <version>2.3.20</version>
+        </dependency>
+        
+
+        <!-- Expression language -->
+        <!--
+        <dependency>
+            <groupId>commons-el</groupId>
+            <artifactId>commons-el</artifactId>
+            <version>1.0</version>
+        </dependency>
+        <dependency>
+            <groupId>javax.el</groupId>
+            <artifactId>javax.el-api</artifactId>
+            <version>2.2.4</version>
+            <type>jar</type>
+        </dependency>
+        -->
+        <!-- javax.el -->
+        <dependency>
+            <groupId>de.odysseus.juel</groupId>
+            <artifactId>juel-api</artifactId>
+            <version>2.2.6</version>
+            <type>jar</type>
+        </dependency>
+        <!-- de.odysseus.el -->
+        <dependency>
+            <groupId>de.odysseus.juel</groupId>
+            <artifactId>juel-impl</artifactId>
+            <version>2.2.6</version>
+            <type>jar</type>
+        </dependency>
+        
+        <!-- Hibernate Validator - for BeanValidation. -->
+        <dependency>
+            <groupId>javax.validation</groupId>
+            <artifactId>validation-api</artifactId>
+            <version>1.1.0.Final</version>
+        </dependency>
+        <dependency>
+            <groupId>org.hibernate</groupId>
+            <artifactId>hibernate-validator</artifactId>
+            <version>5.0.1.Final</version>
+        </dependency>        
+
+        <!-- XSLT 2.0 - but breaks non-namespaced XPath :/ Needs to be only used for reporting. -->
+        <dependency>
+            <groupId>net.sf.saxon</groupId>
+            <artifactId>Saxon-HE</artifactId>
+            <version>9.5.1-2</version>
+        </dependency>
+        
+        <!-- Compiling Groovy at run time -->
+        <dependency>
+            <groupId>org.codehaus.groovy</groupId>
+            <artifactId>groovy-all</artifactId>
+            <version>2.1.7</version>
+        </dependency>
+        
+        <!-- Javassist for MigratorSubclassMaker -->
+        <dependency>
+            <groupId>org.javassist</groupId>
+            <artifactId>javassist</artifactId>
+            <version>3.18.1-GA</version>
+        </dependency>
+
+
+        <!-- Testing -->
+        
+        <dependency>
+             <groupId>junit</groupId>
+             <artifactId>junit</artifactId>
+             <version>4.11</version>
+             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.arquillian.junit</groupId>
+            <artifactId>arquillian-junit-container</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.as</groupId>
+            <artifactId>jboss-as-arquillian-container-managed</artifactId>
+            <version>${arq.asContainer.version}</version>
+            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <artifactId>jbosgi-spi</artifactId>
+                    <groupId>org.jboss.osgi.spi</groupId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+
+        <!--
+        <dependency>
+            <groupId>dom4j</groupId>
+            <artifactId>dom4j</artifactId>
+            <version>1.6.1</version>
+        </dependency>
+        <dependency>
+            <groupId>jaxen</groupId>
+            <artifactId>jaxen</artifactId>
+            <version>1.1.4</version>
+        </dependency>
+        -->
+        
+        <!-- For unzipping and CRC32 -->
+        <dependency>
+            <groupId>net.lingala.zip4j</groupId>
+            <artifactId>zip4j</artifactId>
+            <version>1.3.1</version>
+        </dependency>
+        
+        <!-- For DirectorySanner. -->
+        <dependency>
+            <groupId>org.apache.ant</groupId>
+            <artifactId>ant</artifactId>
+            <version>1.9.2</version>
+            <type>jar</type>
+            <exclusions> <exclusion> <artifactId>ant-launcher</artifactId> <groupId>org.apache.ant</groupId> </exclusion> </exclusions>
+        </dependency>
+    </dependencies>
+    
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.jboss.arquillian</groupId>
+                <artifactId>arquillian-bom</artifactId>
+                <version>1.0.4.Final</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>    
+
+    <licenses> <license> <name>GPL3</name> <url>http://www.gnu.org/licenses/gpl.html</url> </license> </licenses>
+    <scm>
+        <url>https://github.com/OndraZizka/jboss-migration</url>
+        <connection>scm:git:git://github.com/OndraZizka/jboss-migration.git</connection>
+        <developerConnection>scm:git:git@github.com:OndraZizka/jboss-migration.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+    <developers>
+        <developer> <id>ozizka</id> <name>Ondrej Zizka</name> <organization>Red Hat / JBoss</organization> </developer>
+        <developer> <id>rsearls</id> <name>Rebecca Searls</name> <organization>Red Hat / JBoss</organization> </developer>
+        <developer> <id>rjakubco</id> <name>Roman Jakubco</name> <organization>FI MUNI.cz</organization> </developer>
+    </developers>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-root</artifactId>
+    <version>1.1.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <parent>
+        <groupId>org.jboss</groupId>
+        <artifactId>jboss-parent</artifactId>
+        <version>10</version>
+    </parent>
+    
+    <name>WindRide - JBoss Config Migration</name>
+    
+    <modules>
+        <module>engine</module>
+        <module>rules</module>
+        <module>recognizers</module>
+        <module>recognizers/EAP5</module>
+    <module>common</module>
+  </modules>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- User input defaults -->
+        <download>eap6</download> <!-- "as7" or "eap6" -->
+        <surefire.debug.port/>
+        <surefire.debug.args/> <!-- Not used now, kept for Arq-launched AS. -->
+        <surefire.system.args>${surefire.debug.args}</surefire.system.args>
+        
+        <!-- Build flow control -->
+        <as.jvm.args/>
+        <arq.asContainer.version>7.2.0.Final</arq.asContainer.version>
+    </properties>
+    
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.1</version>
+                <configuration combine.self="override"> <source>7</source> <target>7</target> </configuration>
+            </plugin>
+        </plugins>
+    </build>
+        
+    <profiles>
+    </profiles>
+
+    <dependencies>
+        
+        <!-- Logging -->
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+            <version>1.7.5</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+            <version>1.7.5</version>
+        </dependency>
+        <dependency>
+            <groupId>log4j</groupId>
+            <artifactId>log4j</artifactId>
+            <version>1.2.17</version>
+        </dependency>
+        
+    </dependencies>
+    
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.jboss.arquillian</groupId>
+                <artifactId>arquillian-bom</artifactId>
+                <version>1.0.4.Final</version>
+                <scope>import</scope>
+                <type>pom</type>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>    
+
+    <licenses> <license> <name>GPL3</name> <url>http://www.gnu.org/licenses/gpl.html</url> </license> </licenses>
+    <scm>
+        <url>https://github.com/OndraZizka/jboss-migration</url>
+        <connection>scm:git:git://github.com/OndraZizka/jboss-migration.git</connection>
+        <developerConnection>scm:git:git@github.com:OndraZizka/jboss-migration.git</developerConnection>
+        <tag>HEAD</tag>
+    </scm>
+    <developers>
+        <developer> <id>ozizka</id> <name>Ondrej Zizka</name> <organization>Red Hat / JBoss</organization> </developer>
+        <developer> <id>rjakubco</id> <name>Roman Jakubco</name> <organization>FI MUNI.cz</organization> </developer>
+    </developers>
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-recog-EAP5</artifactId>
+
+    <parent>
+        <groupId>org.jboss.migr.as</groupId>
+        <artifactId>WindRide-root</artifactId>
+        <version>1.1.1-SNAPSHOT</version>
+    </parent>
+    
+    <name>WindRide recog AS/EAP 5</name>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+    </properties>
+    
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/java</directory>
+                <filtering>false</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+        <testResources>
+            <testResource>
+                <directory>src/test/java</directory>
+                <filtering>true</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </testResource>
+        </testResources>
+        
+    </build>
+        
+    <profiles>
+        
+    </profiles>
+
+    <dependencies>
+        
+        <!-- For unzipping and CRC32 -->
+        <dependency>
+            <groupId>org.jboss.migr.as</groupId>
+            <artifactId>WindRide-recognizers</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        
+        <!-- For unzipping and CRC32 -->
+        <dependency>
+            <groupId>net.lingala.zip4j</groupId>
+            <artifactId>zip4j</artifactId>
+            <version>1.3.1</version>
+        </dependency>
+        
+        <!-- For DirectorySanner. -->
+        <dependency>
+            <groupId>org.apache.ant</groupId>
+            <artifactId>ant</artifactId>
+            <version>1.9.2</version>
+            <type>jar</type>
+            <exclusions> <exclusion> <artifactId>ant-launcher</artifactId> <groupId>org.apache.ant</groupId> </exclusion> </exclusions>
+        </dependency>
+    </dependencies>
+    
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-recognizers</artifactId>
+
+    <parent>
+        <groupId>org.jboss.migr.as</groupId>
+        <artifactId>WindRide-root</artifactId>
+        <version>1.1.1-SNAPSHOT</version>
+    </parent>
+    
+    <name>WindRide recognizers</name>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+    </properties>
+    
+    <build>
+        <resources>
+            <resource>
+                <directory>src/main/java</directory>
+                <filtering>false</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </resource>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+        <testResources>
+            <testResource>
+                <directory>src/test/java</directory>
+                <filtering>true</filtering>
+                <excludes> <exclude>**/*.java</exclude> </excludes>
+            </testResource>
+        </testResources>
+        
+    </build>
+        
+    <profiles>
+        
+    </profiles>
+
+    <dependencies>
+        
+        <!-- Commons -->
+        <dependency>
+            <groupId>commons-lang</groupId>
+            <artifactId>commons-lang</artifactId>
+            <version>2.6</version>
+        </dependency>
+        <dependency>
+            <groupId>commons-collections</groupId>
+            <artifactId>commons-collections</artifactId>
+            <version>3.2.1</version>
+        </dependency>
+        
+        <!-- For unzipping and CRC32 -->
+        <dependency>
+            <groupId>net.lingala.zip4j</groupId>
+            <artifactId>zip4j</artifactId>
+            <version>1.3.1</version>
+        </dependency>
+        
+        <!-- For DirectorySanner. -->
+        <dependency>
+            <groupId>org.apache.ant</groupId>
+            <artifactId>ant</artifactId>
+            <version>1.9.2</version>
+            <type>jar</type>
+            <exclusions> <exclusion> <artifactId>ant-launcher</artifactId> <groupId>org.apache.ant</groupId> </exclusion> </exclusions>
+        </dependency>
+    </dependencies>
+    
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.jboss.migr.as</groupId>
+    <artifactId>WindRide-rules</artifactId>
+
+    <parent>
+        <groupId>org.jboss.migr.as</groupId>
+        <artifactId>WindRide-root</artifactId>
+        <version>1.1.1-SNAPSHOT</version>
+    </parent>
+    
+    <name>WindRide rules</name>
+    
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        
+        <!-- User input defaults -->
+        
+        <!-- Build flow control -->
+        <as.jvm.args />
+    </properties>
+    
+    <build>
+        <resources>
+            <resource>
+                <directory>rules</directory>
+                <filtering>false</filtering>
+            </resource>
+        </resources>
+        
+        <plugins>
+            
+            <!-- Surefire -->
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions> <execution> <id>default-test</id> <phase>none</phase> </execution> </executions>
+            </plugin>
+            
+        </plugins>
+    </build>
+
+</project>

@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="WAAT" default="all" basedir=".">
+
+    <property environment="env"/>
+    <property file="resources//waat.properties"/>
+    <property name="lib.dir" value="${basedir}/lib"/>
+    <property name="out.dir" value="${basedir}/out"/>
+    <property name="zip.dir" value="${out.dir}/zip"/>
+    <property name="prod.output.dir" value="${out.dir}/${PRODUCTION_TYPE}"/>
+    <property name="test.output.dir" value="${out.dir}/${TEST_TYPE}"/>
+    <property name="testNGOutput.dir" value="${out.dir}/testNGReports"/>
+
+    <path id="library.lib.test.classpath">
+        <fileset dir="${lib.dir}" includes="**/*.jar"/>
+        <path location="${basedir}/resources"/>
+    </path>
+
+    <path id="library.lib.classpath">
+        <fileset dir="${lib.dir}/httpSniffer" includes="*.jar"/>
+        <fileset dir="${lib.dir}" includes="*.jar"/>
+        <path location="${lib.dir}"/>
+    </path>
+
+    <taskdef name="testNG" classpathref="library.lib.test.classpath" classname="org.testng.TestNGAntTask"/>
+
+    <path id="waat.module.sourcepath">
+        <dirset dir="${basedir}">
+            <include name="${SRC_DIR}"/>
+        </dirset>
+    </path>
+
+    <path id="waat.module.test.sourcepath">
+        <dirset dir="${basedir}">
+            <include name="${TEST_TYPE}"/>
+        </dirset>
+    </path>
+
+    <target name="compile.prod" description="Compile module WAAT; production classes">
+        <javac destdir="${prod.output.dir}" debug="on" excludes="">
+            <classpath refid="library.lib.classpath"/>
+            <src refid="waat.module.sourcepath"/>
+        </javac>
+    </target>
+
+    <target name="compileOnly">
+        <javac destdir="${test.output.dir}" debug="on" excludes="">
+            <classpath refid="library.lib.test.classpath"/>
+            <src refid="waat.module.test.sourcepath"/>
+            <src refid="waat.module.sourcepath"/>
+        </javac>
+    </target>
+
+    <target name="compile.test" description="compile module WAAT; test classes" unless="skip.tests">
+        <antcall target="compileOnly"/>
+        <antcall target="runTests"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${out.dir}"/>
+        <delete dir="${testNGOutput.dir}"/>
+        <delete file="waat.log"/>
+        <delete file="velocity.log"/>
+    </target>
+    
+    <target name="init" description="Build initialization">
+        <mkdir dir="${prod.output.dir}"/>
+        <mkdir dir="${test.output.dir}"/>
+        <mkdir dir="${out.dir}/dist"/>
+        <mkdir dir="${zip.dir}"/>
+    </target>
+
+    <target name="runTests">
+        <delete dir="${testNGOutput.dir}"/>
+        <mkdir dir="${testNGOutput.dir}"/>
+
+        <property name="testGroup" value=""/>
+        <echo message="testGroup: ${testGroup}"/>
+        <echo message="*** Running tests in ${threadCount} threads ***"/>
+
+        <testNG classpathref="library.lib.test.classpath" groups="${testGroup}"
+                parallel="methods" outputdir="${testNGOutput.dir}" threadcount="${threadCount}"
+                listeners="org.uncommons.reportng.HTMLReporter" listener="com.thoughtworks.webanalyticsautomation.runUtils.CustomTestListener">
+            <sysproperty key="org.uncommons.reportng.title" value="WAAT Test Report"/>
+            <sysproperty key="java.library.path" value="${lib.dir}/httpSniffer"/>
+            <classpath>
+                <pathelement path="${out.dir}/${TEST_TYPE}"/>
+            </classpath>
+            <classfileset dir="${out.dir}/${TEST_TYPE}" includes="**/*Test.class"/>
+        </testNG>
+    </target>
+
+    <target name="buildJAR_test">
+        <antcall target="buildJAR">
+            <param name="JAR_FILE_NAME" value="${JAR_FILE_PREFIX}_${TEST_TYPE}_${VERSION}"/>
+            <param name="JAR_BASE_DIR" value="${out.dir}/${TEST_TYPE}"/>
+            <param name="JAR_LIB_FILTER" value="**/*.jar"/>
+        </antcall>
+    </target>
+
+    <target name="buildJAR_prod">
+        <antcall target="buildJAR">
+            <param name="JAR_FILE_NAME" value="${JAR_FILE_PREFIX}_${VERSION}"/>
+            <param name="JAR_BASE_DIR" value="${out.dir}/${PRODUCTION_TYPE}"/>
+            <param name="JAR_LIB_FILTER" value="*.jar"/>
+        </antcall>
+    </target>
+
+    <target name="buildJAR">
+        <jar destfile="${out.dir}/dist/${JAR_FILE_NAME}.jar"
+                basedir="${JAR_BASE_DIR}">
+        </jar>
+        <antcall target="zip">
+            <param name="ZIP_FILE_NAME" value="${JAR_FILE_NAME}"/>
+            <param name="JAR_FILE_IN_ZIP" value="${out.dir}/dist/${JAR_FILE_NAME}.jar"/>
+            <param name="JAR_LIB_FILTER" value="${JAR_LIB_FILTER}"/>
+        </antcall>
+    </target>
+
+    <target name="zip">
+        <mkdir dir="${zip.dir}/WAAT"/>
+        <mkdir dir="${zip.dir}/WAAT/lib"/>
+        <mkdir dir="${zip.dir}/WAAT/samplescripts"/>
+        <mkdir dir="${zip.dir}/WAAT/resources"/>
+        <mkdir dir="${zip.dir}/WAAT/docs"/>
+
+        <!--Copy the LICENSE file to the root folder -->
+        <copy file="${basedir}/LICENSE.txt" todir="${zip.dir}/WAAT" overwrite="true" verbose="true"/>
+
+        <!--Copy the sample test data files-->
+        <copy todir="${zip.dir}/WAAT">
+            <fileset dir="${basedir}/${TEST_TYPE}" includes="sampledata/*.xml"/>
+        </copy>
+
+        <!--Copy the sample Script files-->
+        <copy todir="${zip.dir}/WAAT/samplescripts">
+            <fileset dir="${basedir}/${TEST_TYPE}"
+                     includes="**/scriptrunner/*.java"
+                     excludes="**/*Helper.java"/>
+        </copy>
+
+        <!--Copy the resources files-->
+        <copy todir="${zip.dir}/WAAT/resources">
+            <fileset dir="${basedir}/resources" includes="log*.*"/>
+        </copy>
+
+        <!--Copy the docs-->
+        <copy todir="${zip.dir}/WAAT/docs">
+            <fileset dir="${basedir}/docs" includes="*.*"/>
+            <fileset dir="${basedir}" includes="README*"/>
+        </copy>
+
+        <!-- create Linux package -->
+        <antcall  target="zip_os">
+            <param name="osType" value="Linux"/>
+            <param name="osName" value="Linux"/>
+        </antcall>
+
+        <!-- create Windows package -->
+        <antcall  target="zip_os">
+            <param name="osType" value="Windows"/>
+            <param name="osName" value="Windows"/>
+        </antcall>
+
+        <!-- create Windows & Linux package -->
+        <antcall  target="zip_os">
+            <param name="osType" value="**"/>
+            <param name="osName" value="All"/>
+        </antcall>
+
+        <delete dir="${zip.dir}/WAAT" verbose="true"/>
+
+        <antcall target="deploy"/>
+    </target>
+
+    <target name="zip_os">
+        <!--Copy the appropriate WAAT.jar in the lib folder -->
+        <copy file="${JAR_FILE_IN_ZIP}" todir="${zip.dir}/WAAT/lib" overwrite="true" verbose="true"/>
+
+        <!--Copy the lib files-->
+        <copy todir="${zip.dir}/WAAT/lib">
+            <fileset dir="${lib.dir}" includes="httpSniffer/${osType}/**/*"/>
+            <fileset dir="${lib.dir}" includes="${JAR_LIB_FILTER}" excludes="**/jpcap.jar"/>
+        </copy>
+
+        <copy todir="${zip.dir}/WAAT/lib">
+            <fileset dir="${lib.dir}/httpSniffer" includes="*.jar"/>
+        </copy>
+
+        <zip destfile="${out.dir}/dist/${ZIP_FILE_NAME}_${osName}.zip" basedir="${zip.dir}"/>
+
+        <!--
+            Delete the osName specific library files after the package is built.
+            If not done, then the libraries will get mixed up in different packages.
+        -->
+        <delete dir="${zip.dir}/WAAT/lib/httpSniffer/${osName}" verbose="false"/>
+    </target>
+
+    <target name="deploy" if="DEPLOY">
+        <copy file="${out.dir}/dist/${ZIP_FILE_NAME}.zip" todir="${basedir}/dist" overwrite="false" verbose="true"/>
+    </target>
+
+    <target name="package" depends="init">
+        <property name="type" value="${TEST_TYPE}"/>
+        <antcall target="compile.${type}"/>
+        <antcall target="buildJAR_${type}"/>
+    </target>
+
+    <target name="all" depends="clean" description="build all">
+        <antcall target="package">
+            <param name="type" value="${TEST_TYPE}"/>
+        </antcall>
+        <antcall target="package">
+            <param name="type" value="${PRODUCTION_TYPE}"/>
+        </antcall>
+    </target>
+</project>

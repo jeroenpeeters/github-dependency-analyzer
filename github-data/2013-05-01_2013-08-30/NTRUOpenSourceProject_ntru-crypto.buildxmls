@@ -1,0 +1,213 @@
+<project name="jNeo" basedir="." default="test">
+  
+  <property name="jarName"             value="jars/jNeo.jar"/>
+  <property name="jarTmpName"          value="jars/jNeoTmp.jar"/>
+  <property name="releaseBuildDir"     value="build/classes"/>
+  <property name="testBuildDir"        value="build/test"/>
+  <property name="junitClassPath"      value="jars/junit.jar"/>
+
+  <property name="TestVectorBuildDir" value="build/testgen/"/>
+
+
+  <taskdef resource="proguard/ant/task.properties" 
+           classpath="jars/proguard.jar" />
+
+  <!-- Conditionally set ${javaRT} based on the OS.
+       On MacOS this is in a non-standard location.
+       We need to supply this explicitly to proguard.
+    -->
+  <condition property="javaRT"
+             value="${java.home}/../Classes/classes.jar"
+             else="${java.home}/lib/rt.jar">
+    <os family="mac"/>
+  </condition>
+
+
+  <!-- Delete all generated files and directories -->
+  <target name="clean">
+    <delete dir="build"/>
+    <delete file="${jarName}"/>
+    <delete file="${jarTmpName}"/>
+    <delete file="TestVectors.txt"/>
+    <delete file="privKey"/>
+    <delete file="pubKey"/>
+    <delete> <fileset dir="." includes="**/TEST-*"/> </delete>
+  </target>
+
+
+  <!-- Compile the classes that go into the jNeo.jar file. -->
+  <target name="compile">
+    <mkdir dir="${releaseBuildDir}"/>
+    <javac srcdir="."
+           destdir="${releaseBuildDir}"
+           debug="on"
+           includesfile="jNeo.classes"/>
+  </target>
+
+
+  <!-- Build javadoc for all of the public classes in jNeo.jar -->
+  <target name="doc" depends="compile">
+    <javadoc  destdir="build/doc"
+              defaultExcludes="yes"
+              classpath="${releaseBuildDir}"
+              Public="yes"
+              Package="no"
+              Protected="no"
+              Private="no"
+              sourcefiles="com/securityinnovation/jNeo/OID.java,
+                           com/securityinnovation/jNeo/Random.java,
+                           com/securityinnovation/jNeo/ntruencrypt/NtruEncryptKey.java,
+                           com/securityinnovation/jNeo/CiphertextBadLengthException.java,
+                           com/securityinnovation/jNeo/DecryptionFailureException.java,
+                           com/securityinnovation/jNeo/FormatNotSupportedException.java,
+                           com/securityinnovation/jNeo/NoPrivateKeyException.java,
+                           com/securityinnovation/jNeo/NtruException.java,
+                           com/securityinnovation/jNeo/ObjectClosedException.java,
+                           com/securityinnovation/jNeo/ParamSetNotSupportedException.java,
+                           com/securityinnovation/jNeo/PlaintextBadLengthException.java"
+              excludepackagenames="org.junit.*">
+    </javadoc>
+  </target>
+
+  
+
+  <!-- Build the jNeo.jar file. -->
+  <target name="jar" depends="compile">
+    <mkdir dir="jars"/>
+    <!-- build the jar file -->
+    <jar destfile="${jarTmpName}" basedir="${releaseBuildDir}">
+      <manifest>
+        <attribute name="Implementation-Vendor" value="Security Innovation"/>
+        <attribute name="Implementation-Title" value="jNeo"/>
+        <attribute name="Implementation-Version" value="1.0rc1"/>
+      </manifest>
+    </jar>
+    <!-- strip the non-published APIs from the jar file -->
+    <proguard configuration="jNeo.pro">
+      <injar      name="${jarTmpName}"/>
+      <outjar     name="${jarName}"/>
+      <libraryjar name="${javaRT}"/>
+    </proguard>
+    <!-- clean up -->
+    <delete file="${jarTmpName}"/>
+  </target>
+
+
+  <!-- Compile the test classes (BBTest and Unit test) -->
+  <target name="testcompile" depends="compile">
+    <mkdir dir="${testBuildDir}"/>
+    <javac srcdir="."
+           destdir="${testBuildDir}"
+           classpath="${junitClassPath}:${releaseBuildDir}"
+           debug="on"
+           includes="**/*TestCase.java"/>
+  </target>
+
+  <!-- Run the tests (BBTest and Unit test) against jNeo *.class files -->
+  <target name="test" depends="jar,testcompile">
+    <junit haltonerror="true">
+       <classpath>
+         <pathelement path="${junitClassPath}"/>
+         <pathelement path="${releaseBuildDir}"/>
+         <pathelement path="${testBuildDir}"/>
+         <pathelement path="${java.class.path}"/>
+       </classpath>
+       <formatter type="plain"/>
+       <batchtest>
+         <fileset dir=".">
+           <include name="**/*TestCase.java"/>
+         </fileset>
+       </batchtest>
+     </junit>
+  </target>
+
+
+  <!-- Run the BBTests against the release jar file -->
+  <target name="bbtest" depends="jar,testcompile">
+    <junit haltonerror="true">
+       <classpath>
+         <pathelement path="${junitClassPath}"/>
+         <pathelement path="${jarName}"/>
+         <pathelement path="${testBuildDir}"/>
+         <pathelement path="${java.class.path}"/>
+       </classpath>
+       <formatter type="plain"/>
+       <batchtest>
+         <fileset dir=".">
+           <include name="**/*BBTestCase.java"/>
+         </fileset>
+       </batchtest>
+     </junit>
+  </target>
+
+
+  <!-- Build and run the sample code as part of the system test. -->
+  <property name="sample.buildDir" value="build/sample"/>
+  <property name="sample.classPath" value="${jarName}:${sample.buildDir}"/>
+  <target name="sample" depends="jar">
+    <mkdir dir="${sample.buildDir}"/>
+    <javac srcdir="com/securityinnovation/jNeo/sample"
+           destdir="${sample.buildDir}"
+           classpath="${sample.classPath}"
+           debug="on"
+           includes="Sample.java,CompareFiles.java"/>
+
+    <java classname="Sample"
+          classpath="${sample.classPath}">
+      <arg value="-setup"/>
+      <arg value="ees401ep1"/>
+    </java>
+
+    <java classname="Sample"
+          classpath="${sample.classPath}">
+      <arg value="-encrypt"/>
+      <arg value="build/sample/Sample.class"/>
+      <arg value="build/sample/Sample.class.enc"/>
+    </java>
+
+    <java classname="Sample"
+          classpath="${sample.classPath}">
+      <arg value="-decrypt"/>
+      <arg value="build/sample/Sample.class.enc"/>
+      <arg value="build/sample/Sample.class.dec"/>
+    </java>
+
+    <java classname="CompareFiles"
+          classpath="${sample.classPath}">
+      <arg value="build/sample/Sample.class"/>
+      <arg value="build/sample/Sample.class.dec"/>
+    </java>
+
+  </target>
+                    
+
+  <!-- Pull together data for packing a release -->
+  <target name="package" depends="jar,doc">
+    <delete dir="package/jNeo"/>
+    <mkdir  dir="package/jNeo"/>
+    <copy  todir="package/jNeo/lib"     file="jars/jNeo.jar"/>
+    <copy  todir="package/jNeo/sample"  file="com/securityinnovation/jNeo/sample/Sample.java"/>
+    <copy  todir="package/jNeo/javadoc"> 
+      <fileset dir="build/doc" includes="**"/>
+    </copy>
+    <zip destfile="jNeo.zip" basedir="package"/>
+  </target>
+
+
+  <!-- Build code needed to create NtruEncrypt test vectors -->
+  <target name="compile-testgen">
+    <mkdir dir="${TestVectorBuildDir}"/>
+    <javac srcdir="."
+           destdir="${TestVectorBuildDir}"
+           includesfile="jNeoTestVectorGenerator.classes"/>
+  </target>
+
+  <!-- Create NtruEncrypt test vectors -->
+  <target name="testgen" depends="compile-testgen">
+    <java classname="com.securityinnovation.testvectors.NtruEncryptTestVectorGenerator"
+          classpath="${TestVectorBuildDir}"
+          output="TestVectors.txt"/>
+  </target>
+
+</project>
+

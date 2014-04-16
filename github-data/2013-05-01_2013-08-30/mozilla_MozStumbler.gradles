@@ -1,0 +1,86 @@
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.9.+'
+    }
+}
+
+apply plugin: 'android'
+apply plugin: 'eclipse'
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion '19.0.3'
+
+    dependencies {
+        compile fileTree(dir: 'libs', include: '*.jar')
+        compile "com.android.support:support-v4:19.0.+"
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            aidl.srcDirs = ['src']
+            renderscript.srcDirs = ['src']
+            resources.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+        }
+    }
+
+    defaultConfig {
+        buildConfigField "String", "MOZILLA_API_KEY", getMozillaApiKey()
+        buildConfigField "String", "TILE_SERVER_URL", getTileServerUrl()
+    }
+
+    signingConfigs {
+        release
+    }
+
+    buildTypes {
+        debug {
+            jniDebugBuild true
+        }
+
+        release {
+            runProguard true
+            proguardFile 'proguard.cfg'
+            signingConfig signingConfigs.release
+        }
+    }
+
+    lintOptions {
+        abortOnError true
+        disable 'MissingTranslation'
+    }
+}
+
+tasks.withType(JavaCompile) {
+    options.compilerArgs = ['-Xlint:all', '-Werror', '-Xlint:-deprecation']
+}
+
+if (hasProperty('StoreFile')) {
+    android.signingConfigs.release.storeFile = file(StoreFile)
+    android.signingConfigs.release.storePassword = StorePassword
+    android.signingConfigs.release.keyAlias = KeyAlias
+    android.signingConfigs.release.keyPassword = KeyPassword
+} else {
+    android.buildTypes.release.signingConfig = null
+}
+
+String getMozillaApiKey() {
+    return project.hasProperty('MozAPIKey') ? '"' +  project['MozAPIKey'] + '"' : "null";
+}
+
+String getTileServerUrl() {
+    if (project.hasProperty('TileServerURL')) {
+        return '"' + project['TileServerURL'] + '"';
+    } else if (project.hasProperty('MapAPIKey')) {
+        return "\"http://api.tiles.mapbox.com/v3/${project['MapAPIKey']}/\"";
+    }
+    return "null";
+}

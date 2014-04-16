@@ -1,0 +1,494 @@
+<project name="pebble" default="build" basedir=".">
+
+  <property name="project.name" value="pebble"/>
+  <property name="etc.dir" value="${basedir}/etc"/>
+  <property name="src.dir" value="${basedir}/src"/>
+  <property name="web.dir" value="${basedir}/web"/>
+  <property name="website.dir" value="${basedir}/website"/>
+  <property name="test.dir" value="${basedir}/test"/>
+  <property name="build.dir" value="${basedir}/build"/>
+  <property name="generated-src.dir" value="${build.dir}/generated-src"/>
+  <property name="classes.dir" value="${build.dir}/classes"/>
+  <property name="testclasses.dir" value="${build.dir}/test-classes"/>
+  <property name="instrumentedclasses.dir" value="${build.dir}/instrumented-classes"/>
+  <property name="clover.dir" value="${build.dir}/clover"/>
+  <property name="cobertura.dir" value="${build.dir}/cobertura"/>
+  <property name="bin.dir" value="${basedir}/bin"/>
+  <property name="javadoc.dir" value="${web.dir}/javadoc"/>
+  <property name="dist.dir" value="${basedir}/dist"/>
+
+  <property environment="env"/>
+
+  <path id="project.classpath">
+    <pathelement path="${env.CLOVER_HOME}/lib/clover.jar"/>
+    <pathelement path="${env.ANT_HOME}/lib/ant.jar"/>
+    <fileset dir="lib">
+      <include name="*.jar"/>
+    </fileset>
+    <dirset dir="etc"/>
+  </path>
+
+  <path id="cobertura.classpath">
+    <fileset dir="lib">
+      <include name="cobertura-1.8.jar"/>
+      <include name="log4j.jar"/>
+      <include name="asm-2.2.1.jar"/>
+      <include name="oro-2.0.8.jar"/>
+    </fileset>
+  </path>
+  <taskdef classpathref="cobertura.classpath" resource="tasks.properties"/>
+
+  <path id="xjc.classpath">
+    <fileset dir="lib">
+      <include name="jaxb-api-2.0.5.jar"/>
+      <include name="jaxb-impl-2.0.5.jar"/>
+      <include name="jaxb-xjc-2.0.5.jar"/>
+    </fileset>
+  </path>
+  <taskdef name="xjc" classname="com.sun.tools.xjc.XJCTask" classpathref="xjc.classpath"/>
+
+  <target name="init">
+    <propertyfile file="pebble-build.properties" comment="Build information">
+        <entry key="build.date" type="date" value="now" pattern="dd MMMM yyyy HH:mm:ss z"/>
+        <entry key="build.version" value="2.4"/>
+    </propertyfile>
+    <loadproperties srcFile="pebble-build.properties"/>
+
+    <available property="clover.available" file="${env.CLOVER_HOME}" />
+
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${generated-src.dir}"/>
+    <mkdir dir="${classes.dir}"/>
+    <mkdir dir="${testclasses.dir}"/>
+    <mkdir dir="${instrumentedclasses.dir}"/>
+    <mkdir dir="${classes.dir}/META-INF"/>
+    <mkdir dir="${javadoc.dir}"/>
+    <mkdir dir="web/WEB-INF/classes"/>
+  </target>
+
+  <target name="compileschema" depends="init">
+    <xjc schema="etc/pebble.xsd" destdir="${generated-src.dir}" package="net.sourceforge.pebble.dao.file">
+    	<depends dir=".">
+    		<exclude name="pebble-build.properties"/>
+    		<include name="etc/pebble.xsd"/>
+    		<include name="*build.*"/>
+       		<include name="etc/pebble.xsd"/>
+    	</depends>
+    	<produces dir="${generated-src.dir}">
+    		<include name="net/sourceforge/pebble/dao/file/*.java"/>
+    	</produces>
+    </xjc>
+  </target>
+
+  <target name="compile" depends="init">
+    <property name="project.classpath" refid="project.classpath"/>
+    <echo message="Using CLASSPATH of ${project.classpath}"/>
+
+    <javac srcdir="${generated-src.dir}" destdir="${classes.dir}" debug="yes" source="1.5" target="1.5">
+      <classpath refid="project.classpath"/>
+    </javac>
+    <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="yes" source="1.5" target="1.5">
+      <classpath refid="project.classpath"/>
+    </javac>
+  </target>
+
+  <target name="build" depends="compileschema,compile">
+    <copy todir="${classes.dir}" file="pebble-build.properties" />
+
+    <copy todir="${classes.dir}/META-INF">
+      <fileset dir="${etc.dir}">
+        <include name="*.tld"/>
+      </fileset>
+    </copy>
+
+    <jar jarfile="${build.dir}/pebble-${build.version}.jar">
+      <fileset dir="${classes.dir}">
+      </fileset>
+    </jar>
+
+    <javac srcdir="${test.dir}" destdir="${testclasses.dir}" debug="yes" source="1.5" target="1.5">
+      <classpath>
+        <pathelement location="${classes.dir}"/>
+        <pathelement path="${project.classpath}"/>
+      </classpath>
+    </javac>
+
+    <copy todir="web/WEB-INF/lib">
+      <fileset dir="${build.dir}">
+        <include name="pebble-${build.version}.jar"/>
+      </fileset>
+      <fileset dir="lib">
+        <include name="acegi-security-1.0.6.jar"/>
+        <include name="activation.jar"/>
+        <include name="asm-1.5.3.jar"/>
+        <include name="asm-attrs-1.5.3.jar"/>
+        <include name="asm-util-1.5.3.jar"/>
+        <include name="backport-util-concurrent-3.0.jar"/>
+        <include name="cglib-2.1_3.jar"/>
+        <include name="commons-beanutils.jar"/>
+        <include name="commons-codec-1.3.jar"/>
+        <include name="commons-collections-3.1.jar"/>
+        <include name="commons-fileupload-1.0.jar"/>
+        <include name="commons-httpclient-3.0-rc3.jar"/>
+        <include name="commons-lang-2.1.jar"/>
+        <include name="commons-logging-1.0.4.jar"/>
+		<include name="core-renderer.jar"/>
+        <include name="dwr-2.0-rc2.jar"/>
+        <include name="ehcache-1.4.1.jar"/>
+        <include name="geolite-java-1.2.1.jar"/>
+		<include name="iText-2.0.8.jar"/>
+        <include name="jaxb-api-2.0.5.jar"/>
+        <include name="jaxb-impl-2.0.5.jar"/>
+        <include name="jaxb-xjc-2.0.5.jar"/>
+        <include name="jcaptcha-all-1.0-RC3.jar"/>
+        <include name="jdom-1.0.jar"/>
+        <include name="jstl-1.1.2.jar"/>
+        <include name="jsr173_1.0_api.jar"/>
+        <include name="log4j-1.2.15.jar"/>
+        <include name="lucene-1.4.1.jar"/>
+		<include name="minium.jar"/>
+        <include name="oro-2.0.8.jar"/>
+        <include name="radeox-1.0-beta2.jar"/>
+        <include name="rome-0.9.jar"/>
+        <include name="saxpath.jar"/>
+        <include name="spring-beans-1.2.8.jar"/>
+        <include name="spring-context-1.2.8.jar"/>
+        <include name="spring-core-1.2.8.jar"/>
+        <include name="spring-dao-1.2.8.jar"/>
+        <include name="spring-web-1.2.8.jar"/>
+        <include name="standard-1.1.2.jar"/>
+        <include name="tidy.jar"/>
+        <include name="xmlrpc-1.2-b1.jar"/>
+      </fileset>
+    </copy>
+
+    <!-- copy license/readme information -->
+    <copy todir="web">                
+      <fileset dir=".">
+        <include name="license.txt"/>
+        <include name="apache-license.txt"/>
+        <include name="changelog.txt"/>
+      </fileset>
+    </copy>
+
+    <copy todir="web/themes/simple">
+      <fileset dir="web/themes/default">
+        <include name="template.jsp"/>
+      </fileset>
+    </copy>
+
+    <copy todir="web/WEB-INF/classes">
+      <fileset dir="${etc.dir}">
+        <include name="log4j.properties"/>
+        <include name="action.properties"/>
+        <include name="secure-action.properties"/>
+        <include name="content-types.properties"/>
+        <include name="resources*.properties"/>
+        <include name="ehcache.xml"/>
+        <include name="propono.properties"/>
+        <include name="geo-ip.dat"/>
+      </fileset>
+    </copy>
+    <copy file="web/WEB-INF/classes/resources.properties" tofile="web/WEB-INF/classes/resources_en.properties"/>
+
+    <copy todir="web/WEB-INF/classes/org/apache/xmlrpc/webserver">
+      <fileset dir="${etc.dir}">
+        <include name="XmlRpcServlet.properties"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="test" depends="build">
+  	<delete dir="${build.dir}/test-report"/>
+	<mkdir dir="${build.dir}/test-report"/>
+	<mkdir dir="${build.dir}/test-report/xml"/>
+	<mkdir dir="${build.dir}/test-report/html"/>
+  	
+    <junit printsummary="withOutAndErr" haltonfailure="no" fork="yes" forkMode="once" reloading="false" failureproperty="junitfailure" errorproperty="juniterror">
+      <classpath>
+        <pathelement location="${instrumentedclasses.dir}"/>
+        <pathelement location="${testclasses.dir}"/>
+        <pathelement location="${classes.dir}"/>
+        <pathelement path="${project.classpath}"/>
+      </classpath>
+      <jvmarg value="-Duser.language=en"/>
+      <jvmarg value="-Duser.region="/>
+  	  <formatter type="xml" />
+<!--
+      <formatter type="plain" usefile="false"/>
+-->    	
+      <batchtest todir="${build.dir}/test-report/xml">
+        <fileset dir="${test.dir}">
+          <include name="**/*Test.java"/>
+        </fileset>
+      </batchtest>
+    </junit>
+
+  	<junitreport todir="${build.dir}/test-report/html" >
+  		<fileset dir="${build.dir}/test-report/xml">
+  			<include name="TEST*.xml"/>
+  		</fileset>
+  		<report format="frames" todir="${build.dir}/test-report/html"/>
+  	</junitreport> 
+
+  	<fail if="junitfailure"/>
+  	<fail if="juniterror"/>
+  	
+  </target>
+
+  <target name="webtest">
+    <ant dir="webtest" antfile="alltests.xml" />
+  </target>
+
+  <target name="dist" depends="clean,init,build,test,javadoc,website">
+    <property name="release.dir" value="${build.dir}/${project.name}-${build.version}"/>
+    <mkdir dir="${release.dir}"/>
+    <mkdir dir="${dist.dir}"/>
+
+    <!-- copy pebble.war into the distribution -->
+    <zip zipfile="${release.dir}/pebble.war">
+      <fileset dir="web">
+        <exclude name="themes/user-*/"/>
+        <exclude name="WEB-INF/tmp/"/>
+        <exclude name="WEB-INF/work/"/>
+      </fileset>
+    </zip>
+
+    <copy todir="${release.dir}">
+      <fileset dir=".">
+        <include name="license.txt"/>
+        <include name="apache-license.txt"/>
+        <include name="changelog.txt"/>
+        <include name="readme.txt"/>
+      </fileset>
+    </copy>
+
+    <!-- these libraries are required to be installed separately on some app servers -->
+    <mkdir dir="${release.dir}/lib"/>
+    <copy todir="${release.dir}/lib">
+      <fileset dir="lib">
+        <include name="activation.jar" />
+        <include name="mail.jar" />
+      </fileset>
+    </copy>
+
+    <mkdir dir="${release.dir}/docs"/>
+    <copy todir="${release.dir}/docs">
+      <fileset dir="${website.dir}"/>
+    </copy>
+
+    <mkdir dir="${release.dir}/src"/>
+    <copy todir="${release.dir}/src">
+      <fileset file=".classpath"/>
+      <fileset file=".project"/>
+      <fileset file="apache-license.txt"/>
+      <fileset file="build.xml"/>
+      <fileset file="changelog.txt"/>
+      <fileset file="license.txt"/>
+      <fileset file="pebble.iml"/>
+      <fileset file="pebble.ipr"/>
+      <fileset file="pebble.iws"/>
+      <fileset file="readme.txt"/>
+      <fileset file="setenv.bat"/>
+      <fileset file="setenv.sh"/>
+    </copy>
+    <mkdir dir="${release.dir}/src/etc"/>
+    <copy todir="${release.dir}/src/etc">
+      <fileset dir="etc"/>
+    </copy>
+    <mkdir dir="${release.dir}/src/lib"/>
+    <copy todir="${release.dir}/src/lib">
+      <fileset dir="lib"/>
+    </copy>
+    <mkdir dir="${release.dir}/src/src"/>
+    <copy todir="${release.dir}/src/src">
+      <fileset dir="src"/>
+    </copy>
+    <mkdir dir="${release.dir}/src/test"/>
+    <copy todir="${release.dir}/src/test">
+      <fileset dir="test"/>
+    </copy>
+    <mkdir dir="${release.dir}/src/web"/>
+    <copy todir="${release.dir}/src/web">
+      <fileset dir="web">
+        <exclude name="themes/user-*/"/>
+        <exclude name="WEB-INF/classes/"/>
+        <exclude name="WEB-INF/lib/"/>
+        <exclude name="WEB-INF/tmp/"/>
+        <exclude name="WEB-INF/work/"/>
+      </fileset>
+    </copy>
+
+    <zip zipfile="${dist.dir}/${project.name}-${build.version}.zip">
+      <fileset dir="${build.dir}">
+        <include name="${project.name}-${build.version}/**"/>
+      </fileset>
+    </zip>
+  </target>
+
+  <target name="website">
+    <copy file="web/themes/default/screen.css" tofile="${website.dir}/screen.css" />
+    <copy todir="${website.dir}/images">
+      <fileset dir="web/themes/default/images">
+        <include name="*.gif"/>
+        <include name="*.jpg"/>
+        <include name="*.png"/>
+      </fileset>
+    </copy>
+    <copy todir="${website.dir}">
+      <fileset dir=".">
+        <include name="license.txt"/>
+      </fileset>
+    </copy>
+
+    <zip destfile="${build.dir}/website.zip" basedir="${website.dir}" />
+  </target>
+
+  <target name="uploadwebsite" depends="website,sourceforgecredentials">
+    <scp file="${build.dir}/website.zip" 
+         todir="${sourceforge.username},pebble@web.sf.net:htdocs/website.zip" 
+         password="${sourceforge.password}"
+         verbose="true"/>
+  </target> 
+
+  <target name="releaseBuild">
+    <loadproperties srcFile="${user.home}/sourceforge.properties"/>
+    <ftp server="upload.sourceforge.net"
+         remotedir="incoming"
+         userid="anonymous"
+         password="${sourceforge.username}@users.sourceforge.net"
+         depends="yes">
+      <fileset dir="${dist.dir}">
+        <include name="${project.name}-${build.version}.zip"/>
+      </fileset>
+    </ftp>
+  </target>
+
+  <target name="release" depends="dist,website">
+  </target>
+
+  <target name="javadoc" depends="init">
+    <javadoc packagenames="net.sourceforge.pebble.*"
+               sourcepath="${src.dir}"
+               defaultexcludes="yes"
+               destdir="${javadoc.dir}"
+               author="true"
+               version="true"
+               use="true"
+               windowtitle="Pebble">
+        <doctitle><![CDATA[<h1>Pebble</h1>]]></doctitle>
+        <bottom><![CDATA[<i>Copyright &#169; 2003-2006, Simon Brown. All Rights Reserved.</i>]]></bottom>
+        <link offline="true" href="http://java.sun.com/products/jdk/1.2/docs/api/" packagelistLoc="C:\tmp"/>
+        <link href="http://developer.java.sun.com/developer/products/xml/docs/api/"/>
+      </javadoc>
+  </target>
+
+  <target name="clean">
+    <delete dir="${build.dir}"/>
+    <delete dir="${dist.dir}"/>
+    <delete dir="${clover.dir}"/>
+    <delete dir="${javadoc.dir}"/>
+    <delete dir="web/docs"/>
+    <delete dir="web/WEB-INF/classes"/>
+    <delete dir="web/WEB-INF/lib"/>
+    <delete dir="web/WEB-INF/src"/>
+    <delete dir="web/WEB-INF/tmp"/>
+    <delete dir="web/WEB-INF/work"/>
+    <delete file="web/WEB-INF/generated_web.xml"/>
+  </target>
+
+<target name="sourceforgecredentials">
+    <loadproperties srcFile="${user.home}/sourceforge.properties"/>
+	<echo>
+		In order to sftp to ${sourceforge.username},pebble@web.sf.net 
+		with your ssh key please enter the location of your key
+	</echo>
+	<input message="Location / Filename"
+           defaultvalue="${user.home}/.ssh/id_rsa" 
+		   addproperty="sshkeylocation"/>
+	<echo>
+		Also, we need your secret passphrase to unlock the key. 
+		Note that the passphrase WILL BE PRINTED to the console.
+		This is documented in the ant input task as a java flaw,
+		because Java cannot read input from the console without
+		printing the characters at the same time. Sorry for that.
+		You might want to consider creating a ssh key specifically
+		for this.
+	</echo>
+    <input message="Your secret passphrase to unlock the key" 
+    	   addproperty="sshpassphrase"/>
+</target>	
+	
+	
+
+  <target name="nightlybuild" depends="dist,sourceforgecredentials">
+    <copy file="website/index.html" tofile="${build.dir}/index.html" />
+    <replace file="${build.dir}/index.html">
+      <replacetoken><![CDATA[<!-- @@nightlyBuild@@ -->]]></replacetoken>
+      <replacevalue><![CDATA[Nightly build : <a href="http://pebble.sourceforge.net/pebble-nightly.zip">@@buildDate@@</a>
+          <br />
+]]></replacevalue>
+    </replace>
+    <replace file="${build.dir}/index.html" token="@@buildDate@@" value="${build.date}" />
+
+    <echo>Uploading pebble-nightly.zip</echo>
+    <scp file="${dist.dir}/${project.name}-${build.version}.zip" 
+         todir="${sourceforge.username},pebble@web.sf.net:htdocs/pebble-nightly.zip" 
+         keyfile="${sshkeylocation}"
+         passphrase="${sshpassphrase}"
+         verbose="true"/>
+    <echo>Uploading index.html</echo>
+    <scp file="${build.dir}/index.html"
+         toDir="${sourceforge.username},pebble@web.sf.net:htdocs/index.html"
+         keyfile="${sshkeylocation}"
+         passphrase="${sshpassphrase}"
+         verbose="true"/>
+<!--
+	previously the upload was user-based - it changed to "user,project" based above,
+	so that these scp tasks are superceded by the ones above. As I'm still getting used
+	to releasing files, I'd like to leave these lines here for a while even though
+	they still exist in svn.
+    <scp file="${dist.dir}/${project.name}-${build.version}.zip"
+         todir="${sourceforge.username}@web.sf.net:/home/groups/p/pe/pebble/htdocs/pebble-nightly.zip"
+         password="${sourceforge.password}"
+         verbose="true"/>
+    <scp file="${build.dir}/index.html" 
+         todir="${sourceforge.username}@web.sf.net:/home/groups/p/pe/pebble/htdocs/index.html" 
+         password="${sourceforge.password}"
+         verbose="true"/>
+-->
+  </target>
+
+  <target name="with.clover" depends="init">
+    <taskdef resource="clovertasks" />
+    <typedef resource="clovertypes" />
+
+    <mkdir dir="${clover.dir}"/>
+
+    <clover-setup initstring="${clover.dir}/coverage.db" enabled="true" relative="true" source="1.5">
+      <fileset dir="src"/>
+    </clover-setup>
+  </target>
+
+  <target name="clover.report" depends="with.clover">
+    <clover-report>
+      <current outfile="${clover.dir}" title="Coverage Report for Pebble">
+        <format type="html"/>
+      </current>
+    </clover-report>
+  </target>
+
+  <target name="with.cobertura">
+    <delete file="cobertura.ser"/>
+    <cobertura-instrument todir="${instrumentedclasses.dir}">
+      <fileset dir="${classes.dir}">
+        <include name="**/*.class"/>
+      </fileset>
+    </cobertura-instrument>
+  </target>
+
+  <target name="cobertura.report">
+    <cobertura-report srcdir="${src.dir}" destdir="${cobertura.dir}"/>
+  </target>
+
+</project>

@@ -1,0 +1,514 @@
+subprojects {
+    apply plugin: 'java'
+
+    sourceCompatibility = '1.7'
+    targetCompatibility = '1.7'
+
+    [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+
+    group               = "co.paralleluniverse"
+    version             = "0.6.0-SNAPSHOT"
+    status              = "integration"
+    description         = "lightweight threads and actors for the JVM."
+    ext.url             = "http://puniverse.github.com/quasar"
+    ext.vendor          = "Parallel Universe Software Co."
+    ext.licenseName1    = "The GNU Lesser General Public License, version 3"
+    ext.licenseUrl1     = "http://www.gnu.org/licenses/lgpl-3.0.txt"
+    ext.licenseName2    = "Eclipse Public License - v 1.0"
+    ext.licenseUrl2     = "http://www.eclipse.org/legal/epl-v10.html"
+    ext.scmUrl          = "https://github.com/puniverse/quasar"
+    ext.scmConnection   = "https://github.com/puniverse/quasar.git"
+    ext.distDir         = "$buildDir/dist"
+    ext.isReleaseVersion = !version.endsWith("SNAPSHOT")
+    ext.baselib         = "${rootProject.projectDir}/baselib"
+    ext.quasarJar       = "${rootProject.projectDir}/quasar-core/build/libs/quasar-core-${version}.jar" // project(':quasar-core').jar.archivePath
+    
+    if (!project.hasProperty("sonatypeUsername") || !project.hasProperty("sonatypePassword")) {
+        println "sonatype username or password not set"
+        sonatypeUsername = ""
+        sonatypePassword = ""
+    }
+
+    // NetBeans will automatically add "run" and "debug" tasks relying on the
+    // "mainClass" property. You may however define the property prior executing
+    // tasks by passing a "-PmainClass=<QUALIFIED_CLASS_NAME>" argument.
+    //
+    // Note however, that you may define your own "run" and "debug" task if you
+    // prefer. In this case NetBeans will not add these tasks but you may rely on
+    // your own implementation.
+    if (!project.hasProperty('mainClass')) { // must use project.hasProperty() rather than hasProperty in subprojects (gradle bug)
+        ext.mainClass = ''
+    }
+    repositories {
+        flatDir {
+            dirs baselib
+        }
+        repositories {
+            mavenCentral()
+            mavenLocal()
+            maven { url "https://oss.sonatype.org/content/repositories/releases" }
+            maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+            maven { url "http://download.oracle.com/maven/" }
+        }
+    }
+    
+    configurations.all {
+        resolutionStrategy {
+            failOnVersionConflict()
+
+            force "com.google.guava:guava:16.0.1"
+            force "org.slf4j:slf4j-api:1.7.7"
+            force "org.apache.logging.log4j:log4j-slf4j-impl:2.0-rc1"
+            force "org.apache.logging.log4j:log4j-api:2.0-rc1"
+            force "org.apache.logging.log4j:log4j-core:2.0-rc1"
+            force "log4j:log4j:1.2.17"
+            force "junit:junit:4.11"
+            force "com.codahale.metrics:metrics-core:3.0.2"
+            force "org.hamcrest:hamcrest-core:1.3"
+            force "com.esotericsoftware.kryo:kryo:2.23.0"
+        }
+    }
+
+    configurations {
+        markdownDoclet
+    }
+    
+    dependencies {
+        compile "com.codahale.metrics:metrics-core:3.0.2" 
+        compile "org.apache.ant:ant:1.9.3"
+        compile "com.google.guava:guava:16.0.1"
+        compile "org.slf4j:slf4j-api:1.7.7"
+	//  runtime "org.slf4j:slf4j-jdk14:1.7.7"
+        runtime "org.apache.logging.log4j:log4j-slf4j-impl:2.0-rc1"
+        runtime "org.apache.logging.log4j:log4j-api:2.0-rc1"
+        runtime "org.apache.logging.log4j:log4j-core:2.0-rc1"
+        compile "com.lmax:disruptor:3.2.1" // required for log4j
+        testCompile 'junit:junit:4.11'
+        testCompile 'org.hamcrest:hamcrest-all:1.3'
+        testCompile("org.mockito:mockito-all:1.9.5") {
+            exclude group: "org.ow2.asm", module: '*'
+        }
+        testCompile 'org.openjdk.jmh:jmh-core:0.5.6'
+        markdownDoclet "ch.raffael.pegdown-doclet:pegdown-doclet:1.1.1"
+    }
+
+    test.dependsOn jar
+
+    tasks.withType(Test) { 
+        useJUnit()
+        // systemProperty 'co.paralleluniverse.fibers.verifyInstrumentation', 'true'
+        
+	// systemProperty "java.util.logging.config.file", "jul.properties"
+        systemProperty "log4j.configurationFile", "${rootProject.projectDir}/log4j.xml"
+        // systemProperty "Log4jContextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+	    
+        // systemProperty 'co.paralleluniverse.debugMode', 'true'
+        systemProperty 'co.paralleluniverse.globalFlightRecorder', 'true'
+        systemProperty 'co.paralleluniverse.flightRecorderDumpFile', 'quasar.log'
+        systemProperty 'co.paralleluniverse.monitoring.flightRecorderSize', '200000'
+        
+        jvmArgs "-javaagent:${quasarJar}" // =vdmc (verbose, debug, allow monitors, check class)
+        jvmArgs "-Xmx2048m"
+        doLast() {
+            println "file://" + getReports().getHtml().getDestination() + "/index.html"
+        }  
+    }
+
+    task run(type: JavaExec, dependsOn:[testClasses]) {
+        main = mainClass
+        
+        jvmArgs '-Xmx2048m'
+    
+        systemProperty "log4j.configurationFile", "${rootProject.projectDir}/log4j.xml"
+        systemProperty "Log4jContextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+        // systemProperty 'co.paralleluniverse.fibers.verifyInstrumentation', 'true'
+        jvmArgs "-javaagent:${quasarJar}" // =vdmc (verbose, debug, allow monitors, check class)
+    }
+
+    test {
+        beforeTest { desc ->
+            logger.quiet("Running test: " + desc)
+        }
+        
+        afterTest { desc, result -> 
+            if(result.resultType == TestResult.ResultType.FAILURE) {
+                logger.quiet("Failed test ${desc.name} [${desc.className}] with exception: ${result.exception}")
+                if(result.exception != null) {
+                    result.exception.printStackTrace()
+                }
+            }
+        }
+    }
+
+    tasks.withType(JavaExec) { 
+        classpath = sourceSets.test.runtimeClasspath   
+    }
+
+    
+    //    tasks.withType(Debug) { 
+    //        classpath = sourceSets.test.runtimeClasspath   
+    //    }
+    
+    configure (javadoc) {
+        options {
+            docletpath = configurations.markdownDoclet.files.asType(List)
+            doclet = 'ch.raffael.doclets.pegdown.PegdownDoclet'
+            addStringOption("parse-timeout", "10")
+            // stylesheetFile = rootProject.file('./baselib/javadoc.css')
+            links = [    
+        "http://docs.oracle.com/javase/7/docs/api/",
+        "http://docs.guava-libraries.googlecode.com/git-history/v16.0.1/javadoc/"
+            ]
+        }
+        excludes = [
+        "co/paralleluniverse/common/logging/**",
+        "co/paralleluniverse/common/monitoring/**",
+        "co/paralleluniverse/common/util/**",  
+        ]
+    }
+    
+    defaultTasks 'build'
+
+    task sourcesJar(type: Jar, dependsOn: classes) {
+        classifier = 'sources'
+        from sourceSets.main.allSource
+    }
+    task javadocJar(type: Jar, dependsOn: javadoc) {
+        classifier = 'javadoc'
+        from javadoc.destinationDir
+    } 
+
+    ///////// Publish Artifacts 
+    apply plugin: 'maven'
+    apply plugin: 'signing'
+
+    artifacts {
+        archives jar
+        archives sourcesJar
+        archives javadocJar
+        //    archives distZip
+    }
+
+    signing {
+        required { isReleaseVersion && gradle.taskGraph.hasTask("uploadArchives") }
+        sign configurations.archives
+    }
+    
+    // remove embedded jars from pom
+    configure(install.repositories.mavenInstaller) {
+        pom.whenConfigured {
+            it.dependencies.removeAll { dep -> 
+                dep.artifactId.startsWith('jsr166e') || 
+                dep.artifactId.startsWith('high-scale-lib') || 
+                dep.artifactId.startsWith('HdrHistogram') ||
+                (dep.groupId == 'co.paralleluniverse' && dep.artifactId.startsWith('quasar-core'))
+            }
+        }
+    }
+	                
+    uploadArchives {
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+                repository(
+                    url: (isReleaseVersion ? 
+	                        "https://oss.sonatype.org/service/local/staging/deploy/maven2" : 
+	                        "https://oss.sonatype.org/content/repositories/snapshots")) {
+                    // User and Password are taken from ~/.gradle/gradle.properties
+                    authentication(userName: sonatypeUsername, password: sonatypePassword)
+                } 
+                pom.whenConfigured {
+                    it.dependencies.removeAll { dep -> 
+                        dep.artifactId.startsWith('jsr166e') || 
+                        dep.artifactId.startsWith('high-scale-lib') || 
+                        dep.artifactId.startsWith('HdrHistogram') ||
+                        (dep.groupId == 'co.paralleluniverse' && dep.artifactId.startsWith('quasar-core'))
+                    }
+                }
+                pom.project {
+                    name project.name
+                    packaging 'jar'
+                    description project.description
+                    url project.url
+                    scm {
+                        url project.scmUrl
+                        connection project.scmConnection
+                        developerConnection project.scmConnection
+                    } 
+                    licenses {
+                        license {
+                            name project.licenseName1
+                            url project.licenseUrl1
+                            distribution 'repo'
+                        }
+                        license {
+                            name project.licenseName2
+                            url project.licenseUrl2
+                            distribution 'repo'
+                        }
+                    }
+                    developers {
+                        developer {
+                            id 'pron'
+                            name 'Ron Pressler'
+                        }
+                    }
+                }
+            }
+        }
+    }	
+}
+
+project (':quasar-core') {
+    dependencies {
+        compile ":jsr166e"
+        compile ":high-scale-lib"
+        compile ":HdrHistogram"
+        compile "org.ow2.asm:asm:5.0.1" 
+        compile "org.ow2.asm:asm-analysis:5.0.1"
+        compile "org.ow2.asm:asm-commons:5.0.1"
+        compile "org.ow2.asm:asm-util:5.0.1"
+        compile("com.esotericsoftware.kryo:kryo:2.23.0") {
+            exclude group: "org.ow2.asm", module: '*'
+        }
+        compile("de.javakaffee:kryo-serializers:0.26") {
+            exclude group: "com.esotericsoftware.kryo", module: '*'
+        }
+    }
+    
+    compileJava.dependsOn processResources
+    compileJava {
+        doLast {
+            ant.taskdef(name:'scanSuspendables', classname:'co.paralleluniverse.fibers.instrument.SuspendablesScanner', classpath: "build/classes/main:" + configurations.compile.asPath)
+            ant.scanSuspendables(outputFile:"$sourceSets.main.output.resourcesDir/META-INF/suspendable-supers", append: 'true') {
+                fileset(dir: sourceSets.main.output.classesDir)
+            }
+//            ant.concat(destfile:"$sourceSets.main.output.resourcesDir/META-INF/suspendable-supers", append: 'true', fixlastline: 'yes') {
+//                fileset(file: "${sourceSets.main.resources.srcDirs.iterator().next()}/META-INF/suspendable-supers")
+//            }
+            
+            ant.taskdef(name:'instrumentation', classname:'co.paralleluniverse.fibers.instrument.InstrumentationTask', classpath: "build/resources/main:" + "build/classes/main:" + configurations.compile.asPath)
+            ant.instrumentation(verbose:'true', check:'true', debug:'true') {
+                fileset(dir: sourceSets.main.output.classesDir) {
+                    exclude(name: 'co/paralleluniverse/fibers/instrument/*.class')
+                }
+            } 
+        }
+    }
+    
+    jar {
+        from zipTree("${baselib}/jsr166e.jar")  // include non-Maven jars
+        from zipTree("${baselib}/high-scale-lib.jar")  // include non-Maven jars
+        from zipTree("${baselib}/HdrHistogram.jar")  // include non-Maven jars
+        manifest { 
+            attributes(
+	            "Built-By"                  :   System.getProperty("user.name"),
+	            "Implementation-Title"      :   project.name,
+	            "Implementation-Version"    :   version,
+	            "Implementation-Vendor"     :   vendor,
+	            "Premain-Class"             :   "co.paralleluniverse.fibers.instrument.JavaAgent",
+	            "Can-Retransform-Classes"   :   "true",
+                    "Can-Redefine-Classes"      :   "true",
+                //  "Class-Path"                :   configurations.runtime.collect { "lib/"+it.getName() }.join(',') 
+            )
+        }
+    }
+
+    if (System.properties['java.version'].startsWith('1.8') ) { 
+        artifacts {
+            archives jar
+            archives project(':quasar-core-jdk8').jar
+            archives sourcesJar
+            archives javadocJar
+            //    archives distZip
+        }
+    
+        uploadArchives.dependsOn ':quasar-core-jdk8:jar'
+    }
+}
+
+project (':quasar-actors') {
+    //project.evaluationDependsOn(':quasar-core')
+    
+    dependencies {
+        compile project(':quasar-core')
+        // compile 'org.mutabilitydetector:MutabilityDetector:0.9.1'
+    }
+}
+
+project (':quasar-galaxy') {    
+    dependencies {
+        compile project(':quasar-core')
+        compile project(':quasar-actors')
+        
+        compile ("co.paralleluniverse:galaxy:1.3")  {
+            exclude group: "com.lmax", module: 'disruptor'
+        }
+    }
+    
+    tasks.withType(JavaExec) {
+        main = mainClass
+        systemProperty "log4j.configurationFile", "${rootProject.projectDir}/log4j.xml"
+        systemProperty "Log4jContextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+        // systemProperty 'co.paralleluniverse.fibers.verifyInstrumentation', 'true'
+        jvmArgs "-javaagent:${quasarJar}" // =v, =d
+        jvmArgs "-ea", "-XX:MaxDirectMemorySize=100M"
+        systemProperty "jgroups.bind_addr", "127.0.0.1"
+        systemProperty "galaxy.multicast.address", "225.0.0.1"
+        systemProperty "galaxy.multicast.port", "7050"
+        systemProperty "co.paralleluniverse.galaxy.configFile", "${sourceSets.main.output.resourcesDir}/config/peer.xml"
+        systemProperty "co.paralleluniverse.galaxy.autoGoOnline", "true"
+    }
+}
+
+task javadoc(type: Javadoc, dependsOn: subprojects.javadoc) {
+    title = "Quasar ${project(':quasar-core').version}"
+    destinationDir = file("docs/javadoc")
+    source = project(':quasar-core').sourceSets.main.allJava + project(':quasar-actors').sourceSets.main.allJava
+    classpath = files(subprojects.collect { project -> project.sourceSets.main.compileClasspath })
+    options {
+        docletpath = project(':quasar-core').configurations.markdownDoclet.files.asType(List)
+        doclet = 'ch.raffael.doclets.pegdown.PegdownDoclet'
+        addStringOption("parse-timeout", "10")
+        // stylesheetFile = rootProject.file('./baselib/javadoc.css')
+        links = [    
+        "http://docs.oracle.com/javase/7/docs/api/",
+        "http://docs.guava-libraries.googlecode.com/git-history/v15.0/javadoc/"
+        ]
+    }
+    excludes = [
+        "co/paralleluniverse/actors/ActorMonitor.java",
+        "co/paralleluniverse/actors/GlobalRegistry.java",
+        "co/paralleluniverse/actors/JMXActorMonitor.java",
+        "co/paralleluniverse/actors/LifecycleListener.java",
+        "co/paralleluniverse/actors/LifecycleListenerProxy.java",
+        "co/paralleluniverse/actors/MutabilityTester.java",
+        "co/paralleluniverse/actors/RemoteActorProxyFactoryService.java",
+        "co/paralleluniverse/actors/RemoteActorRef.java",
+        "co/paralleluniverse/actors/RemoteActorProxyFactory.java",
+        "co/paralleluniverse/common/benchmark/**",
+        "co/paralleluniverse/common/classloader/**",
+        "co/paralleluniverse/common/logging/**",
+        "co/paralleluniverse/common/monitoring/**",
+        "co/paralleluniverse/common/reflection/**",
+        "co/paralleluniverse/common/util/**",  
+        "co/paralleluniverse/concurrent/forkjoin/**",  
+        "co/paralleluniverse/concurrent/util/**",  
+        "co/paralleluniverse/data/record/DynamicGeneratedRecord.java",
+        "co/paralleluniverse/data/record/DynamicRecord.java",
+        "co/paralleluniverse/fibers/DefaultFiberPool.java",
+        "co/paralleluniverse/fibers/FibersMonitor.java",
+        "co/paralleluniverse/fibers/FiberTimedScheduler.java",
+        "co/paralleluniverse/fibers/Instrumented.java",
+        "co/paralleluniverse/fibers/NoopFibersMonitor.java",
+        "co/paralleluniverse/fibers/instrument/**",
+        "co/paralleluniverse/io/serialization/**",
+        "co/paralleluniverse/remote/**",
+        "co/paralleluniverse/strands/channels/SelectActionImpl.java",
+        "co/paralleluniverse/strands/channels/disruptor/**", // not ready
+        "co/paralleluniverse/strands/queues/**",
+    ]
+}
+
+task clean(dependsOn: subprojects.clean) << {
+    delete 'docs/javadoc'
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+}
+apply plugin: 'java'
+
+sourceCompatibility = '1.8'
+targetCompatibility = '1.8'
+
+ext.quasarJar = "${libsDir}/quasar-core-${version}-jdk8.jar" // project(':quasar-core').jar.archivePath
+
+dependencies {
+    compile(project(':quasar-core')) { // 
+        exclude module: "jsr166e"
+    }
+}
+
+sourceSets {
+    test {
+        java {
+            srcDirs += "../quasar-core/src/test/java" // project(":quasar-core").sourceSets.test.java.srcDirs
+        }
+    }
+}
+
+compileJava {
+    doLast {
+        ant.taskdef(name:'scanSuspendables', classname:'co.paralleluniverse.fibers.instrument.SuspendablesScanner', classpath: "build/classes/main:" + configurations.compile.asPath)
+        ant.scanSuspendables(outputFile:"$sourceSets.main.output.resourcesDir/META-INF/suspendable-supers") {
+            fileset(dir: project(':quasar-core').sourceSets.main.output.classesDir)
+            fileset(dir: sourceSets.main.output.classesDir)
+        }
+            
+        ant.taskdef(name:'instrumentation', classname:'co.paralleluniverse.fibers.instrument.InstrumentationTask', classpath: "build/resources/main:" + "build/classes/main:" + configurations.compile.asPath)
+        ant.instrumentation(verbose:'true', check:'true', debug:'true') {
+            fileset(dir: sourceSets.main.output.classesDir) {
+                exclude(name: 'co/paralleluniverse/fibers/instrument/*.class')
+            }
+        }
+                
+    }
+}
+    
+//task jar(dependsOn: classes, type: Jar, overwrite: true) {
+jar.dependsOn ':quasar-core:jar'
+jar {
+    baseName = 'quasar-core'
+    classifier = 'jdk8'
+    
+    from(project(':quasar-core').sourceSets.main.output.classesDir) {
+        exclude fileTree(project.sourceSets.main.output.classesDir).collect { it.path - "${project.sourceSets.main.output.classesDir.path}/" }
+    }
+    from(project(':quasar-core').sourceSets.main.resources) {
+        exclude fileTree(project.sourceSets.main.resources).collect { it.path - "${project.sourceSets.main.resources.path}/" }
+    }
+    from project.sourceSets.main.output.classesDir
+    from project.sourceSets.main.resources
+
+    from zipTree("${baselib}/high-scale-lib.jar")  // include non-Maven jars
+    from zipTree("${baselib}/HdrHistogram.jar")  // include non-Maven jars
+
+    manifest { 
+        attributes(
+	            "Built-By"                  :   System.getProperty("user.name"),
+	            "Implementation-Title"      :   project.name,
+	            "Implementation-Version"    :   version,
+	            "Implementation-Vendor"     :   vendor,
+	            "Premain-Class"             :   "co.paralleluniverse.fibers.instrument.JavaAgent",
+	            "Can-Retransform-Classes"   :   "true",
+                    "Can-Redefine-Classes"      :   "true",
+            //  "Class-Path"                :   configurations.runtime.collect { "lib/"+it.getName() }.join(',') 
+        )
+    }
+}
+
+    
+uploadArchives.enabled = false
+
+tasks.withType(Test) { 
+    allJvmArgs = []
+    useJUnit()
+    // systemProperty 'co.paralleluniverse.fibers.verifyInstrumentation', 'true'
+        
+    // systemProperty "java.util.logging.config.file", "jul.properties"
+    systemProperty "log4j.configurationFile", "${rootProject.projectDir}/log4j.xml"
+    // systemProperty "Log4jContextSelector", "org.apache.logging.log4j.core.async.AsyncLoggerContextSelector"
+	    
+    // systemProperty 'co.paralleluniverse.debugMode', 'true'
+    systemProperty 'co.paralleluniverse.globalFlightRecorder', 'true'
+    systemProperty 'co.paralleluniverse.flightRecorderDumpFile', 'quasar.log'
+    systemProperty 'co.paralleluniverse.monitoring.flightRecorderSize', '200000'
+        
+    jvmArgs "-javaagent:${libsDir}/quasar-core-${version}-jdk8.jar" // =vdmc (verbose, debug, allow monitors, check class)
+    jvmArgs "-Xmx2048m"
+    doLast() {
+        println "file://" + getReports().getHtml().getDestination() + "/index.html"
+    }  
+}

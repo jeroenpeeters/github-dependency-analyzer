@@ -1,0 +1,1142 @@
+<?xml version="1.0" encoding="ISO-8859-1" standalone="yes"?>
+<!--
+ * Title:        Cloudify package ant file.
+ * Copyright:    Copyright (c) 2011
+ * Company:      GigaSpaces Technologies Ltd.
+ * @author       Alex Beresnev
+ * @version      2.0.0
+-->
+
+
+<project name="Cloudify-Assembly" default="usage" basedir=".">
+	
+	
+	
+	<condition property="build.repository.path" value="\\tarzan\builds">
+		<os family="windows" />
+	</condition>
+
+	<condition property="build.repository.path" value="/export/builds">
+		<os family="unix" />
+	</condition>
+
+	<condition property="mvn.executable" value="mvn.bat">
+        	<os family="windows" />
+	</condition>
+
+	<condition property="mvn.executable" value="mvn">
+		<os family="unix" />
+	</condition>
+	
+	
+	
+	<loadproperties srcfile="${basedir}/build.properties" />
+	
+	<property environment="env."/>
+	<property name="s3.cloudify.snapshot.publish.folder" value="${cloudify.version}-SNAPSHOT"/>
+	<property name="tmp.dir" value="${basedir}/tmp" />
+	<property name="xap.files.tmp.dir" value="${basedir}/xap.files.tmp.dir" />
+	<property name="xap.bigdata.dir" value="xap-bigdata" />
+	<property name="xap.installation.dir" value="gigaspaces-xap-premium-${gs.version}-${gs.milestone}" />
+	<property name="xap.zip.name" value="${xap.installation.dir}-b${gs.build.number}.zip" />
+	<property name="xap.zip.full.path" value="${build.repository.path}/${gs.version}/build_${gs.build.number}/xap-premium/1.5/${xap.zip.name}" />
+	<property name="cloudify.installation.dir" value="gigaspaces-cloudify-${cloudify.version}-${cloudify.milestone}" />
+	<property name="cloudify.zip.name" value="${cloudify.installation.dir}-b${cloudify.build.number}.zip" />
+	<property name="xap.zip.full.path" value="${build.repository.path}/cloudify/${cloudify.version}/build_${cloudify.build.number}/product/${xap.zip.name}" />
+	<property name="CLOUDIFY" value="Cloudify" />
+	<property name="cloudify" value="cloudify" />
+	<property name="gs.runtime.jar" value="gs-runtime.jar" />
+	<property name="gs.boot.jar" value="gs-boot.jar" />
+	<property name="gs.webui.war" value="gs-webui-${s3.gs.publish.folder}.war" />
+	<property name="usm.local.copy" value="${basedir}/../USM" />
+    <property name="softlayer.local.copy" value="${basedir}/../../jclouds/providers/softlayer" />
+	<property name="esc.local.copy" value="${basedir}/../esc" />
+	<property name="esc-config.local.copy" value="${basedir}/../esc-config" />
+	<property name="recipes.local.copy" value="${basedir}/../../cloudify-recipes" />
+	<property name="dsl.local.copy" value="${basedir}/../dsl" />
+    <property name="dsl-backwards.local.copy" value="${basedir}/../dsl-backwards" />
+	<property name="domain.local.copy" value="${basedir}/../domain" />
+	<property name="utility.domain.local.copy" value="${basedir}/../utility-domain" />
+	<property name="cli.local.copy" value="${basedir}/../CLI" />
+	<property name="restful.local.copy" value="${basedir}/../restful" />
+	<property name="rest-client.local.copy" value="${basedir}/../rest-client" />
+	<property name="esc-commands.local.copy" value="${basedir}/../esc-commands" />
+	<property name="security.local.copy" value="${basedir}/../security" />
+	<property name="security-ldap.local.copy" value="${basedir}/../security-ldap" />
+    <property name="management-space.local.copy" value="${basedir}/../management-space" />
+	<property name="version.local.copy" value="${basedir}/../version" />
+	<property name="releases.dir" value="${basedir}/releases" />
+	<property name="build.prefix" value="build_" />
+	<property name="package.build" value="${basedir}/package_build" />
+	<property name="gigaspaces.related.folder" value="${package.build}/gigaspaces" />
+	<property name="gs-webui.related.folder" value="${package.build}/gs-webui" />
+	<property name="platform.verion.file.name" value="CloudifyVersion.java" />
+	<property name="cloudify.version.file" value="${version.local.copy}/src/main/java/com/j_spaces/kernel/${platform.verion.file.name}" />
+	<property name="cloudify.maven.container" value="gigaspaces-maven-repository-eu" />
+	<property name="cloudify.cdn.publish.url" value="http://repository.cloudifysource.org" />
+	<property name="cloudify.put.source" value="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip" />
+	<property name="cloudify.put.target" value="org/cloudifysource/${s3.cloudify.dev.and.packages.publish.folder}/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip" />	
+	<property name="cloudify.put.community.target" value="org/cloudifysource/community/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip" />
+	<property name="cloudify.put.community.nightly.target" value="org/cloudifysource/community/gigaspaces-${cloudify}-nightly-build.zip" />
+	<property name="cloudify.gzip.put.source" value="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.tar.gz" />
+	<property name="cloudify.gzip.put.target" value="org/cloudifysource/${s3.cloudify.dev.and.packages.publish.folder}/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.tar.gz" />
+	<property name="bigdata.put.source" value="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5/${xap.zip.name}" />
+	<property name="bigdata.put.target" value="com/gigaspaces/xap/${s3.gs.publish.folder}/${xap.zip.name}" />
+	<property name="bigdata.gzip.put.source" value="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5/${xap.installation.dir}-b${gs.build.number}.tar.gz" />
+	<property name="bigdata.gzip.put.target" value="com/gigaspaces/xap/${s3.gs.publish.folder}/${xap.installation.dir}-b${gs.build.number}.tar.gz" />
+	<property name="tools.lib.dir" value="${basedir}/tools/lib" />
+	<property name="cloudify.base.container" value="gigaspaces-repository-eu" />
+	<property name="cloudify.base.publish.url" value="https://s3.amazonaws.com/${cloudify.base.container}" />
+	<property name="build.properties.file" value="${basedir}/build.properties"/>
+	<property name="cloudify.parent.pom.file" value="${basedir}/pom.xml"/>
+	<property name="streaming-bigdata.pom.file" value="${recipes.local.copy}/apps/streaming-bigdata/pom.xml"/>
+	<property name="s3.cloudify.publish.folder" value="${cloudify.version}-SNAPSHOT"/>
+    <property name="s3.jclouds.publish.folder" value="${jclouds.version}"/>
+	<property name="gs.version.tag" value="gsVersion" />
+	
+	
+	<taskdef resource="net/sf/antcontrib/antlib.xml" classpath="${tools.lib.dir}/ant/ant-contrib-1.0b3.jar"/>
+	
+	
+	<fileset id="all-poms-fileset" dir="${basedir}/../" includes="**/pom.xml" excludes="**/tmp/**" />
+	
+	<condition property="recipes.available" value="true">
+      <available type="dir" file="${recipes.local.copy}"/>
+    </condition>	
+	<!-- these should be injected when running the publish build
+	<property name="publish.cloudify.build" value="run" /> 
+	<property name="put.user" value="AWS User" />
+	<property name="put.key" value="AWS Key />
+	-->
+	
+	<target name="update_platform_version" depends="replace.build.related.settings,replace.cloudify.build.number" unless="gs.internal.systems.not.available">
+   </target>
+	
+	<target name="usage">
+	        <echo message=""/>
+	        <echo message="Cloudify build script"/>
+	        <echo message="-----------------------------------------"/>
+	        <echo message=""/>
+	        <echo message=""/>
+			<echo message="clean.all       --> clean all temp folders"/>
+	        <echo message="cloudify.zip    --> creates Cloudify zip from sourcecode"/>
+	        <echo message=""/>
+	    </target>
+	
+	<target name="replace.cloudify.build.number" if="cloudify.build.number">
+       <property name="build.number.field" value="BUILD_NUM" />
+       <property name="milestone.field" value="MILESTONE" />
+       <property name="build.type.field" value="BUILD_TYPE" />
+	   <property name="version.field" value="VERSION" />
+	   <property name="build.timestamp.field" value="BUILD_TIMESTAMP" />
+	   
+	
+       <replaceregexp file="${cloudify.version.file}"
+            match="${build.number.field} = (.*)"
+            replace='${build.number.field} = "${cloudify.build.number}";'/>
+
+       <replaceregexp file="${cloudify.version.file}"
+            match="${milestone.field} = (.*)"
+            replace='${milestone.field} = "${cloudify.milestone}";'/>
+
+       <replaceregexp file="${cloudify.version.file}"
+            match="${build.type.field} = (.*)"
+            replace='${build.type.field} = "${build.type}";'/>
+
+		<replaceregexp file="${cloudify.version.file}"
+            match="${version.field} = (.*)"
+            replace='${version.field} = "${cloudify.version}";'/>
+		
+		<replaceregexp file="${cloudify.version.file}"
+            match="${build.timestamp.field} = (.*)"
+            replace='${build.timestamp.field} = "${build.timestamp}";'/>
+		
+		<exec executable="${mvn.executable}" dir="${version.local.copy}">
+			<arg line="install"/>
+		</exec>
+   </target>
+	
+	<!-- Remark: XAP  properties are updated from the XAP build --> 
+	<target name="replace.build.related.settings" if="cloudify.build.number">
+		<property name="cloudify.version.field" value="cloudify.version" />
+		<property name="cloudify.build.number.field" value="cloudify.build.number" />
+		<property name="cloudify.milestone.field" value="cloudify.milestone" />
+		
+		<property name="gs.version.field" value="gs.version"/>
+	    <property name="gs.milestone.field" value="gs.milestone" />
+	    <property name="gs.build.number.field" value="gs.build.number" />
+		<property name="s3.gs.publish.folder.field" value="s3.gs.publish.folder" />
+		<property name="s3.gs.packages.publish.folder.field" value="s3.gs.packages.publish.folder" />
+			 
+		<replaceregexp file="${build.properties.file}"
+            match="${cloudify.version.field}=(.*)"
+            replace="${cloudify.version.field}=${cloudify.version}"/>
+		
+		<replaceregexp file="${build.properties.file}"
+            match="${cloudify.build.number.field}=(.*)"
+            replace="${cloudify.build.number.field}=${cloudify.build.number}"/>
+		
+		<replaceregexp file="${build.properties.file}"
+            match="${cloudify.milestone.field}=(.*)"
+            replace="${cloudify.milestone.field}=${cloudify.milestone}"/>
+		
+		<replaceregexp file="${build.properties.file}"
+	        match="${gs.version.field}=(.*)"
+	      	replace="${gs.version.field}=${gs.version}"/>
+
+	    <replaceregexp file="${build.properties.file}"
+	        match="${gs.milestone.field}=(.*)"
+	        replace="${gs.milestone.field}=${gs.milestone}"/>
+
+	    <replaceregexp file="${build.properties.file}"
+	        match="${gs.build.number.field}=(.*)"
+	        replace="${gs.build.number.field}=${gs.build.number}"/>
+	   	
+	   	<replaceregexp file="${build.properties.file}"
+	   	    match="${s3.gs.publish.folder.field}=(.*)"
+	   	    replace="${s3.gs.publish.folder.field}=${s3.gs.publish.folder}"/>
+		
+		<replaceregexp file="${build.properties.file}"
+	   	    match="${s3.gs.packages.publish.folder.field}=(.*)"
+	   	    replace="${s3.gs.packages.publish.folder.field}=${s3.gs.packages.publish.folder}"/>
+		
+		<replaceregexp file="${cloudify.parent.pom.file}"
+			match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+			replace="&lt;${gs.version.tag}&gt;${s3.gs.publish.folder}&lt;/${gs.version.tag}&gt;"/>
+		
+		<replaceregexp file="${streaming-bigdata.pom.file}"
+			match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+			replace="&lt;${gs.version.tag}&gt;${s3.gs.publish.folder}&lt;/${gs.version.tag}&gt;"/>
+
+   </target>
+	
+   <target name="set_gs_version">
+   <replaceregexp file="${cloudify.parent.pom.file}"
+				match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+				replace="&lt;${gs.version.tag}&gt;${s3.gs.publish.folder}&lt;/${gs.version.tag}&gt;"/>
+			
+			<replaceregexp file="${streaming-bigdata.pom.file}"
+				match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+				replace="&lt;${gs.version.tag}&gt;${s3.gs.publish.folder}&lt;/${gs.version.tag}&gt;"/>
+    </target>
+	
+    <target name="update.lus.groups">
+        <echo message="Updating LUS Groups in directory: ${tmp.dir}/${cloudify.installation.dir} ..."/>
+        <property name="lookup.group" value="gigaspaces-${CLOUDIFY}-${cloudify.version}-${cloudify.milestone}"/>
+    	<replaceregexp match="LOOKUPGROUPS=(.*)" replace="LOOKUPGROUPS=&quot;${lookup.group}&quot;">
+    		<fileset dir="${tmp.dir}/${cloudify.installation.dir}" includes="**/*.sh, **/*.bat, **/*.xml"/>
+    	</replaceregexp>
+    </target>
+	
+	 <target name="update.recipes.tag" if="release.build">
+        <echo message="Updating recipes tag in : ${tmp.dir}/${cloudify.installation.dir}/config/cloudify-webui-context-override.xml ..."/>
+    	<replaceregexp match="&lt;!-- property name=&quot;branch&quot; value=&quot;(.*)&quot; /--&gt;" replace="&lt;property name=&quot;branch&quot; value=&quot;refs/tags/${scm.tag}&quot; /&gt;">
+    		<fileset dir="${tmp.dir}/${cloudify.installation.dir}/config" includes="**/*.xml"/>
+    	</replaceregexp>
+    </target>
+	
+	
+    <macrodef name="add.cloudify.modules">
+    	
+    	
+    	<attribute name="installation.dir" default="${tmp.dir}/${cloudify.installation.dir}" />
+    	<sequential>
+    		<property name="current.dir" value="@{installation.dir}" id="current.installation.dir"></property>
+
+            <echo message="Copy softlayer provider"/>
+            <copy todir="@{installation.dir}/lib/platform/esm" overwrite="true">
+                <fileset dir="${softlayer.local.copy}/target/" includes="softlayer-all-${jclouds.version}.jar" excludes=".svn"/>
+            </copy>
+
+	        <echo message="Copy USM component"/>
+	        <copy todir="@{installation.dir}/lib/platform/usm" overwrite="true">
+	            <fileset dir="${usm.local.copy}/target/" includes="usm.jar" excludes=".svn"/>
+	        </copy>
+	
+	        <copy todir="@{installation.dir}/lib/platform/esm" overwrite="true">
+	            <fileset dir="${esc.local.copy}/target/esc/lib" includes="*.jar" excludes=".svn"/>
+	        </copy>
+	
+	        <echo message="Copy dsl component"/>
+    		<mkdir dir="@{installation.dir}/lib/platform/cloudify"/>
+	        <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+		        <fileset dir="${dsl.local.copy}/target/" includes="dsl.jar" excludes=".svn"/>
+	        </copy>
+
+            <echo message="Copy dsl-backwards component"/>
+            <mkdir dir="@{installation.dir}/lib/platform/cloudify"/>
+            <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+                <fileset dir="${dsl-backwards.local.copy}/target/" includes="dsl-backwards.jar" excludes=".svn"/>
+            </copy>
+
+            <echo message="Copy domain component"/>
+	        <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+		        <fileset dir="${domain.local.copy}/target/" includes="domain.jar" excludes=".svn"/>
+	        </copy>
+    		
+	        <echo message="Copy utility-domain component"/>
+	        <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+		        <fileset dir="${utility.domain.local.copy}/target/" includes="utility-domain.jar" excludes=".svn"/>
+	        </copy>
+	
+	        <echo message="Copy CLOUDIFY CLI component"/>
+	        <copy todir="@{installation.dir}/tools/cli/" overwrite="true">
+	            <fileset dir="${cli.local.copy}/target/" includes="cli.jar" excludes=".svn"/>
+	            <fileset dir="${cli.local.copy}/" includes="cloudify.*" excludes=".svn"/>
+	        </copy>
+	    	<copy todir="@{installation.dir}/bin" overwrite="true">
+	            <fileset dir="${gigaspaces.related.folder}/bin" includes="cloudify.*" excludes=".svn"/>
+	        </copy>
+           
+    		<echo message="Copy management-space component"/>
+            <mkdir dir="@{installation.dir}/tools/management-space/" />
+            <copy todir="@{installation.dir}/tools/management-space/" overwrite="true">
+                <fileset dir="${management-space.local.copy}/target/" includes="management-space.jar" excludes=".svn"/>
+            </copy>
+
+	        <echo message="Copy CLOUDIFY Rest component"/>
+	        <copy todir="@{installation.dir}/tools/rest/" overwrite="true">
+	            <fileset dir="${restful.local.copy}/target/" includes="rest.war" excludes=".svn"/>
+	        </copy>
+    		
+	        <echo message="Copy security component"/>
+	        <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+	            <fileset dir="${security.local.copy}/target/" includes="*.jar" excludes=".svn"/>
+	        </copy>
+    		
+	        <echo message="Copy security-ldap component"/>
+	        <copy todir="@{installation.dir}/lib/platform/cloudify" overwrite="true">
+	            <fileset dir="${security-ldap.local.copy}/target/" includes="*.jar" excludes=".svn"/>
+	        </copy>
+    		
+    		<echo message="Copy spring-security.xml"/>
+	        <copy todir="@{installation.dir}/config/security/" overwrite="true">
+	            <fileset dir="${restful.local.copy}/src/main/webapp/WEB-INF" includes="spring-security.xml"/>
+	        </copy>
+    		
+    		<echo message="from_bigdata_package = ${from_bigdata_package}"/>
+    		<if>
+				<not>
+					<equals arg1="${from_bigdata_package}" arg2="yes"/>
+				</not>
+				<then>						
+					<copy todir="@{installation.dir}/config" overwrite="true">
+						<fileset dir="${gs-webui.related.folder}/config" includes="*.xml"/>
+					</copy>
+				</then>
+			</if>			
+	
+	        <echo message="Copy CLOUDIFY esc-command component"/>
+	        <copy todir="@{installation.dir}/tools/cli/plugins/esc" overwrite="true">
+	            <fileset dir="${esc-commands.local.copy}/target" includes="esc-commands.jar" excludes=".svn"/>
+	        </copy>
+    		
+            <echo message="Copy CLOUDIFY clouds to distribution"/>
+            <mkdir dir="@{installation.dir}/clouds/"/>
+	        <copy todir="@{installation.dir}/clouds/" overwrite="true">
+	          <fileset dir="${esc.local.copy}/src/main/resources/clouds" includes="**/*" excludes=".svn"/>
+	        </copy>
+
+            <echo message="Copying bootstrap-management script to all clouds"/>
+            <dirset dir="@{installation.dir}/clouds" id="cloud.dirs">
+                <include name="*"/>
+            </dirset>
+            <script language="javascript">
+
+                var dirs = project.getReference("cloud.dirs").toString().split(";");
+            	var builddir = project.getReference("current.installation.dir").toString();
+            	
+                <![CDATA[
+						
+            			project.setProperty("build.dir", builddir);
+                        for (var i = 0; i < dirs.length; i++) {
+                            project.setProperty("current.cloud", dirs[i]);
+                            project.executeTarget("copy-bootstrap-script-to-cloud");
+                        }
+
+                ]]>
+
+            </script>
+		</sequential>
+    </macrodef>
+
+	
+    <target name="copy-bootstrap-script-to-cloud">
+
+        <echo message="current cloud is ${current.cloud}"/>
+        <copy file="${esc.local.copy}/src/main/resources/general/bootstrap-management.sh" todir="${build.dir}/clouds/${current.cloud}/upload" overwrite="true"/>
+
+    </target>
+
+	<target name="fetch.recipes.cloudify" if="recipes.available">
+		<echo message="Create and Copy recipes component for Cloudify"/>
+		<exec executable="${mvn.executable}" dir="${recipes.local.copy}">
+			<arg line="clean package" />
+		</exec>
+		<unzip src="${recipes.local.copy}/target/recipes.zip" dest="${tmp.dir}/${cloudify.installation.dir}/recipes" />
+	</target>
+	
+	<target name="fetch.recipes.bigdata" if="recipes.available">
+		<echo message="Create and Copy recipes component for BigData"/>
+		<exec executable="${mvn.executable}" dir="${recipes.local.copy}">
+			<arg line="clean package" />
+		</exec>
+		<unzip src="${recipes.local.copy}/target/recipes.zip" dest="${tmp.dir}/${xap.installation.dir}/recipes" />
+	</target>
+
+	<target name="replace.xap.content.with.cloudify.related">
+		<copy todir="${tmp.dir}/${cloudify.installation.dir}" file="${gigaspaces.related.folder}/START_HERE.htm" overwrite="true"/>
+			    	
+    	<!-- replace dynamic_props.js in gs-webui war. WAR task doesn't update exisitng warfile 
+    		properly if the files that are intended to be added to warfile already appear in it. This is the reason for 
+    		temp file creation. -->
+    	<war warfile="${tmp.dir}/${cloudify.installation.dir}/tools/gs-webui/tmp.${gs.webui.war}" needxmlfile="false">
+    		 <zipfileset src="${tmp.dir}/${cloudify.installation.dir}/tools/gs-webui/${gs.webui.war}"
+    		                        includes="**/*" excludes="dynamic_props.js" filemode="775"/>
+            <zipfileset dir="${gs-webui.related.folder}/war" />
+    		<manifest>
+    			<attribute name="Class-Path" value="lib/platform/cloudify/security.jar lib/platform/cloudify/security-ldap.jar"/>
+    		</manifest>
+        </war>
+		
+		<delete file="${tmp.dir}/${cloudify.installation.dir}/tools/gs-webui/${gs.webui.war}"/>
+		<move file="${tmp.dir}/${cloudify.installation.dir}/tools/gs-webui/tmp.${gs.webui.war}" tofile="${tmp.dir}/${cloudify.installation.dir}/tools/gs-webui/${gs.webui.war}"/> 
+	</target>
+
+	<macrodef name="unzip.xap">
+		<attribute name="new.installation.dir.name"/>
+		<sequential>
+			<delete dir="${tmp.dir}"/>
+			<mkdir dir="${tmp.dir}"/>
+			<copy file="${xap.zip.full.path}" todir="${tmp.dir}"/>
+			<unzip src="${tmp.dir}/${xap.zip.name}" dest="${tmp.dir}" />
+			<delete file="${tmp.dir}/${xap.zip.name}"/>
+			<move file="${tmp.dir}/${xap.installation.dir}" tofile="${tmp.dir}/@{new.installation.dir.name}" />
+			<chmod dir="${tmp.dir}/@{new.installation.dir.name}" includes="**/*.sh, **/*groovy*" perm="775"  />
+		</sequential>
+	</macrodef>
+	
+	<target name="prepare.cloudify.package.without.unzip">
+		<loadproperties srcfile="${build.properties.file}"/>
+    	<ant target="add.cloudify.version.to.cloudify.package" />
+    	<ant target="remove.xap.related.modules" />
+        <ant target="update.lus.groups"/>
+        <add.cloudify.modules/>
+		<ant target="update.recipes.tag"/>
+		<ant target="fetch.recipes.cloudify" />
+    	<ant target="replace.xap.content.with.cloudify.related"/>
+    	<ant target="replace.cloudify.notice"/>
+    	<dos2unix dir="${tmp.dir}/${cloudify.installation.dir}" />
+ 
+    	<!-- conditional task (with property: publish.cloudify.build) -->
+    	<ant target="prepare.cloudify.for.publish" />
+    	 
+        <ant target="archive.cloudify.versions"/>
+    	
+		<delete dir="${tmp.dir}"/>		
+ 	</target>	
+	
+
+    <target name="prepare.cloudify.package">
+    	<loadproperties srcfile="${build.properties.file}"/>
+    	<unzip.xap new.installation.dir.name="${cloudify.installation.dir}"/>
+    	<ant target="prepare.cloudify.package.without.unzip"/>
+   </target>
+	
+	<target name="remove.xap.related.modules">
+		<delete dir="${tmp.dir}/${cloudify.installation.dir}/docs" />
+		<delete file="${tmp.dir}/${cloudify.installation.dir}/lib/optional/openspaces/gs-openspaces-sources.zip" />
+		<delete dir="${tmp.dir}/${cloudify.installation.dir}/examples" />
+		<delete dir="${tmp.dir}/${cloudify.installation.dir}/tools/benchmark"/>
+		<delete dir="${tmp.dir}/${cloudify.installation.dir}/tools/apache"/>
+		<delete dir="${tmp.dir}/${cloudify.installation.dir}/tools/alert-integration"/>
+		<delete file="${tmp.dir}/${cloudify.installation.dir}/gslicense.xml"/>
+		<delete>	
+            <fileset dir="${tmp.dir}/${cloudify.installation.dir}/bin" includes="gs-focalserver.*, gsInstance.*,
+            startJiniTxMahalo.*, puInstance.*, gs-memcached.*, gs-ui.*"/>
+        </delete>
+	</target>
+	
+	<target name="replace.cloudify.notice">
+        <copy todir="${tmp.dir}/${cloudify.installation.dir}" file="${gigaspaces.related.folder}/notice.txt" overwrite="true"/>
+    </target>
+	
+	<macrodef name="dos2unix">
+		<attribute name="dir"/>
+		<sequential>
+			<!-- Replaces EOLs with LF characters and removes eof characters 
+			from the shell scripts. Tabs and spaces are left as is. -->
+			<fixcrlf srcdir="@{dir}" 
+		    		eol="lf"    		       
+		    		eof="remove"
+					includes="**/*.sh" 
+		    		defaultexcludes="no"
+			/>
+			<!-- Replaces all EOLs with cr-lf pairs in the batch files. 
+			Tabs and spaces are left as is. EOF characters are left alone if run on DOS systems, 
+			and are removed if run on Unix systems. -->
+			<fixcrlf srcdir="@{dir}"
+			       eol="crlf"
+			       includes="**/*.bat"
+					defaultexcludes="no"
+			/>
+		</sequential>
+	</macrodef>
+
+	<target name="commit_updated_dev_poms">
+	
+		<pathconvert property="all-poms-list" refid="all-poms-fileset" pathsep=" "/>
+		<exec executable="git" dir="${basedir}">
+			<arg value="status" />
+		</exec>
+		
+		<echo message="The target branchname is: ${branchname}"/>
+		
+       	<exec executable="git" dir="${basedir}">
+			<arg value="checkout" />
+			<arg value="${branchname}" />			
+		</exec>
+		<exec executable="git" dir="${basedir}">
+			<arg line="pull" />
+		</exec>	
+		<exec executable="git" dir="${basedir}">
+			<arg line="add ${cloudify.version.file} ${build.properties.file} ${all-poms-list} " />
+		</exec>
+		<exec executable="git" dir="${basedir}">
+			<arg value="commit" />
+			<arg value="-m" />
+			<arg value="Build version advanced to ${cloudify.build.number}" />			
+		</exec>
+		<exec executable="git" dir="${basedir}">
+			<arg value="push" />
+		</exec>
+	
+		<exec executable="git" dir="${recipes.local.copy}">
+			<arg value="checkout" />
+			<arg value="${branchname}" />			
+		</exec>
+		<exec executable="git" dir="${recipes.local.copy}">
+			<arg line="pull" />
+		</exec>
+		<exec executable="git" dir="${recipes.local.copy}">
+			<arg line="add ${streaming-bigdata.pom.file}" />
+		</exec>
+		<exec executable="git" dir="${recipes.local.copy}">
+			<arg value="commit" />
+			<arg value="-m" />
+			<arg value="Build version advanced to ${cloudify.build.number}" />			
+		</exec>
+		<exec executable="git" dir="${recipes.local.copy}">
+			<arg value="push" />
+		</exec>
+	</target>	
+   
+    <!-- - - - - - - - - - - - - - - - - -
+           target: archive.versions
+
+           - creates  Cloudify
+      - - - - - - - - - - - - - - - - - -->
+
+    <target name="prepare.and.copy.packages" depends="update_platform_version">
+        <delete dir="${releases.dir}" />
+        <ant target="prepare.cloudify.package" />
+		
+        <!-- cancel bigdata packaging from 9.7.1, 10.0.0, 2.7.1 -->		
+        <!-- ant target="prepare.bigdata.package" /-->
+		
+        <ant target="copy.packages.to.build.repository" />
+    	
+    	<!-- Update and commit poms, upload jars to maven repository -->
+    	<ant target="update_maven_version_for_development" />
+    	<ant target="commit_updated_dev_poms" />
+    	<ant target="publish.cloudify.jars.to.maven.repository" />
+    	<ant target="publish.cloudify.jars.to.maven.snapshot.repository" />    	
+        
+    	<!-- cancel bigdata packaging from 9.7.1, 10.0.0, 2.7.1 -->    	
+    	<!-- conditional task (with property: publish.cloudify.build) -->
+        <!-- ant target="publish.bigdata.to.storage" /-->
+
+        <!-- conditional task (with property: publish.cloudify.build) -->
+   		 <ant target="publish.cloudify.to.storage" />
+    	 <ant target="publish.cloudify.to.storage.nightly.build" />
+ 
+    </target>
+
+    <target name="archive.cloudify.versions">
+		<delete dir="${releases.dir}/build_${cloudify.build.number}"/>
+        <mkdir dir="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5"/>
+        <zip destfile="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip">
+            <zipfileset dir="${tmp.dir}" includes="**/*" filemode="775"/>
+        </zip>
+
+		<tar destfile="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.tar.gz" compression="gzip">
+	  		<zipfileset src="${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip"/>
+		</tar>
+
+    	<!-- Add Cloudify Javadoc archive to Cloudify/docs folder. If the folder doesn't exist please run: mvn javadoc:javadoc -->
+    	<mkdir dir="${releases.dir}/build_${cloudify.build.number}/docs" />
+    	<zip file="${releases.dir}/build_${cloudify.build.number}/docs/${cloudify}-javadoc.zip">
+    		<fileset dir="${basedir}/target/site/apidocs"/>
+		</zip>
+    	<mkdir dir="${releases.dir}/build_${cloudify.build.number}/docs/restdoclet" />
+    	<copy todir="${releases.dir}/build_${cloudify.build.number}/docs/restdoclet" >
+			<fileset file="${restful.local.copy}/target/site/restdoclet/restdoclet.html"/>
+    		<fileset file="${restful.local.copy}/src/main/webapp/resources/restdoclet/restdoclet.css"/>
+    	</copy>
+    </target>
+
+	<target name="archive.bigdata.version">
+		<loadproperties srcfile="${build.properties.file}"/>
+		<delete dir="${releases.dir}/build_${gs.build.number}"/>
+        <mkdir dir="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5"/>
+        <zip destfile="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5/${xap.zip.name}">
+            <zipfileset dir="${tmp.dir}" includes="**/*" filemode="775"/>
+        </zip>
+
+		<tar destfile="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5/${xap.installation.dir}-b${gs.build.number}.tar.gz" compression="gzip">
+	  		<zipfileset src="${releases.dir}/build_${gs.build.number}/${xap.bigdata.dir}/1.5/${xap.zip.name}"/>
+		</tar>
+    </target>
+
+	<target name="copy.packages.to.build.repository" description="copy packages to build repository" unless="gs.internal.systems.not.available">
+	   <loadproperties srcfile="${build.properties.file}"/>
+       <copy todir="${build.repository.path}/${cloudify}/${cloudify.version}/${build.prefix}${cloudify.build.number}">
+           <fileset dir="${releases.dir}/${build.prefix}${cloudify.build.number}"/>
+       </copy>
+	   <!-- cancel bigdata packaging from 9.7.1, 10.0.0, 2.7.1 -->
+	   <!--copy todir="${build.repository.path}/${gs.version}/${build.prefix}${gs.build.number}">
+			<fileset dir="${releases.dir}/${build.prefix}${gs.build.number}"/>
+	   </copy-->
+		<ant target="update.latest.cloudify.downloadable.packages" />
+   	</target>
+
+	<target name="update.latest.cloudify.downloadable.packages" if="publish.cloudify.build">
+		<property name="latest.zip.link" value="cloudify.latest.zip" />
+		<property name="latest.tar.gz.link" value="cloudify.latest.tar.gz" />
+		<copy verbose="true" file= "${build.repository.path}/${cloudify}/${cloudify.version}/${build.prefix}${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip" tofile="${build.repository.path}/${cloudify}/${cloudify.version}/${latest.zip.link}" overwrite="true" />
+		
+		<copy verbose="true" file="${build.repository.path}/${cloudify}/${cloudify.version}/${build.prefix}${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.tar.gz" tofile="${build.repository.path}/${cloudify}/${cloudify.version}/${latest.tar.gz.link}" overwrite="true" />
+		
+		
+	</target>
+	
+	<target name="publish.cloudify.jars.to.maven.repository">
+		<echo message="uploading cloudify jar artifacts to S3" />
+			
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/version/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/version/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/esc/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/esc/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/esc-config/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/esc-config/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/USM/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/USM/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/dsl/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/dsl/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/security/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/security/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/security-ldap/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/security-ldap/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/CLI/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/CLI/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/rest-client/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/rest-client/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/cloudify/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.target=org/cloudifysource/cloudify/${s3.cloudify.publish.folder}" />
+			<arg value="-Dput.container=${cloudify.maven.container}"/>
+		</exec>
+
+        <exec executable="${mvn.executable}">
+            <arg value="s3client:deploy-native" />
+            <arg value="-Dput.user=${put.user}" />
+            <arg value="-Dput.key=${put.key}" />
+            <arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/management-space/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.target=org/cloudifysource/management-space/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.container=${cloudify.maven.container}"/>
+        </exec>
+
+        <exec executable="${mvn.executable}">
+            <arg value="s3client:deploy-native" />
+            <arg value="-Dput.user=${put.user}" />
+            <arg value="-Dput.key=${put.key}" />
+            <arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/domain/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.target=org/cloudifysource/domain/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.container=${cloudify.maven.container}"/>
+        </exec>
+
+        <exec executable="${mvn.executable}">
+            <arg value="s3client:deploy-native" />
+            <arg value="-Dput.user=${put.user}" />
+            <arg value="-Dput.key=${put.key}" />
+            <arg value="-Dput.source=${maven.repo.local}/org/cloudifysource/utility-domain/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.target=org/cloudifysource/utility-domain/${s3.cloudify.publish.folder}" />
+            <arg value="-Dput.container=${cloudify.maven.container}"/>
+        </exec>
+
+        <echo message="uploading softlayer jar artifacts to S3" />
+
+        <exec executable="${mvn.executable}">
+            <arg value="s3client:deploy-native" />
+            <arg value="-Dput.user=${put.user}" />
+            <arg value="-Dput.key=${put.key}" />
+            <arg value="-Dput.source=${maven.repo.local}/org/apache/jclouds/provider/softlayer-all/${s3.jclouds.publish.folder}" />
+            <arg value="-Dput.target=org/apache/jclouds/provider/softlayer-all/${s3.jclouds.publish.folder}" />
+            <arg value="-Dput.container=${cloudify.maven.container}"/>
+        </exec>
+
+    </target>
+	
+	<target name="update_maven_version_for_development" if="cloudify.build.number">
+   		<condition property="maven.cloudify.dev.version" value="${s3.cloudify.publish.folder}">
+   			<isset property="release.build"/>
+  	    </condition>
+   		
+   		<condition property="maven.cloudify.dev.version" value="${s3.cloudify.snapshot.publish.folder}">
+   			<not>
+   				<isset property="release.build"/>
+   			</not>
+  	    </condition>
+		
+		<condition property="maven.gs.dev.version" value="${s3.gs.publish.folder}">
+   			<isset property="release.build"/>
+  	    </condition>
+   		
+   		<condition property="maven.gs.dev.version" value="${s3.gs.packages.publish.folder}">
+   			<not>
+   				<isset property="release.build"/>
+   			</not>
+  	    </condition>
+	
+		<exec executable="${mvn.executable}" dir="${basedir}">
+			<arg line="versions:set -DnewVersion=${maven.cloudify.dev.version} -DgenerateBackupPoms=false"/>
+		</exec>
+		
+		<replaceregexp file="${cloudify.parent.pom.file}"
+			match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+			replace="&lt;${gs.version.tag}&gt;${maven.gs.dev.version}&lt;/${gs.version.tag}&gt;"/>
+		
+		<replaceregexp file="${streaming-bigdata.pom.file}"
+			match="&lt;${gs.version.tag}&gt;(.*)&lt;/${gs.version.tag}&gt;"
+			replace="&lt;${gs.version.tag}&gt;${maven.gs.dev.version}&lt;/${gs.version.tag}&gt;"/>
+	</target>
+		
+	<target name="publish.cloudify.jars.to.maven.snapshot.repository" unless="release.build">
+		
+		<property name="repository.id" value="org.openspaces" />
+		<property name="s3.url" value="s3://gigaspaces-maven-repository-eu" />
+		
+		<echo message="uploading cloudify snapshot jar artifacts to S3" />
+		
+		<exec executable="${mvn.executable}" dir="${version.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/version.jar"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}" dir="${esc.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/esc.jar -Dsources=target/esc-sources.jar"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}" dir="${esc-config.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/esc-config.jar"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}" dir="${domain.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/domain.jar"/>
+		</exec>
+
+		<exec executable="${mvn.executable}" dir="${utility.domain.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/utility-domain.jar"/>
+		</exec>
+
+		<exec executable="${mvn.executable}" dir="${security.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/security.jar"/>
+		</exec>
+
+		<exec executable="${mvn.executable}" dir="${security-ldap.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/security-ldap.jar"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}" dir="${usm.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/usm.jar -Dsources=target/usm-sources.jar -Djavadoc=target/usm-javadoc.jar"/>
+		</exec>
+			
+		<exec executable="${mvn.executable}" dir="${dsl.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/dsl.jar -Dsources=target/dsl-sources.jar"/>
+		</exec>
+
+        <exec executable="${mvn.executable}" dir="${dsl-backwards.local.copy}">
+            <arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/dsl-backwards.jar -Dsources=target/dsl-sources.jar"/>
+        </exec>
+
+        <exec executable="${mvn.executable}" dir="${cli.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/cli.jar"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}" dir="${rest-client.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/rest-client.jar"/>
+		</exec>
+			
+		<exec executable="${mvn.executable}" dir="${basedir}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -Dfile=pom.xml -DpomFile=pom.xml -Dpackaging=pom"/>
+		</exec>
+			
+		<exec executable="${mvn.executable}" dir="${management-space.local.copy}">
+			<arg line="deploy:deploy-file -DrepositoryId=${repository.id} -Durl=${s3.url} -DpomFile=pom.xml -Dfile=target/management-space.jar -Dsources=target/management-space-sources.jar"/>
+		</exec>
+	</target>
+	
+
+	
+	<target name="prepare.bigdata.package">
+		<property name="from_bigdata_package" value="yes"/>		
+		<unzip.xap new.installation.dir.name="${xap.installation.dir}"/>
+		<add.cloudify.modules installation.dir="${tmp.dir}/${xap.installation.dir}"/>
+		<ant target="fetch.recipes.bigdata" />
+		<delete dir="${tmp.dir}/${xap.installation.dir}/recipes/services" excludes="mongodb/**, cassandra/**" includeemptydirs="true"/>	
+		<delete dir="${tmp.dir}/${xap.installation.dir}/recipes/apps" includes="**/*" includeemptydirs="true"/>
+		<delete dir="${tmp.dir}/${xap.installation.dir}/bin" includes="cloudify*"/>
+		<copy todir="${tmp.dir}/${xap.installation.dir}/recipes/apps">
+			<fileset dir="${recipes.local.copy}/apps" includes="streaming-bigdata/**"/>
+		</copy>
+		<dos2unix dir="${tmp.dir}/${xap.installation.dir}" />
+		<!-- conditional task (with property: publish.cloudify.build) -->
+    	<ant target="prepare.bigdata.for.publish" />
+		
+		<ant target="archive.bigdata.version" />
+		
+		<delete dir="${tmp.dir}"/>
+		<property name="from_bigdata_package" value="no"/>		
+	</target>
+	
+
+	<target name="publish.cloudify.to.storage" if="publish.cloudify.build">
+		
+		<echo message="uploading cloudify installation to public storage (S3) at: ${cloudify.put.target}" />
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${cloudify.put.source}" />
+			<arg value="-Dput.target=${cloudify.put.target}" />
+			<arg value="-Dput.container=${cloudify.base.container}"/>
+		</exec>
+		<echo message="release.build=${release.build}"/>
+		<echo message="cloudify.put.community.target=${cloudify.put.community.target}"/>
+		<if>			
+			<equals arg1="${release.build}" arg2="true"/>		
+			<then>
+				<echo message="uploading to ${cloudify.put.community.target} "/>				
+				<exec executable="${mvn.executable}">
+				<arg value="s3client:deploy-native" />
+				<arg value="-Dput.user=${put.user}" />
+				<arg value="-Dput.key=${put.key}" />
+				<arg value="-Dput.source=${cloudify.put.source}" />
+				<arg value="-Dput.target=${cloudify.put.community.target}" />
+				<arg value="-Dput.container=${cloudify.base.container}"/>
+				</exec>
+			</then>
+		</if>
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${cloudify.gzip.put.source}" />
+			<arg value="-Dput.target=${cloudify.gzip.put.target}" />
+			<arg value="-Dput.container=${cloudify.base.container}"/>
+		</exec>
+	</target>
+	
+	
+	<target name="publish.cloudify.to.storage.nightly.build">
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${cloudify.put.source}" />
+			<arg value="-Dput.target=${cloudify.put.community.nightly.target}" />
+			<arg value="-Dput.container=${cloudify.base.container}"/>
+		</exec>
+	</target>
+	
+	
+	<target name="publish.bigdata.to.storage" if="publish.cloudify.build">
+		
+		<echo message="uploading bigdata installation to public storage (S3) at: ${bigdata.put.target}" />
+			
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${bigdata.put.source}" />
+			<arg value="-Dput.target=${bigdata.put.target}" />
+			<arg value="-Dput.container=${cloudify.base.container}"/>
+		</exec>
+		
+		<exec executable="${mvn.executable}">
+			<arg value="s3client:deploy-native" />
+			<arg value="-Dput.user=${put.user}" />
+			<arg value="-Dput.key=${put.key}" />
+			<arg value="-Dput.source=${bigdata.gzip.put.source}" />
+			<arg value="-Dput.target=${bigdata.gzip.put.target}" />
+			<arg value="-Dput.container=${cloudify.base.container}"/>
+		</exec>
+		
+	</target>
+	
+	<target name="prepare.bigdata.for.publish" description="publish cloudify build to gigaspaces repository" if="publish.cloudify.build">
+		<ant target="update.bigdata.service.configuration.url"/>
+	</target>
+	
+	<target name="prepare.cloudify.for.publish" description="publish cloudify build to gigaspaces repository" if="publish.cloudify.build">
+		<ant target="update.cloudify.service.configuration.url"/>
+		<ant target="commit.service.configuration" />
+	</target>
+	
+	<target name="update.bigdata.service.configuration.url">
+		<property name="bigdata.url" value="${cloudify.cdn.publish.url}/${bigdata.put.target}" />
+
+		<replaceregexp byline="true"
+    		match="cloudifyUrl &quot;(.*)&quot;" 
+    		replace="cloudifyUrl &quot;${bigdata.url}&quot;" >
+    		<fileset 
+    			dir="${tmp.dir}/${xap.installation.dir}/clouds/"
+    			includes="**/*-cloud.groovy" />
+    	</replaceregexp>
+   </target>
+	
+	<target name="update.cloudify.service.configuration.url" if="release.build">
+        <echo message="Updating ServiceConfiguration in directory: ${tmp.dir}/${cloudify.installation.dir}/clouds/ ..."/>
+		
+		<property name="cloudify.url" value="${cloudify.cdn.publish.url}/${cloudify.put.target}" />
+
+		<!-- Here we encode cloudify.url -->
+		<property name="groovy.dir" value="${tmp.dir}/${cloudify.installation.dir}/tools/groovy/bin" />
+
+		<condition property="groovy.path" value="${groovy.dir}/groovy.bat">
+			<os family="windows"/>
+		</condition>
+		<condition property="groovy.path" value="${groovy.dir}/groovy">
+			<os family="unix"/>
+		</condition>
+		
+		<exec executable="${groovy.path}" outputproperty="cloudify.url.encoded">
+			<env key="JAVA_HOME" value="${java.home}" />
+			<arg value="-e" />
+			<arg value="&quot;println(java.net.URLEncoder.encode('${cloudify.url}'))&quot;" />
+		</exec>
+
+		<!-- Update files in ${tmp.dir}/${cloudify.installation.dir} and in source folders -->
+		<replaceregexp byline="true"
+    		match="cloudifyUrl &quot;(.*)&quot;" 
+    		replace="cloudifyUrl &quot;${cloudify.url}&quot;" >
+    		<fileset 
+    			dir="${tmp.dir}/${cloudify.installation.dir}/clouds/"
+    			includes="**/*-cloud.groovy" />
+    		<fileset 
+    			dir="${esc.local.copy}/src/main/resources/clouds" 
+    			includes="**/*-cloud.groovy" />
+    	</replaceregexp>
+   </target>
+	
+	
+	<target name="commit.service.configuration">
+			
+		<exec executable="git" dir="${esc.local.copy}">
+			<arg value="checkout" />
+			<arg value="${branchname}" />			
+		</exec>
+		<exec executable="git" dir="${esc.local.copy}">
+			<arg line="pull" />
+		</exec>
+		<exec executable="git" dir="${esc.local.copy}">
+			<arg line="add src" />
+		</exec>
+		<exec executable="git" dir="${esc.local.copy}">
+			<arg value="commit" />
+			<arg value="-m" />
+			<arg value="Update cloudify url" />			
+		</exec>
+		<exec executable="git" dir="${esc.local.copy}">
+			<arg value="push" />
+		</exec>
+	</target>
+	
+    <target name="add.cloudify.version.to.cloudify.package">
+    	   	
+    	<echo message="Copy security-ldap component"/>
+        <copy todir="${tmp.dir}/${cloudify.installation.dir}/lib/required" overwrite="true">
+            <fileset dir="${version.local.copy}/target/" includes="version.jar" excludes=".svn"/>
+        </copy>
+    </target>
+
+	<target name="prepare.env">
+		<loadproperties srcfile="${build.properties.file}"/>
+		
+		<delete dir="${tmp.dir}"/>
+		<mkdir dir="${tmp.dir}"/>
+		
+		<available file="${xap.files.tmp.dir}/${xap.zip.name}" property="appropriate.xap.zip.present"/>
+		<ant target="download.zip" />
+			
+		<unzip src="${xap.files.tmp.dir}/${xap.zip.name}" dest="${tmp.dir}" />	
+		<move file="${tmp.dir}/${xap.installation.dir}" tofile="${tmp.dir}/${cloudify.installation.dir}" />
+		<chmod dir="${tmp.dir}/${cloudify.installation.dir}" includes="**/*.sh, **/*groovy*" perm="775"  />
+  	</target>
+
+	<target name="download.zip" unless="appropriate.xap.zip.present">
+		<loadproperties srcfile="${build.properties.file}"/>
+		<mkdir dir="${xap.files.tmp.dir}" /> 
+		<echo message="Please wait. Downloading ${cloudify.cdn.publish.url}/com/gigaspaces/${s3.gs.packages.publish.folder}/${xap.zip.name}." />
+		<get verbose="true" src="${cloudify.cdn.publish.url}/com/gigaspaces/xap-core/${s3.gs.packages.publish.folder}/${xap.zip.name}" dest="${xap.files.tmp.dir}"/>
+	</target>
+	
+	<target name="cloudify.install">
+		<exec dir="${basedir}" executable="${mvn.executable}" failonerror="true">
+			<arg line="clean install -Dmaven.test.skip=true"/>
+		</exec>
+		<exec dir="${basedir}" executable="${mvn.executable}" failonerror="true">
+			<arg line="javadoc:javadoc -Dmaven.test.skip=true"/>
+		</exec>
+		<exec dir="${basedir}/../restful" executable="${mvn.executable}" failonerror="true">
+			<arg line="javadoc:javadoc -Dmaven.test.skip=true"/>
+		</exec>
+	</target>
+	
+	<target name="cloudify.zip" depends="prepare.env, cloudify.install, prepare.cloudify.package.without.unzip">
+		<echo>
+******************************************************************
+  
+  Cloudify packages were sucessfully created:
+     zip:    ${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.zip
+     tar.gz: ${releases.dir}/build_${cloudify.build.number}/${cloudify}/1.5/gigaspaces-${cloudify}-${cloudify.version}-${cloudify.milestone}-b${cloudify.build.number}.tar.gz
+
+  Steps to perform before trying this build out on a public cloud:
+     1. publish the packages online
+     2. put the package link from step 1 into appropriate cloud driver, for example: uncomment cloudifyUrl property  
+	    in ${CLOUDIFY_HOME}/clouds/ec2/ec2-cloud.groovy and update its link
+******************************************************************
+		</echo>
+			
+              			
+	</target>
+	<target name="bigdata.zip" depends="prepare.env, cloudify.install, prepare.bigdata.package" />
+	<target name="clean.all">
+		<delete dir="${tmp.dir}"/>
+		<delete dir="${xap.files.tmp.dir}"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project default="zip" name="Create jar and zip for project gs-rackspace-public" >
+
+    <target name="jar">
+        <jar destfile="target/esm.jar">
+            <fileset dir="bin"/>
+			<fileset dir="" includes="config/**.*" />
+        </jar>
+    	
+    </target>
+	
+    <target name="zip" depends="jar" >
+    	<delete file="target/esm.zip" />
+        <zip destfile="target/esm.zip">
+            <fileset dir="lib" >
+            	<exclude name="src.zip"/>
+            </fileset>
+        	<fileset dir="target">
+        		<include name="esm.jar" />	
+        	</fileset>
+        </zip>
+    	<copy file="target/esm.zip" tofile="C:/docBaseAws/esm.zip" />
+    	<copy file="target/esm.zip" tofile="C:/docBaseRackspace/esm.zip" />
+    </target>
+	
+    <target name="src">
+        <zip destfile="lib/src.zip" >
+        	<fileset dir="" includes="src/**/*" />        	
+        	<fileset dir="" includes="config/**.*" />
+    	</zip>
+    </target>
+	
+	<target name="export-zip" >
+	    	<delete file="gs-rackspace-public.zip" />
+	        <zip destfile="gs-rackspace-public.zip">
+	            <fileset dir="" includes="lib/*" >
+	            	<exclude name="lib/src.zip"/>
+	            	<exclude name="lib/esm.zip"/>
+	            </fileset>
+	        	<fileset dir="" includes="src/**/*" />        	
+	        	<fileset dir="" includes="config/**.*" />
+	        	<fileset file="log4j.xml"/> 
+	        	<fileset file="build.xml"/>
+	        	<fileset file="rackspace.properties"/>
+	        </zip>
+	 </target>
+
+</project>

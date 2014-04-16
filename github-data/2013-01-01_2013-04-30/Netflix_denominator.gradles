@@ -1,0 +1,346 @@
+ext.githubProjectName = rootProject.name
+
+buildscript {
+    repositories { mavenLocal()
+                   mavenCentral() }
+    apply from: file('gradle/buildscript.gradle'), to: buildscript 
+}
+
+allprojects {
+    repositories { mavenLocal()
+                   mavenCentral()
+                   maven { url 'https://oss.sonatype.org/content/repositories/releases/' }}
+}
+
+apply from: file('gradle/convention.gradle')
+apply from: file('gradle/maven.gradle')
+apply from: file('gradle/check.gradle')
+apply from: file('gradle/license.gradle')
+apply from: file('gradle/release.gradle')
+apply plugin: 'idea'
+
+subprojects {
+    apply from: rootProject.file('dagger.gradle')
+    group = "com.netflix.${githubProjectName}" // TEMPLATE: Set to organization of project
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'io.airlift:airline:0.5'
+  compile     'org.yaml:snakeyaml:1.12'
+  // TODO: the following should really only be in the fatJar
+  compile      project(':denominator-dynect')
+  compile      project(':denominator-ultradns')
+  compile      project(':denominator-route53')
+  compile      project(':denominator-clouddns')
+  compile      project(':denominator-designate')
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+
+// create a self-contained jar that is executable
+// the output is both a 'fat' project artifact and
+// a convenience file named "build/denominator"
+task fatJar(dependsOn: classes, type: Jar) { 
+  classifier 'fat'
+
+  // exclude service provider lookup as updating denominator.cli.Denominator is no big deal
+  def providerFile = "META-INF/services/denominator.Provider"
+  from "supportedProviders.txt"
+  rename "supportedProviders.txt", providerFile
+
+  doFirst {
+    // Delay evaluation until the compile configuration is ready
+    from {
+      configurations.compile.collect { zipTree(it).matching { exclude "**/${providerFile}" } }
+    }
+  }
+
+  from (sourceSets*.output.classesDir) {
+    exclude "**/${providerFile}"
+  }
+
+  // really executable jar
+  // http://skife.org/java/unix/2011/06/20/really_executable_jars.html
+
+  manifest {
+    attributes 'Main-Class': 'denominator.cli.Denominator'
+    attributes("Implementation-Title": "Denominator", "Specification-Version": version, "Implementation-Version": version)
+  }
+
+  // for convenience, we make a file in the build dir named denominator with no extension
+  doLast {
+    def srcFile = new File("${buildDir}/libs/${archiveName}")
+    def shortcutFile = new File("${buildDir}/denominator")
+    shortcutFile.delete()
+    shortcutFile << "#!/usr/bin/env sh\n"
+    shortcutFile << 'exec java -jar $0 "$@"' + "\n"
+    shortcutFile << srcFile.bytes
+    shortcutFile.setExecutable(true, true)
+    srcFile.delete()
+    srcFile << shortcutFile.bytes   
+    srcFile.setExecutable(true, true)
+  }
+}
+
+artifacts {
+  archives fatJar
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+  systemProperty 'clouddns.url', System.getProperty('clouddns.url', '')
+  systemProperty 'clouddns.username', System.getProperty('clouddns.username', '')
+  systemProperty 'clouddns.password', System.getProperty('clouddns.password', '')
+  systemProperty 'clouddns.zone', System.getProperty('clouddns.zone', '')
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'com.netflix.feign:feign-core:5.3.0'
+  compile     'com.netflix.feign:feign-gson:5.3.0'
+  testCompile  project(':denominator-core').sourceSets.test.output
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+jar {
+  manifest {
+    attributes("Implementation-Title": "Denominator", "Specification-Version": version, "Implementation-Version": version)
+  }
+}
+
+test {
+  useTestNG()
+}
+
+dependencies {
+  compile      project(':denominator-model')
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.code.gson:gson:2.2.4'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+  systemProperty 'designate.url', System.getProperty('designate.url', '')
+  systemProperty 'designate.tenantId', System.getProperty('designate.tenantId', '')
+  systemProperty 'designate.username', System.getProperty('designate.username', '')
+  systemProperty 'designate.password', System.getProperty('designate.password', '')
+  systemProperty 'designate.zone', System.getProperty('designate.zone', '')
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'com.netflix.feign:feign-core:5.3.0'
+  compile     'com.netflix.feign:feign-gson:5.3.0'
+  testCompile  project(':denominator-core').sourceSets.test.output
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+  systemProperty 'dynect.url', System.getProperty('dynect.url', '')
+  systemProperty 'dynect.customer', System.getProperty('dynect.customer', '')
+  systemProperty 'dynect.username', System.getProperty('dynect.username', '')
+  systemProperty 'dynect.password', System.getProperty('dynect.password', '')
+  systemProperty 'dynect.zone', System.getProperty('dynect.zone', '')
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'com.netflix.feign:feign-core:5.3.0'
+  compile     'com.netflix.feign:feign-gson:5.3.0'
+  testCompile  project(':denominator-core').sourceSets.test.output
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+apply plugin: 'android'
+
+android {
+    compileSdkVersion 8
+    buildToolsVersion "17"
+
+    defaultConfig {
+        minSdkVersion 8
+        targetSdkVersion 17
+    }
+}
+
+buildscript {
+    repositories { mavenCentral() }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.4.2'
+    }
+}
+
+repositories { mavenLocal()
+               mavenCentral()
+               maven { url 'https://oss.sonatype.org/content/repositories/releases/' }}
+
+dependencies {
+    compile files('libs/android-support-v4.jar')
+    compile 'com.netflix.denominator:denominator-core:4.1.0'
+    // swap this out to use a different provider
+    compile 'com.netflix.denominator:denominator-ultradns:4.1.0'
+    // TODO: find a way to have this in compile classpath, but not in apk
+    compile 'com.squareup.dagger:dagger-compiler:1.1.0'
+    compile 'com.squareup:tape:1.1.0'
+    compile 'com.squareup:otto:1.3.3'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+}
+
+dependencies {
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.code.gson:gson:2.2.4'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+  systemProperty 'route53.url', System.getProperty('route53.url', '')
+  systemProperty 'route53.accesskey', System.getProperty('route53.accesskey', '')
+  systemProperty 'route53.secretkey', System.getProperty('route53.secretkey', '')
+  systemProperty 'route53.zone', System.getProperty('route53.zone', '')
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'com.netflix.feign:feign-core:5.3.0'
+  compile     'com.netflix.feign:feign-sax:5.3.0'
+  testCompile  project(':denominator-core').sourceSets.test.output
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.code.gson:gson:2.2.4'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply from: rootProject.file('dagger.gradle')
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+eclipse {
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+  }
+}
+
+test {
+  useTestNG()
+  systemProperty 'ultradns.url', System.getProperty('ultradns.url', '')
+  systemProperty 'ultradns.username', System.getProperty('ultradns.username', '')
+  systemProperty 'ultradns.password', System.getProperty('ultradns.password', '')
+  systemProperty 'ultradns.zone', System.getProperty('ultradns.zone', '')
+}
+
+dependencies {
+  compile      project(':denominator-core')
+  compile     'com.netflix.feign:feign-core:5.3.0'
+  compile     'com.netflix.feign:feign-sax:5.3.0'
+  testCompile  project(':denominator-core').sourceSets.test.output
+  testCompile 'com.google.guava:guava:14.0.1'
+  testCompile 'org.testng:testng:6.8.5'
+  testCompile 'com.google.code.gson:gson:2.2.4'
+  testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+}

@@ -1,0 +1,1331 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+  
+  <modelVersion>4.0.0</modelVersion>
+
+  <artifactId>wikbook.archetype</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook maven archetype</name>
+
+  <build>
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <configuration>
+          <escapeString>\</escapeString>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
+    <?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+
+  <modelVersion>4.0.0</modelVersion>
+    
+  <groupId>\${groupId}</groupId>
+  <artifactId>\${artifactId}</artifactId>
+  <version>\${version}</version>
+  <packaging>jar</packaging>
+
+  <name>A documentation module</name>
+
+  <properties>
+    <wikbook.source>\${pom.basedir}/src/main/wikbook</wikbook.source>
+    <wikbook.target>\${project.build.directory}/wikbook</wikbook.target>
+  </properties>
+
+  <build>
+       <plugins>
+
+          <!-- The wikbook maven plugin generates the docbook document from the wiki source -->
+         <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.maven</artifactId>
+            <version>${pom.version}</version>
+            <executions>
+              <execution>
+                <phase>prepare-package</phase>
+                <goals>
+                  <goal>transform</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <sourceDirectory>\${wikbook.source}/en/en-US</sourceDirectory>
+              <sourceFileName>book.wiki</sourceFileName>
+              <destinationDirectory>\${wikbook.target}/src</destinationDirectory>
+              <destinationFileName>index.xml</destinationFileName>
+              <beforeBookBodyXML><![CDATA[
+                 <xi:include href="bookinfo.xml" xmlns:xi="http://www.w3.org/2001/XInclude" />
+                 <xi:include href="acknowledgements.xml" xmlns:xi="http://www.w3.org/2001/XInclude" />
+           ]]></beforeBookBodyXML>
+            </configuration>
+          </plugin>
+
+         <!-- Dockbx plugin that generates content -->
+         <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.docbkxstyle</artifactId>
+            <version>${pom.version}</version>
+           <configuration>
+
+             <!-- Source -->
+             <sourceDirectory>\${wikbook.target}/src</sourceDirectory>
+             <includes>index.xml</includes>
+
+             <!-- Highlight source code -->
+             <highlightSource>1</highlightSource>
+
+             <!-- We need to support xinclude -->
+             <xincludeSupported>true</xincludeSupported>
+
+             <!--
+               |  See http://www.sagehill.net/docbookxsl/AnnotateListing.html
+               |  Callouts on imported text
+               -->
+             <useExtensions>1</useExtensions>
+             <calloutsExtension>1</calloutsExtension>
+
+             <!-- Copy any docbook XML -->
+             <preProcess>
+               <copy todir="\${wikbook.target}/src">
+                 <fileset dir="\${wikbook.source}/en/en-US">
+                   <include name="**/*.xml" />
+                 </fileset>
+               </copy>
+             </preProcess>
+
+           </configuration>
+           <executions>
+             <execution>
+               <id>generate-html</id>
+               <goals>
+                 <goal>generate-html</goal>
+               </goals>
+               <phase>package</phase>
+               <configuration>
+                 <targetDirectory>\${wikbook.target}/output/html</targetDirectory>
+                 <htmlCustomization>xsl/bootstrap/html.xsl</htmlCustomization>
+               </configuration>
+             </execution>
+             <execution>
+               <id>generate-xhtml</id>
+               <goals>
+                 <goal>generate-xhtml</goal>
+               </goals>
+               <phase>package</phase>
+               <configuration>
+                 <targetDirectory>\${wikbook.target}/output/xhtml</targetDirectory>
+                 <targetFileExtension>html</targetFileExtension>
+                 <xhtmlCustomization>xsl/simple/pdf.xsl</xhtmlCustomization>
+               </configuration>
+             </execution>
+           </executions>
+           <dependencies>
+             <dependency>
+               <groupId>org.docbook</groupId>
+               <artifactId>docbook-xml</artifactId>
+               <version>4.4</version>
+               <scope>runtime</scope>
+             </dependency>
+           </dependencies>
+         </plugin>
+
+         <plugin>
+           <groupId>org.wikbook</groupId>
+           <artifactId>wikbook.html2pdf</artifactId>
+           <version>${pom.version}</version>
+           <executions>
+           <execution>
+             <phase>package</phase>
+             <goals>
+               <goal>transform</goal>
+             </goals>
+           </execution>
+           </executions>
+           <configuration>
+             <sourceDirectory>\${wikbook.target}/output/xhtml</sourceDirectory>
+             <sourceFileName>index.html</sourceFileName>
+             <destinationDirectory>\${wikbook.target}/output/pdf</destinationDirectory>
+             <destinationFileName>index.pdf</destinationFileName>
+           </configuration>
+         </plugin>
+
+         <!-- Attach the HTML zip -->
+         <plugin>
+           <artifactId>maven-assembly-plugin</artifactId>
+           <executions>
+             <execution>
+               <phase>package</phase>
+               <goals>
+                 <goal>single</goal>
+               </goals>
+               <configuration>
+                 <descriptors>
+                   <descriptor>src/main/assembly/html.xml</descriptor>
+                 </descriptors>
+               </configuration>
+             </execution>
+           </executions>
+         </plugin>
+
+         <!-- Attach the PDF -->
+         <plugin>
+           <groupId>org.codehaus.mojo</groupId>
+           <artifactId>build-helper-maven-plugin</artifactId>
+           <executions>
+             <execution>
+               <id>attach-artifacts</id>
+               <phase>package</phase>
+               <goals>
+                 <goal>attach-artifact</goal>
+               </goals>
+               <configuration>
+                 <artifacts>
+                   <artifact>
+                     <file>target/wikbook/output/pdf/index.pdf</file>
+                     <type>pdf</type>
+                   </artifact>
+                 </artifacts>
+               </configuration>
+             </execution>
+           </executions>
+         </plugin>
+
+       </plugins>
+   </build>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.codesource</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook code source plugin</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.cojen</groupId>
+      <artifactId>cojen</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>com.google.code.javaparser</groupId>
+      <artifactId>javaparser</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <testResources>
+      <testResource>
+        <directory>src/test/java</directory>
+      </testResource>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+    </testResources>
+  </build>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.core</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook core</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.codesource</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>xmlunit</groupId>
+      <artifactId>xmlunit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <testResources>
+      <testResource>
+        <directory>src/test/java</directory>
+      </testResource>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+    </testResources>
+  </build>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+  
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.doc</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook documentation</name>
+
+  <properties>
+    <wikbook.version>${project.version}</wikbook.version>
+  </properties>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.docbkxstyle</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.template.core</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>javax.ws.rs</groupId>
+      <artifactId>jsr311-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.chromattic</groupId>
+      <artifactId>chromattic.api</artifactId>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+
+       <!-- The wikbook maven plugin generates the docbook document from the wiki source -->
+      <plugin>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.maven</artifactId>
+        <executions>
+          <execution>
+            <phase>prepare-package</phase>
+            <goals>
+              <goal>transform</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <sourceDirectory>${pom.basedir}/src/main/wikbook/en/en-US</sourceDirectory>
+          <sourceFileName>book.wiki</sourceFileName>
+          <destinationDirectory>${project.build.directory}/wikbook/src</destinationDirectory>
+          <destinationFileName>index.xml</destinationFileName>
+          <emitDoctype>true</emitDoctype>
+          <beforeBookBodyXML><![CDATA[<xi:include href="bookinfo.xml" xmlns:xi="http://www.w3.org/2001/XInclude" />]]></beforeBookBodyXML>
+          <bookId>index</bookId>
+          <validationMode>strict</validationMode>
+        </configuration>
+      </plugin>
+
+      <!-- Unpacks the docbook style resources for the docbkx plugin -->
+
+      <!-- Dockbx plugin that generates content -->
+      <plugin>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.docbkxstyle</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+        <configuration>
+
+          <!-- Source -->
+          <sourceDirectory>${project.build.directory}/wikbook/src</sourceDirectory>
+          <includes>index.xml</includes>
+
+          <!-- Highlight source code -->
+          <highlightSource>1</highlightSource>
+
+          <!-- We need to support xinclude -->
+          <xincludeSupported>true</xincludeSupported>
+
+          <!--
+            |  See http://www.sagehill.net/docbookxsl/AnnotateListing.html
+            |  Callouts on imported text
+            -->
+          <useExtensions>1</useExtensions>
+          <calloutsExtension>1</calloutsExtension>
+
+          <!-- Copy any docbook XML -->
+          <preProcess>
+            <copy todir="${project.build.directory}/wikbook/src">
+              <fileset dir="${pom.basedir}/src/main/wikbook/en/en-US">
+                <include name="**/*.xml" />
+              </fileset>
+            </copy>
+          </preProcess>
+          
+        </configuration>
+        <dependencies>
+          <dependency>
+            <groupId>org.docbook</groupId>
+            <artifactId>docbook-xml</artifactId>
+            <version>4.4</version>
+            <scope>runtime</scope>
+          </dependency>
+        </dependencies>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+
+    <profile>
+      <id>html</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.docbkxstyle</artifactId>
+            <version>0.9.45-SNAPSHOT</version>
+            <executions>
+              <execution>
+                <id>generate-html</id>
+                <goals>
+                  <goal>generate-html</goal>
+                </goals>
+                <phase>package</phase>
+                <configuration>
+                  <targetDirectory>${project.build.directory}/wikbook/output/html</targetDirectory>
+                  <htmlCustomization>xsl/bootstrap/html.xsl</htmlCustomization>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>zip-html</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <configuration>
+                  <descriptors>
+                    <descriptor>src/main/assembly/html.xml</descriptor>
+                  </descriptors>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <profile>
+      <id>chunked</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.docbkxstyle</artifactId>
+            <version>0.9.45-SNAPSHOT</version>
+            <executions>
+              <execution>
+                <id>generate-chunked</id>
+                <goals>
+                  <goal>generate-html</goal>
+                </goals>
+                <phase>package</phase>
+                <configuration>
+                  <targetDirectory>${project.build.directory}/wikbook/output/chunked</targetDirectory>
+                  <htmlCustomization>xsl/bootstrap/chunked.xsl</htmlCustomization>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <artifactId>maven-assembly-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>zip-chunked</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>single</goal>
+                </goals>
+                <configuration>
+                  <descriptors>
+                    <descriptor>src/main/assembly/chunked.xml</descriptor>
+                  </descriptors>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+    <profile>
+      <id>pdf</id>
+      <activation>
+        <activeByDefault>true</activeByDefault>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.docbkxstyle</artifactId>
+            <version>0.9.45-SNAPSHOT</version>
+            <executions>
+              <execution>
+                <id>generate-xhtml</id>
+                <goals>
+                  <goal>generate-xhtml</goal>
+                </goals>
+                <phase>package</phase>
+                <configuration>
+                  <targetDirectory>${project.build.directory}/wikbook/output/xhtml</targetDirectory>
+                  <targetFileExtension>html</targetFileExtension>
+                  <xhtmlCustomization>xsl/simple/pdf.xsl</xhtmlCustomization>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+          <plugin>
+            <groupId>org.wikbook</groupId>
+            <artifactId>wikbook.html2pdf</artifactId>
+            <executions>
+              <execution>
+                <phase>package</phase>
+                <goals>
+                  <goal>transform</goal>
+                </goals>
+              </execution>
+            </executions>
+            <configuration>
+              <sourceDirectory>${project.build.directory}/wikbook/output/xhtml</sourceDirectory>
+              <sourceFileName>index.html</sourceFileName>
+              <destinationDirectory>${project.build.directory}/wikbook/output/pdf</destinationDirectory>
+              <destinationFileName>index.pdf</destinationFileName>
+            </configuration>
+          </plugin>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>build-helper-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-artifacts</id>
+                <phase>package</phase>
+                <goals>
+                  <goal>attach-artifact</goal>
+                </goals>
+                <configuration>
+                  <artifacts>
+                    <artifact>
+                      <file>target/wikbook/output/pdf/index.pdf</file>
+                      <type>pdf</type>
+                    </artifact>
+                  </artifacts>
+                </configuration>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+  </profiles>
+
+</project>
+    <?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+  
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.docbkxstyle</artifactId>
+  <packaging>maven-plugin</packaging>
+
+  <name>Reusable style for docbkx</name>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.agilejava.docbkx</groupId>
+      <artifactId>docbkx-maven-plugin</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.docbook</groupId>
+      <artifactId>docbook-xsl</artifactId>
+      <version>1.76.1</version>
+      <type>zip</type>
+      <classifier>ns-resources</classifier>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.agilejava.docbkx</groupId>
+        <artifactId>docbkx-builder-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>generate-html</id>
+            <goals>
+              <goal>build</goal>
+            </goals>
+            <configuration>
+              <type>html</type>
+              <packageName>com.agilejava.docbkx.maven</packageName>
+              <superClassName>com.agilejava.docbkx.maven.WikbookMojo</superClassName>
+            </configuration>
+          </execution>
+          <execution>
+            <id>generate-xhtml</id>
+            <goals>
+              <goal>build</goal>
+            </goals>
+            <configuration>
+              <type>xhtml</type>
+              <packageName>com.agilejava.docbkx.maven</packageName>
+              <superClassName>com.agilejava.docbkx.maven.WikbookMojo</superClassName>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>
+    <?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <artifactId>wikbook.html2pdf</artifactId>
+  <packaging>maven-plugin</packaging>
+
+  <name>Wikbook html2pdf plugin</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>2.0.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+      <version>2.0.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.xhtmlrenderer</groupId>
+      <artifactId>core-renderer</artifactId>
+      <version>R8</version>
+    </dependency>
+
+  </dependencies>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+
+  <artifactId>wikbook.maven</artifactId>
+  <packaging>maven-plugin</packaging>
+
+  <name>Wikbook maven plugin</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>2.0.9</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+      <version>2.0.9</version>
+    </dependency>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.xwiki</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.core</artifactId>
+    </dependency>
+
+  </dependencies>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.wikbook</groupId>
+  <artifactId>wikbook.parent</artifactId>
+  <packaging>pom</packaging>
+  <version>0.9.46-SNAPSHOT</version>
+
+  <name>Wikbook parent</name>
+  <description>The Wikbook project</description>
+  <url>http://wikbook.googlecode.org</url>
+
+  <organization>
+    <name>eXo Platform SAS</name>
+    <url>http://www.exoplatform.com</url>
+  </organization>
+
+  <licenses>
+    <license>
+      <name>LGPL, version 2.1</name>
+      <url>http://www.opensource.org/licenses/lgpl-license.php</url>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>julien.viet</id>
+      <name>Julien Viet</name>
+      <email>julien.viet@exoplatform.com</email>
+      <roles>
+        <role>Owner</role>
+      </roles>
+    </developer>
+    <developer>
+      <id>aheritier</id>
+      <name>Arnaud Heritier</name>
+      <email>arnaud.heritier@exoplatform.com</email>
+      <roles>
+        <role>Committer</role>
+      </roles>
+    </developer>
+    <developer>
+      <id>alain.defrance</id>
+      <name>Alain Defrance</name>
+      <email>alain.defrance@exoplatform.com</email>
+      <roles>
+        <role>Committer</role>
+      </roles>
+    </developer>
+  </developers>
+  
+  <scm>
+    <connection>scm:git:git://github.com/vietj/wikbook.git</connection>
+    <developerConnection>scm:git:ssh://git@github.com/vietj/wikbook.git</developerConnection>
+    <url>https://github.com/vietj/wikbook</url>
+  </scm>
+
+  <distributionManagement>
+    <repository>
+      <id>repository.exoplatform.org</id>
+      <url>${wikbook.releases.repo.url}</url>
+    </repository>
+    <snapshotRepository>
+      <id>repository.exoplatform.org</id>
+      <url>${wikbook.snapshots.repo.url}</url>
+    </snapshotRepository>
+  </distributionManagement>
+
+  <properties>
+    <maven.compiler.target>1.5</maven.compiler.target>
+    <maven.compiler.source>1.5</maven.compiler.source>
+    <wikbook.version>${project.version}</wikbook.version>
+    <wikbook.releases.repo.url>http://repository.exoplatform.org/service/local/staging/deploy/maven2/</wikbook.releases.repo.url>
+    <wikbook.snapshots.repo.url>http://repository.exoplatform.org/content/repositories/wikbook-snapshots/</wikbook.snapshots.repo.url>
+
+    <!-- maven-release-plugin -->
+    <useReleaseProfile>false</useReleaseProfile>
+    <arguments>-Prelease,sign-artifacts,html,site,pdf</arguments>
+    <autoVersionSubmodules>true</autoVersionSubmodules>
+
+    <docbkx.version>2.0.14</docbkx.version>
+    <dependency.version>2.1</dependency.version>
+
+    <!-- site-maven-plugin -->
+    <wikbook.github.owner>vietj</wikbook.github.owner>
+    <wikbook.github.repository>wikbook</wikbook.github.repository>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.codesource</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.core</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.xwiki</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.maven</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.docbkxstyle</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.doc</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.doc</artifactId>
+        <classifier>html</classifier>
+        <type>zip</type>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.template</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.template.core</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.template.test-processor</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+      <dependency>
+        <groupId>org.wikbook</groupId>
+        <artifactId>wikbook.template.test-processing</artifactId>
+        <version>0.9.46-SNAPSHOT</version>
+      </dependency>
+
+      <dependency>
+        <groupId>javax.ws.rs</groupId>
+        <artifactId>jsr311-api</artifactId>
+        <version>1.0</version>
+      </dependency>
+      <dependency>
+        <groupId>org.chromattic</groupId>
+        <artifactId>chromattic.api</artifactId>
+        <version>1.1.1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.freemarker</groupId>
+        <artifactId>freemarker</artifactId>
+        <version>2.3.18</version>
+      </dependency>
+
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>3.8.2</version>
+      </dependency>
+      <dependency>
+        <groupId>xmlunit</groupId>
+        <artifactId>xmlunit</artifactId>
+        <version>1.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.cojen</groupId>
+        <artifactId>cojen</artifactId>
+        <version>2.0</version>
+      </dependency>
+
+      <dependency>
+        <groupId>commons-logging</groupId>
+        <artifactId>commons-logging</artifactId>
+        <version>1.1.1</version>
+      </dependency>
+      <dependency>
+        <groupId>com.google.code.javaparser</groupId>
+        <artifactId>javaparser</artifactId>
+        <version>1.0.1</version>
+      </dependency>
+
+      <dependency>
+        <groupId>org.xwiki.commons</groupId>
+        <artifactId>xwiki-commons-component-api</artifactId>
+        <version>4.0-milestone-1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xwiki.commons</groupId>
+        <artifactId>xwiki-commons-component-default</artifactId>
+        <version>4.0-milestone-1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xwiki.commons</groupId>
+        <artifactId>xwiki-commons-component-observation</artifactId>
+        <version>4.0-milestone-1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xwiki.rendering</groupId>
+        <artifactId>xwiki-rendering-api</artifactId>
+        <version>4.0-milestone-1</version>
+      </dependency>
+      <dependency>
+        <groupId>org.xwiki.rendering</groupId>
+        <artifactId>xwiki-rendering-syntax-xwiki2</artifactId>
+        <version>4.0-milestone-1</version>
+      </dependency>
+
+      <dependency>
+        <groupId>com.agilejava.docbkx</groupId>
+        <artifactId>docbkx-maven-plugin</artifactId>
+        <version>${docbkx.version}</version>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <modules>
+    <module>html2pdf</module>
+    <module>codesource</module>
+    <module>core</module>
+    <module>xwiki</module>
+    <module>maven</module>
+    <module>docbkxstyle</module>
+    <module>archetype</module>
+    <module>template</module>
+    <module>doc</module>
+    <module>site</module>
+  </modules>
+
+  <build>
+
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>2.3.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-dependency-plugin</artifactId>
+          <version>${dependency.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-gpg-plugin</artifactId>
+          <version>1.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>2.1.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-resources-plugin</artifactId>
+          <version>2.3</version>
+        </plugin>
+        <plugin>
+          <groupId>com.agilejava.docbkx</groupId>
+          <artifactId>docbkx-maven-plugin</artifactId>
+          <version>${docbkx.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>com.agilejava.docbkx</groupId>
+          <artifactId>docbkx-builder-maven-plugin</artifactId>
+          <version>${docbkx.version}</version>
+        </plugin>
+        <plugin>
+          <groupId>org.wikbook</groupId>
+          <artifactId>wikbook.maven</artifactId>
+          <version>0.9.46-SNAPSHOT</version>
+        </plugin>
+        <plugin>
+          <groupId>com.github.github</groupId>
+          <artifactId>site-maven-plugin</artifactId>
+          <version>0.7</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>2.9</version>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar-no-fork</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-release-plugin</artifactId>
+        <configuration>
+          <mavenExecutorId>forked-path</mavenExecutorId>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <profiles>
+
+    <profile>
+      <id>sign-artifacts</id>
+      <build>
+        <plugins>
+          <!-- We want to sign the artifact, the POM, and all attached artifacts -->
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+
+  </profiles>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+  <modelVersion>4.0.0</modelVersion>
+
+  <name>Wikbook site</name>
+  <artifactId>wikbook.site</artifactId>
+
+  <dependencies>
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.doc</artifactId>
+      <classifier>html</classifier>
+      <type>zip</type>
+    </dependency>
+  </dependencies>
+
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>2.1</version>
+        <executions>
+          <execution>
+            <id>unpack-documentation</id>
+            <phase>site</phase>
+            <goals>
+              <goal>unpack-dependencies</goal>
+            </goals>
+            <configuration>
+              <includeGroupIds>org.wikbook</includeGroupIds>
+              <includeArtifactIds>wikbook.doc</includeArtifactIds>
+              <includeClassifiers>html</includeClassifiers>
+              <excludes>META-INF/**</excludes>
+              <outputDirectory>${project.build.directory}/html</outputDirectory>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>com.github.github</groupId>
+        <artifactId>site-maven-plugin</artifactId>
+        <configuration>
+          <message>Deploy documentation for ${project.version}</message>
+          <repositoryOwner>${wikbook.github.owner}</repositoryOwner>
+          <repositoryName>${wikbook.github.repository}</repositoryName>
+          <outputDirectory>${project.build.directory}/html</outputDirectory>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>site</goal>
+            </goals>
+            <phase>site</phase>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.template</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.template.core</artifactId>
+  <packaging>jar</packaging>
+  
+  <name>Wikbook templating implementation</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.freemarker</groupId>
+      <artifactId>freemarker</artifactId>
+    </dependency>
+
+  </dependencies>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.template</artifactId>
+  <packaging>pom</packaging>
+
+  <name>Wikbook templating</name>
+
+  <modules>
+    <module>core</module>
+    <module>test-processor</module>
+    <module>test-processing</module>
+  </modules>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.template</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.template.test-processing</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook templating test processing</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.template.core</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.template.test-processor</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+  </dependencies>
+  
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.template</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.template.test-processor</artifactId>
+  <packaging>jar</packaging>
+  
+  <name>Wikbook templating test processor</name>
+
+  <dependencies>
+    
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.template.core</artifactId>
+    </dependency>
+
+  </dependencies>
+  
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>default-compile</id>
+            <goals>
+              <goal>compile</goal>
+            </goals>
+            <phase>compile</phase>
+            <configuration>
+              <compilerArgument>-proc:none</compilerArgument>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <parent>
+    <artifactId>wikbook.parent</artifactId>
+    <groupId>org.wikbook</groupId>
+    <version>0.9.46-SNAPSHOT</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>wikbook.xwiki</artifactId>
+  <packaging>jar</packaging>
+
+  <name>Wikbook xwiki</name>
+
+  <dependencies>
+
+    <dependency>
+      <groupId>org.wikbook</groupId>
+      <artifactId>wikbook.core</artifactId>
+    </dependency>
+
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>xmlunit</groupId>
+      <artifactId>xmlunit</artifactId>
+      <scope>test</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.xwiki.commons</groupId>
+      <artifactId>xwiki-commons-component-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.commons</groupId>
+      <artifactId>xwiki-commons-component-default</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.commons</groupId>
+      <artifactId>xwiki-commons-component-observation</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.rendering</groupId>
+      <artifactId>xwiki-rendering-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.xwiki.rendering</groupId>
+      <artifactId>xwiki-rendering-syntax-xwiki2</artifactId>
+    </dependency>
+
+  </dependencies>
+
+  <build>
+    <testResources>
+      <testResource>
+        <directory>src/test/java</directory>
+      </testResource>
+      <testResource>
+        <directory>src/test/resources</directory>
+      </testResource>
+    </testResources>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <configuration>
+          <systemPropertyVariables>
+            <targetDir>${project.build.directory}</targetDir>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+</project>

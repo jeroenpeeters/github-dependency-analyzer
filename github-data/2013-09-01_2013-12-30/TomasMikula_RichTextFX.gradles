@@ -1,0 +1,130 @@
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'eclipse'
+
+    repositories {
+        mavenCentral()
+        maven {
+            url 'https://oss.sonatype.org/content/repositories/snapshots/' 
+        }
+    }
+
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+}
+dependencies {
+    compile project(":richtextfx")
+}
+
+task fatJar(type: Jar, dependsOn: classes) {
+    appendix = 'fat'
+    from sourceSets.main.output
+    from { configurations.runtime.collect { it.isDirectory() ? it : zipTree(it) } }
+}
+
+assemble.dependsOn fatJar
+
+task JavaKeywords(type: JavaExec, dependsOn: classes) {
+    main = 'org.fxmisc.richtext.demo.JavaKeywords'
+    classpath = files(sourceSets.main.output, configurations.runtime)
+}
+
+task ManualHighlighting(type: JavaExec, dependsOn: classes) {
+    main = 'org.fxmisc.richtext.demo.ManualHighlighting'
+    classpath = files(sourceSets.main.output, configurations.runtime)
+}
+
+task RichText(type: JavaExec, dependsOn: classes) {
+    main = 'org.fxmisc.richtext.demo.RichText'
+    classpath = files(sourceSets.main.output, configurations.runtime)
+}
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+group = 'org.fxmisc.richtext'
+
+dependencies {
+    compile group: 'org.reactfx', name: 'reactfx', version: '1.0.0-SNAPSHOT'
+    compile group: 'org.fxmisc.undo', name: 'undofx', version: '1.0.0-SNAPSHOT'
+    compile group: 'org.fxmisc.easybind', name: 'easybind', version: '1.0.0-SNAPSHOT'
+    testCompile group: 'junit', name: 'junit', version: '4.+'
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+
+    archives javadocJar
+    archives sourcesJar
+}
+
+signing {
+    sign configurations.archives
+}
+
+signArchives.onlyIf {
+    project.hasProperty('signing.keyId') && project.hasProperty('signing.password') && project.hasProperty('signing.secretKeyRingFile')
+}
+
+uploadArchives {
+    repositories.mavenDeployer {
+        beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+        repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+          authentication(userName: sonatypeUsername, password: sonatypePassword)
+        }
+
+        snapshotRepository(url: 'https://oss.sonatype.org/content/repositories/snapshots') {
+            authentication(userName: sonatypeUsername, password: sonatypePassword)
+        }
+
+        pom.project {
+           name 'RichTextFX'
+           packaging 'jar'
+           description 'Rich-text area for JavaFX'
+           url 'http://www.fxmisc.org/richtext/'
+
+           scm {
+               url 'scm:git@github.com:TomasMikula/RichTextFX.git'
+               connection 'scm:git@github.com:TomasMikula/RichTextFX.git'
+               developerConnection 'scm:git@github.com:TomasMikula/RichTextFX.git'
+           }
+
+           licenses {
+               license {
+                   name 'GPLv2 with the Classpath Exception'
+                   url 'http://www.gnu.org/software/classpath/license.html'
+                   distribution 'repo'
+               }
+           }
+
+           developers {
+               developer {
+                   name 'Tomas Mikula'
+               }
+           }
+       }
+    }
+}
+
+
+uploadArchives.onlyIf {
+    project.hasProperty('sonatypeUsername') && project.hasProperty('sonatypePassword')
+}
+
+task fatJar(type: Jar, dependsOn: classes) {
+    appendix = 'fat'
+    from sourceSets.main.output
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+}
+
+assemble.dependsOn fatJar

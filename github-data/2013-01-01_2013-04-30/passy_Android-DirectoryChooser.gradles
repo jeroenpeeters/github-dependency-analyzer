@@ -1,0 +1,144 @@
+buildscript {
+  repositories {
+    mavenCentral()
+    maven {
+      url 'https://oss.sonatype.org/content/repositories/snapshots/'
+    }
+  }
+
+  dependencies {
+    classpath 'com.android.tools.build:gradle:0.9.+'
+    classpath 'com.squareup.gradle:gradle-android-test-plugin:0.9.1-SNAPSHOT'
+  }
+}
+
+allprojects {
+  group = GROUP
+  version = VERSION_NAME
+
+  def rawAndroidHome = System.getenv('ANDROID_HOME')
+
+  if (rawAndroidHome != null) {
+    def androidHome = new File(rawAndroidHome).absolutePath
+    def androidRepo = 'file://' + androidHome + '/extras/android/m2repository'
+    def googleRepo = 'file://' + androidHome + '/extras/google/m2repository'
+
+    repositories {
+      maven { url androidRepo }
+      maven { url googleRepo }
+    }
+  }
+
+  repositories {
+    mavenCentral()
+  }
+
+  tasks.withType(Compile) {
+    options.encoding = 'UTF-8'
+  }
+}
+
+apply plugin: 'android-reporting'
+apply plugin: 'android-library'
+apply plugin: 'android-test'
+apply plugin: 'checkstyle'
+
+repositories {
+}
+
+dependencies {
+  compile 'com.google.code.findbugs:jsr305:2.0.3'
+
+  testCompile files('testlibs/robolectric-2.3-SNAPSHOT-jar-with-dependencies.jar')
+  androidTestProvided files('testlibs/robolectric-2.3-SNAPSHOT-jar-with-dependencies.jar')
+
+  testCompile 'junit:junit:4.11'
+  testCompile 'com.squareup:fest-android:1.0.+'
+  testCompile 'org.mockito:mockito-all:1.9.+'
+}
+
+android {
+  compileSdkVersion 19
+  buildToolsVersion '19.0.3'
+
+  defaultConfig {
+    minSdkVersion 11
+    targetSdkVersion 19
+  }
+
+  lintOptions {
+    abortOnError true
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_7
+    targetCompatibility JavaVersion.VERSION_1_7
+  }
+}
+
+checkstyle {
+  configFile project.file('../config/checkstyle/checkstyle.xml')
+  showViolations true
+}
+
+apply from: 'https://raw.github.com/chrisbanes/gradle-mvn-push/eaa6b5404b7594e6c23b884fdc5795f545db55dd/gradle-mvn-push.gradle'
+
+import org.gradle.plugins.signing.Sign
+
+gradle.taskGraph.whenReady { taskGraph ->
+  if (taskGraph.allTasks.any { it instanceof Sign } &&
+      'uploadArchives' in gradle.startParameter.taskNames) {
+    // Use Java 6's console to read from the console (no good for a CI environment)
+    Console console = System.console()
+    console.printf "\n\nWe have to sign some things in this build.\n\nPlease enter your signing details.\n\n"
+    allprojects { ext."signing.password" = console.readPassword("PGP Private Key Password: ") }
+  }
+}
+apply plugin: 'android'
+
+repositories {
+  mavenCentral()
+  mavenLocal()
+}
+
+dependencies {
+  compile project(':library')
+}
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion '19.0.3'
+
+    defaultConfig {
+      versionCode 3
+      versionName '1.2'
+      minSdkVersion 14
+      targetSdkVersion 19
+    }
+
+  signingConfigs {
+    release {
+      if ('assembleRelease' in gradle.startParameter.taskNames) {
+        storeFile file(System.getenv('ANDROID_KEYSTORE'))
+        storePassword System.console().readLine('\n\$ Enter store password: ')
+        keyAlias System.getenv('ANDROID_KEY_ALIAS')
+        keyPassword System.console().readLine('\n\$ Enter key password: ')
+      }
+    }
+  }
+
+  buildTypes {
+    release {
+      signingConfig signingConfigs.release
+    }
+  }
+
+  compileOptions {
+    sourceCompatibility JavaVersion.VERSION_1_7
+    targetCompatibility JavaVersion.VERSION_1_7
+  }
+
+  lintOptions {
+    abortOnError true
+  }
+}

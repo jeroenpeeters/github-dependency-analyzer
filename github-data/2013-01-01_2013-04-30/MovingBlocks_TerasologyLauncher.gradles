@@ -1,0 +1,351 @@
+/*
+ * Copyright 2013-2014 MovingBlocks
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/*
+ * This is a Gradle build file:
+ * - Gradle Homepage: http://gradle.org/
+ * - Gradle Documentation: http://gradle.org/documentation
+ * - View tasks for this project: $ gradlew tasks
+ */
+
+apply plugin: 'java'
+apply plugin: 'project-report'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'application'
+apply plugin: 'checkstyle'
+apply plugin: 'pmd'
+apply plugin: 'findbugs'
+
+// Test for right version of Java in use for running this script
+assert org.gradle.api.JavaVersion.current().isJava7Compatible()
+
+// gradle wrapper version
+wrapper {
+    gradleVersion '1.10'
+}
+
+import org.apache.tools.ant.filters.FixCrLfFilter;
+import java.text.SimpleDateFormat;
+
+def dateTimeFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssXXX")
+dateTimeFormat.timeZone = TimeZone.getTimeZone("UTC")
+
+// Declare "extra properties" (variables) for the project - a Gradle thing that makes them special.
+ext {
+    // Read environment variables, including variables passed by jenkins continuous integration server
+    env = System.getenv()
+
+    // Stuff for our automatic version file setup
+    startDateTimeString = dateTimeFormat.format(new Date())
+    versionInfoFileDir = new File(sourceSets.main.output.resourcesDir, 'org/terasology/launcher/version')
+    versionInfoFile = new File(versionInfoFileDir, 'versionInfo.properties')
+    versionBase = rootProject.file("version.txt").text.trim()
+    displayVersion = (env.JOB_NAME == 'TerasologyLauncherStable') ? versionBase : ((env.JOB_NAME != null && env.BUILD_NUMBER != null) ? versionBase + '.' + env.BUILD_NUMBER + '+' + env.JOB_NAME : versionBase + ' local development ' + startDateTimeString)
+
+    // Splash image for the JAR
+    splashImage = "org/terasology/launcher/images/splash.jpg"
+}
+
+// Declare remote repositories we're interested in - library files will be fetched from here
+repositories {
+    // Main Maven repo
+    mavenCentral()
+}
+
+// Primary dependencies definition
+dependencies {
+    compile group: 'org.slf4j', name: 'slf4j-api', version: '1.7.6'
+    compile group: 'ch.qos.logback', name: 'logback-classic', version: '1.1.1'
+    compile group: 'net.java.dev.jna', name: 'jna', version: '3.5.2'
+    compile group: 'net.java.dev.jna', name: 'platform', version: '3.5.2'
+
+    // These dependencies are only needed for running tests
+    testCompile group: 'junit', name: 'junit', version: '4.11'
+}
+
+// Set the expected module Java level (can use a higher Java to run, but should not use features from a higher Java)
+sourceCompatibility = 1.7
+
+mainClassName = "org.terasology.launcher.TerasologyLauncher"
+
+checkstyle {
+    ignoreFailures = true
+    configProperties.samedir = checkstyle.configFile.parentFile
+}
+
+pmd {
+    ignoreFailures = true
+    ruleSetFiles = files("config/pmd/pmd.xml")
+}
+
+findbugs {
+    toolVersion = '2.0.3'
+    ignoreFailures = true
+    effort = 'max'
+    reportLevel = 'medium'
+}
+
+def convertGitBranch = { gitBranch ->
+    if (gitBranch != null) {
+        // Remove "origin/" from "origin/develop"
+        gitBranch.substring(gitBranch.lastIndexOf("/") + 1)
+    } else {
+        ""
+    }
+}
+
+task createVersionInfoFile {
+    inputs.property('dateTime', startDateTimeString)
+    onlyIf { env.BUILD_URL != null }
+    doLast {
+        versionInfoFileDir.mkdirs()
+        ant.propertyfile(file: versionInfoFile) {
+            ant.entry(key: 'buildNumber', value: env.BUILD_NUMBER)
+            ant.entry(key: 'buildId', value: env.BUILD_ID)
+            ant.entry(key: 'buildTag', value: env.BUILD_TAG)
+            ant.entry(key: 'buildUrl', value: env.BUILD_URL)
+            ant.entry(key: 'jobName', value: env.JOB_NAME)
+            ant.entry(key: 'gitBranch', value: convertGitBranch(env.GIT_BRANCH))
+            ant.entry(key: 'gitCommit', value: env.GIT_COMMIT)
+            ant.entry(key: 'dateTime', value: startDateTimeString)
+            ant.entry(key: 'displayVersion', value: displayVersion)
+        }
+    }
+}
+createVersionInfoFile.dependsOn processResources
+jar.dependsOn createVersionInfoFile
+distZip.dependsOn createVersionInfoFile
+distTar.dependsOn createVersionInfoFile
+
+jar {
+    // replace development "logback.xml" with productive "logback_jar.xml"
+    exclude "logback.xml"
+    rename('logback_jar.xml', 'logback.xml')
+    manifest {
+        def manifestClasspath = configurations.runtime.collect { it.getName() }.join(" ")
+        attributes("Main-Class": mainClassName, "Class-Path": manifestClasspath,
+                "Implementation-Title": project.name, "Implementation-Version": displayVersion,
+                "SplashScreen-Image": splashImage)
+    }
+}
+
+task distChangelog(type: Copy) {
+    description 'Distribute CHANGELOG.md'
+    from('CHANGELOG.md')
+    into "$buildDir/distributions/"
+    rename('CHANGELOG.md', 'CHANGELOG.txt')
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+}
+
+task createRelease {
+    description 'Create a release'
+    dependsOn build
+    dependsOn distZip
+    dependsOn distChangelog
+    doLast {
+        println 'Created release: ' + displayVersion
+    }
+}
+
+applicationDistribution.from('README.md')
+
+applicationDistribution.from('README.md') {
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+    rename('README.md', 'README.txt')
+}
+
+applicationDistribution.from('CHANGELOG.md')
+
+applicationDistribution.from('CHANGELOG.md') {
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+    rename('CHANGELOG.md', 'CHANGELOG.txt')
+}
+
+applicationDistribution.from('CONTRIBUTING.md')
+
+applicationDistribution.from('CONTRIBUTING.md') {
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+    rename('CONTRIBUTING.md', 'CONTRIBUTING.txt')
+}
+
+applicationDistribution.from('LICENSE') {
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+}
+
+applicationDistribution.from('NOTICE') {
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+}
+
+applicationDistribution.from('src/template/VERSION.md') {
+    expand(buildNumber: env.BUILD_NUMBER, buildUrl: env.BUILD_URL, gitBranch: convertGitBranch(env.GIT_BRANCH),
+            dateTime: startDateTimeString, displayVersion: displayVersion)
+}
+
+applicationDistribution.from('src/template/VERSION.md') {
+    expand(buildNumber: env.BUILD_NUMBER, buildUrl: env.BUILD_URL, gitBranch: convertGitBranch(env.GIT_BRANCH),
+            dateTime: startDateTimeString, displayVersion: displayVersion)
+    filter(FixCrLfFilter, eol: FixCrLfFilter.CrLf.newInstance("crlf"))
+    rename('VERSION.md', 'VERSION.txt')
+}
+
+// Setup IntelliJ-IDEA
+idea {
+    project {
+        jdkName = '1.7'
+        languageLevel = 'JDK_1_7'
+
+        ipr {
+            withXml { xmlProvider ->
+                def iprNode = xmlProvider.asNode()
+
+                ideaActivateGradle(iprNode)
+                ideaActivateGit(iprNode)
+                ideaActivateCheckstyle(iprNode)
+                ideaActivateCopyright(iprNode)
+            }
+        }
+    }
+
+    module {
+        // Exclude Gradle dir
+        excludeDirs += file('gradle')
+
+        // Exclude Eclipse dirs
+        excludeDirs += file('bin')
+        excludeDirs += file('.settings')
+    }
+
+    workspace {
+        iws {
+            withXml { xmlProvider ->
+                def iwsNode = xmlProvider.asNode()
+
+                ideaMakeAutomatically(iwsNode)
+                ideaRunConfig(iwsNode)
+            }
+        }
+    }
+}
+
+ext {
+    // Activate 'Gradle' plugin
+    ideaActivateGradle = { Node iprNode ->
+        def gradleSettings = iprNode.component.find { it.'@name' == 'GradleSettings' }
+        if (gradleSettings == null) {
+            gradleSettings = iprNode.appendNode('component', [name: 'GradleSettings'])
+            gradleSettings.appendNode('option', [name: 'linkedProjectPath', value: '$PROJECT_DIR$/build.gradle'])
+        }
+    }
+
+    // Activate 'git' as VCS
+    ideaActivateGit = { Node iprNode ->
+        def vcsMappings = iprNode.component.find { it.'@name' == 'VcsDirectoryMappings' }
+        vcsMappings.mapping.@vcs = 'Git'
+    }
+
+    // Activate and config 'Checkstyle' plugin
+    ideaActivateCheckstyle = { Node iprNode ->
+        def checkstyle = iprNode.component.find { it.'@name' == 'CheckStyle-IDEA' }
+        if (checkstyle == null) {
+            // Create new CheckStyle component
+            checkstyle = iprNode.appendNode('component', [name: 'CheckStyle-IDEA'])
+            // use NodeBuilder to create the config block in the xml structure
+            def builder = new NodeBuilder()
+            def option = builder.option(name: 'configuration') {
+                map {
+                    entry(key: 'active-configuration',
+                            value: 'PROJECT_RELATIVE:$PROJECT_DIR$/config/checkstyle/checkstyle.xml:TerasologyLauncher CheckStyle')
+                    entry(key: 'check-nonjava-files', value: false)
+                    entry(key: 'check-test-classes', value: true)
+                    entry(key: 'location-0',
+                            value: 'CLASSPATH:/sun_checks.xml:The default CheckStyle rules')
+                    entry(key: 'location-1',
+                            value: 'PROJECT_RELATIVE:$PROJECT_DIR$/config/checkstyle/checkstyle.xml:TerasologyLauncher CheckStyle')
+                    entry(key: 'property-1.samedir', value: 'config/checkstyle')
+                    entry(key: 'suppress-errors', value: false)
+                    entry(key: 'thirdparty-classpath', value: '')
+                }
+            }
+            // Add result from NodeBuilder
+            checkstyle.append option
+        }
+    }
+
+    // Activate copyright conventions
+    ideaActivateCopyright = { Node iprNode ->
+        def copyrightManager = iprNode.component.find { it.'@name' == 'CopyrightManager' }
+        copyrightManager.'@default' = "TerasologyLauncher"
+        def copyright = copyrightManager.copyright.find { it.option.find { it.'@name' == "myName" }?.'@value' == "TerasologyLauncher" }
+        if (copyright == null) {
+            copyrightManager.append(new XmlParser().parseText('''
+                <copyright>
+                    <option name="notice" value="Copyright 2014 MovingBlocks&#10;&#10;Licensed under the Apache License, Version 2.0 (the &quot;License&quot;);&#10;you may not use this file except in compliance with the License.&#10;You may obtain a copy of the License at&#10;&#10;     http://www.apache.org/licenses/LICENSE-2.0&#10;&#10;Unless required by applicable law or agreed to in writing, software&#10;distributed under the License is distributed on an &quot;AS IS&quot; BASIS,&#10;WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.&#10;See the License for the specific language governing permissions and&#10;limitations under the License." />
+                    <option name="keyword" value="Copyright" />
+                    <option name="allowReplaceKeyword" value="" />
+                    <option name="myName" value="TerasologyLauncher" />
+                    <option name="myLocal" value="true" />
+                </copyright>
+            '''))
+        }
+    }
+
+    // Enable "make project automatically"
+    ideaMakeAutomatically = { Node iwsNode ->
+        def compilerWsConf = iwsNode.find { it.'@name' == 'CompilerWorkspaceConfiguration' }
+        if (compilerWsConf == null) {
+            compilerWsConf = iwsNode.appendNode('component', [name: 'CompilerWorkspaceConfiguration'])
+            compilerWsConf.appendNode("option", [name: "MAKE_PROJECT_ON_SAVE", value: "true"])
+        }
+    }
+
+    // Generate a run configuration for the primary PC facade way of running the game
+    ideaRunConfig = { Node iwsNode ->
+
+        // Adds our run config
+        def runManager = iwsNode.component.find { it.'@name' == 'RunManager' }
+        runManager.append(new XmlParser().parseText('''
+            <configuration default="false" name="TerasologyLauncher" type="Application" factoryName="Application" singleton="true">
+              <extension name="coverage" enabled="false" merge="false" />
+              <option name="MAIN_CLASS_NAME" value="org.terasology.launcher.TerasologyLauncher" />
+              <option name="VM_PARAMETERS" value="-splash:src/main/resources/org/terasology/launcher/images/splash.jpg" />
+              <option name="PROGRAM_PARAMETERS" value="" />
+              <option name='WORKING_DIRECTORY' value='file://\$PROJECT_DIR\$' />
+              <option name="ALTERNATIVE_JRE_PATH_ENABLED" value="false" />
+              <option name="ALTERNATIVE_JRE_PATH" value="" />
+              <option name="ENABLE_SWING_INSPECTOR" value="false" />
+              <option name="ENV_VARIABLES" />
+              <option name="PASS_PARENT_ENVS" value="true" />
+              <module name="TerasologyLauncher" />
+              <envs />
+              <RunnerSettings RunnerId="Run" />
+              <ConfigurationWrapper RunnerId="Run" />
+              <method />
+            </configuration>
+        '''))
+
+        // This part puts the added run config into the actual "Run" drop-down
+        runManager.append(new XmlParser().parseText('''
+            <list size="1">
+                <item index="0" class="java.lang.String" itemvalue="Application.TerasologyLauncher"/>
+            </list>
+        '''))
+
+        // Makes the added run config the selected item
+        runManager.'@selected' = 'Application.TerasologyLauncher'
+    }
+
+}

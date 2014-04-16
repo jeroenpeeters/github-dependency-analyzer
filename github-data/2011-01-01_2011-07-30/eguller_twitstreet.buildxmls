@@ -1,0 +1,98 @@
+<project default="build">
+	<property name="build.dir" value="build" />
+	<property name="tomcat.home" value="" />
+	<property name="lib.dir" value="WEB-INF/lib"></property>
+	<property name="dest-file" value="${user.home}/Desktop/ROOT.war"></property>
+	<path id="lib.path.ref">
+		<fileset dir="WEB-INF/lib" includes="*.jar" />
+		<fileset dir="${tomcat.home}/lib" includes="*.jar" />
+	</path>
+	
+	<target name="clean">
+		<delete file="${dest-file}">
+		</delete>
+		<delete dir="${build.dir}" />
+	</target>
+	
+	<target name="copy-rsrc">
+		<mkdir dir="${build.dir}/bin" />
+		<copy todir="${build.dir}/bin">
+		    <fileset dir="resources" includes="**/*"/>
+		</copy>
+		<!-- Copy localization files -->
+		<copy todir="${build.dir}/bin/com/twitstreet/localization/">
+		    <fileset dir="src/com/twitstreet/localization/" includes="**/*.properties"/>
+		</copy>
+	   
+	   <!-- Copy gui utility files -->
+		<copy todir="${build.dir}/bin/com/twitstreet/util/">
+		    <fileset dir="src/com/twitstreet/util/" includes="**/*.properties"/>
+		</copy>
+		<copy todir="${build.dir}/js/">
+		    <fileset dir="js" includes="jquery.countdown-*.js"/>
+		</copy>
+	</target>
+	
+	<target name="compile">
+		<javac srcdir="src" destdir="${build.dir}/bin" classpathref="lib.path.ref" debug="true" debuglevel="lines,vars,source" />
+	</target>
+	
+	<target name="merge-static">
+		<echo message="Merging all jss files into: all.js" />
+		<concat destfile="${build.dir}/js/all.js" force="yes">
+			<filelist dir="js"
+			         files="jquery-corner.js,jquery.blockUI.js,hashchange.js,twitstreet.js,ajax.js,util.js,stockTabs.js,groupTabs.js,userTabs.js,stockDetailsTabs.js,mainTabs.js,toprankTabs.js,userProfileTabs.js,portfolioTab.js,transactionTab.js,charts.js,jquery.countdown.min.js"/>
+		</concat>
+		<echo message="Merging all css files into: all.css" />
+		<concat destfile="${build.dir}/css/all.css" force="no">
+			<fileset dir="css" includes="*.css" />
+		</concat>
+	</target>
+	<target name="minify-static" depends="merge-static">
+		<echo message="Compressing js file to: all-min.js" />
+		<java jar="${lib.dir}/yuicompressor-2.4.7.jar" fork="true">
+			<arg value="${build.dir}/js/all.js" />
+			<arg value="-o" />
+			<arg value="${build.dir}/js/all-min.js" />
+		</java>
+		<delete file="${build.dir}/js/all.js"></delete>
+		<echo message="Compressing css file to: all-min.css" />
+		<java jar="${lib.dir}/yuicompressor-2.4.7.jar" fork="true">
+			<arg value="${build.dir}/css/all.css" />
+			<arg value="-o" />
+			<arg value="${build.dir}/css/all-min.css" />
+		</java>
+		<delete file="${build.dir}/css/all.css"></delete>
+	</target>
+	
+	<target name="prod-config" depends="minify-static">
+		<replace file="${build.dir}/bin/log4j.xml" token="${catalina.home}/logs/twitstreet.txt" value="/var/log/tomcat6/twitstreet.txt" />
+	</target>
+	
+
+	<target name="build" depends="clean,copy-rsrc,compile,prod-config">
+		<war destfile="${dest-file}" webxml="WEB-INF/web.xml">
+			<fileset dir=".">
+				<include name="images/*" />
+				<exclude name="images/Thumbs.db" />
+				<include name="google787652ab63e1f2d2.html" />
+			</fileset>
+			<fileset dir="${build.dir}">
+				<include name="js/*" />
+				<include name="css/*" />
+				
+			</fileset>
+			<lib dir="WEB-INF/lib">
+			</lib>
+			<classes dir="build/bin" />
+			<webinf dir="WEB-INF">
+				<include name="db/**" />
+				<include name="jsp/**" />
+				<include name="lib/**" />
+				<include name="tlds/**" />
+			</webinf>
+		</war>
+		<delete dir="build" />
+	</target>
+</project>
+	

@@ -1,0 +1,816 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+   You need to install sphinx (and Python) for this module to build.
+   
+   The ant build.xml file takes care of checking if sphinx-build is available 
+   on the path - and if avaialble it uses it to genrate the docs.
+   
+   Clean build using maven:
+   
+   mvn clean install
+   
+   Just build one:
+   
+   mvn install -Puser
+   mvn clean install -Pdevel
+   
+   You can also use ant directly:
+   
+   ant clean
+   ant full
+   ant user
+   ant devel
+   
+   This class also contains scripts used to prep and convert.
+
+   Convert from Confluence Space (see http://udig.refractions.net/confluence/spaces/exportspace.action?key=DEV)
+
+   "XML Export" into textile format:
+   
+   mvn exec:java -Dexec.mainClass="docs.ConvertConfluence" -Dexec.args="?"
+   mvn exec:java -Dexec.mainClass="docs.ConvertConfluence" -Dexec.args="~/Desktop/EN/ ~/Desktop/user"
+
+   "html Export" (pandoc is required to convert between markup languages (http://johnmacfarlane.net/pandoc/installing.html))
+
+   mvn exec:java -Dexec.mainClass="html.BulkConvert" -Dexec.args="/path/to/exported/html/index.html /path/to/target/rst/folder"
+
+
+   You will probably have to copy the images over yourself.
+   -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0                                 http://maven.apache.org/maven-v4_0_0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.locationtech</groupId>
+    <artifactId>udig-tycho</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+  </parent>
+  
+	<!-- =========================================================== -->
+	<!-- Module Description -->
+	<!-- =========================================================== -->
+    <artifactId>udig-docs</artifactId>
+    <name>uDig Documentation</name>
+
+    <description>
+     Documentation generation for the uDig project including user guide and developer guide.
+    </description>
+  
+  <dependencies>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>4.10</version>
+      <type>jar</type>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+  
+  <build>
+    <plugins>
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>.</directory>
+              <includes>
+                <include>common.pyc</include>
+              </includes>
+              <followSymlinks>false</followSymlinks>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
+      <plugin>
+        <artifactId>maven-antrun-plugin</artifactId>
+        <dependencies>
+          <dependency>
+            <groupId>ant</groupId>
+            <artifactId>ant</artifactId>
+            <version>1.6.5</version>
+          </dependency>
+          <dependency>
+            <groupId>ant-contrib</groupId>
+            <artifactId>ant-contrib</artifactId>
+            <version>1.0b3</version>
+          </dependency>
+        </dependencies>
+        <executions>
+          <execution>
+            <id>compile</id>
+            <phase>compile</phase>
+            <configuration>
+              <tasks>
+                <ant antfile="build.xml" dir="${basedir}" target="${target}">
+                  <property name="build.directory" value="${project.build.directory}"/>
+                  <property name="project.version" value="${project.version}"/>
+                </ant>
+              </tasks>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>package</id>
+            <phase>package</phase>
+            <configuration>
+              <tasks>
+                 <!-- create online-help.zip artifact and attach it afterwards as a build result -->
+                 <copy todir="${project.build.directory}/udig-eclipse-help/EN">
+                    <fileset dir="${project.build.directory}/user/en/simple" excludes="**/_sources/**"/>
+                 </copy>
+                 <copy file="${basedir}/user/toc.xml" todir="${project.build.directory}/udig-eclipse-help" />
+                 <zip destfile="${project.build.directory}/udig-eclipse-help.zip" basedir="${project.build.directory}/udig-eclipse-help" />
+              </tasks>
+            </configuration>
+            <goals>
+              <goal>run</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-artifacts</id>
+            <phase>package</phase>
+            <goals>
+              <goal>attach-artifact</goal>
+            </goals>
+            <configuration>
+              <artifacts>
+                <artifact>
+                  <file>${project.build.directory}/udig-eclipse-help.zip</file>
+                  <type>zip</type>
+                  <classifier>udig-eclipse-help</classifier>
+                </artifact>
+              </artifacts>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+    </plugins>
+    <pluginManagement>
+    	<plugins>
+    		<!--This plugin's configuration is used to store Eclipse m2e settings only. It has no influence on the Maven build itself.-->
+    		<plugin>
+    			<groupId>org.eclipse.m2e</groupId>
+    			<artifactId>lifecycle-mapping</artifactId>
+    			<version>1.0.0</version>
+    			<configuration>
+    				<lifecycleMappingMetadata>
+    					<pluginExecutions>
+    						<pluginExecution>
+    							<pluginExecutionFilter>
+    								<groupId>
+    									org.apache.maven.plugins
+    								</groupId>
+    								<artifactId>
+    									maven-antrun-plugin
+    								</artifactId>
+    								<versionRange>[1.3,)</versionRange>
+    								<goals>
+    									<goal>run</goal>
+    								</goals>
+    							</pluginExecutionFilter>
+    							<action>
+    								<ignore></ignore>
+    							</action>
+    						</pluginExecution>
+    					</pluginExecutions>
+    				</lifecycleMappingMetadata>
+    			</configuration>
+    		</plugin>
+    	</plugins>
+    </pluginManagement>
+  </build>
+
+  <properties>
+     <target>full</target>
+  </properties>
+
+  <profiles>
+    <profile>
+      <id>devel</id>
+      <properties>
+        <target>devel</target>
+      </properties>
+    </profile>
+    <profile>
+      <id>user</id>
+      <properties>
+        <target>user</target>
+      </properties>
+    </profile>
+  </profiles>
+  
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.locationtech</groupId>
+        <artifactId>udig-tycho</artifactId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>features</artifactId>
+    <packaging>pom</packaging>
+
+    <profiles>
+        <profile>
+            <id>product</id>
+            <modules>
+                 <module>org.locationtech.udig-product</module>
+             </modules>
+        </profile>
+        
+        <profile>
+            <id>site</id>
+            <modules>
+                <module>org.locationtech.udig-site</module>
+                <module>org.locationtech.udig-site.community</module>
+             </modules>
+        </profile>
+        
+        <profile>
+            <id>sdk</id>
+            <activation>
+                <property><name>all</name></property>
+            </activation>
+            <modules>
+                <module>org.locationtech.udig.rcp_feature</module>
+                <module>org.locationtech.udig_tutorials-feature</module>
+                <module>org.locationtech.udig_sdk-feature</module>
+             </modules>
+        </profile>
+    </profiles>
+
+    <modules>
+        <module>org.locationtech.udig_application-feature</module>
+        <module>org.locationtech.udig_base-feature</module>
+        <module>org.locationtech.udig_language-feature</module>
+        <module>org.locationtech.udig_platform-feature</module>
+        <module>org.locationtech.udig_printing-feature</module>
+        <module>org.locationtech.udig-feature</module>
+    </modules>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd" xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.locationtech</groupId>
+        <artifactId>udig-tycho</artifactId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <artifactId>plugins</artifactId>
+    <packaging>pom</packaging>
+
+    <profiles>
+        <profile>
+            <id>test</id>
+            <modules>
+                <module>org.locationtech.udig.ui.tests</module>
+                <module>org.locationtech.udig.project.tests</module>
+                <module>org.locationtech.udig.catalog.tests</module>
+                <module>org.locationtech.udig.catalog.tests.ui</module>
+                <module>org.locationtech.udig.project.tests.ui</module>
+
+                
+                <module>org.locationtech.udig.catalog.tests.geotiff</module>
+                <module>org.locationtech.udig.catalog.tests.wfs</module>
+                <module>org.locationtech.udig.catalog.tests.wms</module>
+                <module>org.locationtech.udig.tests.info</module>
+                <module>org.locationtech.udig.issues.test</module>
+                <module>org.locationtech.udig.libs.tests</module>
+                <module>org.locationtech.udig.location.test</module>
+                <module>org.locationtech.udig.render.feature.basic.test</module>
+                <module>org.locationtech.udig.render.wms.basic.test</module>
+                <module>org.locationtech.udig.style.tests</module>
+                <module>org.locationtech.udig.tests.catalog.wmt</module>
+                <module>org.locationtech.udig.tool.default.tests</module>
+                <module>org.locationtech.udig.tool.edit.tests</module>
+                <module>org.locationtech.udig.tool.select.tests</module>
+                <module>org.locationtech.udig.validation.test</module>
+                
+                <module>org.locationtech.udig.tools.tests</module>
+                <module>org.locationtech.udig.bookmarks.tests</module>
+            </modules>
+        </profile>
+
+        <profile>
+            <id>sdk</id>
+            <activation>
+                <property><name>all</name></property>
+            </activation>
+            <modules>
+                <!-- TUTORIALS -->
+                <module>net.sf.opencsv/</module>
+                <module>org.locationtech.udig.tutorials.preferredzoomlevels</module>
+                <module>org.locationtech.udig.tutorials.tool-view</module>
+                <module>org.locationtech.udig.tutorials.catalog.csv</module>
+                <module>org.locationtech.udig.tutorials.catalog.tests.csv</module>
+
+                <module>org.locationtech.udig.tutorials.customapp</module>
+                <module>org.locationtech.udig.tutorials.distancetool</module>
+                <module>org.locationtech.udig.tutorials.examples</module>
+                <module>org.locationtech.udig.tutorials.featureeditor</module>
+                <module>org.locationtech.udig.tutorials.genericprojectelement</module>
+                <module>org.locationtech.udig.tutorials.mapgraphic</module>
+                <module>org.locationtech.udig.tutorials.raster</module>
+                <module>org.locationtech.udig.tutorials.rcp</module>
+                <module>org.locationtech.udig.tutorials.render.csv</module>
+                <module>org.locationtech.udig.tutorials.shpexport</module>
+                <module>org.locationtech.udig.tutorials.style.color</module>
+                <module>org.locationtech.udig.tutorials.template</module>
+                <module>org.locationtech.udig.tutorials.tool.coordinate</module>
+                <module>org.locationtech.udig.tutorials.tool.coverage</module>
+                <module>org.locationtech.udig.tutorials.tracking</module>
+                <module>org.locationtech.udig.tutorials.urladapter</module>
+                <module>org.locationtech.udig.tutorials.workbench</module>
+                
+                <module>org.locationtech.udig_tutorials.custom-feature</module>
+                
+                <!-- build example feature after plugins -->
+                <module>org.locationtech.udig.tutorials.rcp-feature</module>
+             </modules>
+        </profile>
+    </profiles>
+
+    <modules>
+        <module>org.locationtech.udig.catalog.csw</module>
+        <module>org.locationtech.udig.catalog.jgrass</module>
+        <module>org.locationtech.udig.catalog.kml</module>
+        <module>org.locationtech.udig.catalog.teradata</module>
+        <module>org.locationtech.udig.image.georeferencing</module>
+        <module>org.locationtech.udig.jconsole</module>
+        <module>org.locationtech.udig.omsbox</module>
+        <module>org.locationtech.udig.style.advanced</module>
+        <module>org.locationtech.udig.style.jgrass</module>
+        <module>org.locationtech.udig.tools</module>
+        <module>org.locationtech.udig.tools.jgrass</module>
+        <module>org.locationtech.udig</module>
+        <module>org.locationtech.udig_base</module>
+        <module>org.locationtech.udig.browser</module>
+        <module>org.locationtech.udig.catalog</module>
+        <module>org.locationtech.udig.catalog.arcgrid</module>
+        <module>org.locationtech.udig.catalog.arcsde</module>
+        <module>org.locationtech.udig.catalog.db2</module>
+        <module>org.locationtech.udig.catalog.geotiff</module>
+        <module>org.locationtech.udig.catalog.geotools</module>
+        <module>org.locationtech.udig.catalog.google2</module>
+        <module>org.locationtech.udig.catalog.imageio</module>
+        <module>org.locationtech.udig.catalog.mysql</module>
+        <module>org.locationtech.udig.catalog.oracle</module>
+        <module>org.locationtech.udig.catalog.postgis</module>
+        <module>org.locationtech.udig.catalog.rasterings</module>
+        <module>org.locationtech.udig.catalog.shp</module>
+        <module>org.locationtech.udig.catalog.ui</module>
+        <module>org.locationtech.udig.catalog.wfs</module>
+        <module>org.locationtech.udig.catalog.wms</module>
+        <module>org.locationtech.udig.catalog.wmt</module>
+        <module>org.locationtech.udig.catalog.worldimage</module>
+        <module>org.locationtech.udig.context</module>
+        <module>org.locationtech.udig.core</module>
+        <module>org.locationtech.udig.feature.editor</module>
+        <module>org.locationtech.udig.graph</module>
+        <module>org.locationtech.udig.help</module>
+        <module>org.locationtech.udig.info</module>
+        <module>org.locationtech.udig.issues</module>
+        <module>org.locationtech.udig.legend</module>
+        <module>org.locationtech.udig.libs</module>
+        <module>org.locationtech.udig.libs.db2</module>
+        <module>org.locationtech.udig.libs.oracle</module>
+        <module>org.locationtech.udig.location</module>
+        <module>org.locationtech.udig.mapgraphic</module>
+        <module>org.locationtech.udig.printing.model</module>
+        <module>org.locationtech.udig.printing.model.edit</module>
+        <module>org.locationtech.udig.printing.ui</module>
+        <module>org.locationtech.udig.project</module>
+        <module>org.locationtech.udig.project.edit</module>
+        <module>org.locationtech.udig.project.ui</module>
+        <module>org.locationtech.udig.project.ui.editor</module>
+        <module>org.locationtech.udig.render.feature.basic</module>
+        <module>org.locationtech.udig.render.feature.shapefile</module>
+        <module>org.locationtech.udig.render.gridcoverage.basic</module>
+        <module>org.locationtech.udig.render.wms.basic</module>
+        <module>org.locationtech.udig.render.wmt.basic</module>
+        <module>org.locationtech.udig.socket</module>
+        <module>org.locationtech.udig.style</module>
+        <module>org.locationtech.udig.style.sld</module>
+        <module>org.locationtech.udig.style.wms</module>
+        <module>org.locationtech.udig.tool.default</module>
+        <module>org.locationtech.udig.tool.edit</module>
+        <module>org.locationtech.udig.tool.select</module>
+        <module>org.locationtech.udig.ui</module>
+        <module>org.locationtech.udig.validation</module>
+        <module>org.locationtech.udig.bookmarks</module>
+    </modules>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>org.locationtech</groupId>
+    <artifactId>udig-tycho</artifactId>
+    <version>2.0.0-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <description>
+        This is the base uDig pom that controls the version numbers
+        used by the nightly build process.
+    </description>
+    <prerequisites>
+        <maven>3.0</maven>
+    </prerequisites>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <java-version>1.6</java-version>
+        <tycho-version>0.19.0</tycho-version>
+        <tycho-extras-version>0.19.0</tycho-extras-version>
+    </properties>
+
+    <!--
+        We need to ask you to download some libs prior to doing a full build:
+        simply run here at the same level the following commend to download libraries:
+       
+           mvn clean package -f pom-libs.xml
+
+        In addition its required to build some bundles (JAI/ImageIO) before building this project. 
+        Bundles will be installed into the maven repository and will be resolved because of the 
+        following option for target-platform-configuration:
+
+        <pomDependencies>consider</pomDependencies>
+
+        Simply run:
+           mvn clean install -f libs/jai-imageio/pom.xml 
+
+        Our maven tests require a bit more memory:
+           export MAVEN_OPTS="-Xmx1024m -XX:MaxPermSize=256m"
+
+        Once that is done you can run a full build on the command line:
+           mvn install -Dall
+
+        If you run into any problems (to list debug and stack trace)
+           mvn -Dall -e -X install
+
+        Please note the Tycho maven plugin used to build RCP projects is a a work in progress; you
+        will do better to review the stack trace with a checkout of the Tycho code in hand as the
+        error messages are often misleading and evil.
+
+        The build supports the use of profiles - the following profiles are defined:
+
+        To quickly build the product (result is in features/org.locationtech.udig-product/target):
+           mvn install -Pproduct
+
+        Builds documentation (requires sphinx-build is installed):
+          mvn install -Pdocs
+
+        Gathers the tutorials and source code for the software developers kit
+          mvn install -Dall -Psdk
+
+        To run a full build with tests:
+          mvn install -Dall -Ptest
+          
+        To run a full build with user interfaces tests (requires a display):
+          mvn install -Dall -Ptest,test-ui
+
+        To profile the tests you will need:
+          mvn install -Ptest -Pprofile
+
+        Gathers the plugins that are not included in the default product 
+          mvn install -Ppending (included by -Dall)
+          
+        Includes the udig and community sites:
+           -Psite
+
+        Includes the ossim feaure (this may be dead code) 
+          -Possim
+    -->
+
+    <profiles>
+        <profile>
+            <id>docs</id>
+            <modules>
+                <module>docs</module>
+            </modules>
+        </profile>
+
+        <profile>
+            <id>coverage</id>
+            <activation>
+                <property>
+                    <name>coverage</name>
+                </property>
+            </activation>
+            <properties>
+                <emma.session.out.file>${project.build.directory}/emma/${project.artifactId}.es</emma.session.out.file>
+                <emma.filter>se.mattiasholmqvist.*</emma.filter>
+                <eclemma.instrument.bundles>se.mattiasholmqvist.tychoexamples.bundle</eclemma.instrument.bundles>
+            </properties>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.codehaus.mojo</groupId>
+                        <artifactId>build-helper-maven-plugin</artifactId>
+                        <version>1.5</version>
+                        <executions>
+                            <execution>
+                                <id>attach-artifacts</id>
+                                <phase>package</phase>
+                                <goals>
+                                    <goal>attach-artifact</goal>
+                                </goals>
+                                <configuration>
+                                    <artifacts>
+                                        <artifact>
+                                            <file>${emma.session.out.file}</file>
+                                            <type>es</type>
+                                        </artifact>
+                                    </artifacts>
+                                </configuration>
+                            </execution>
+                        </executions>
+                    </plugin>
+
+                    <plugin>
+                        <groupId>org.eclipse.tycho</groupId>
+                        <artifactId>tycho-surefire-plugin</artifactId>
+                        <version>${tycho-version}</version>
+                        <configuration>
+                            <systemProperties combine.children="append">
+                                <eclemma.help>true</eclemma.help>
+                                <emma.session.out.file>${emma.session.out.file}</emma.session.out.file>
+                                <emma.filter>${emma.filter}</emma.filter>
+                                <eclemma.instrument.bundles>${eclemma.instrument.bundles}</eclemma.instrument.bundles>
+                            </systemProperties>
+                            <frameworkExtensions>
+                                <frameworkExtension>
+                                    <groupId>se.mattiasholmqvist.tychoexamples</groupId>
+                                    <artifactId>eclemma.runtime.equinox</artifactId>
+                                    <version>1.1.0.200908261008</version>
+                                </frameworkExtension>
+                            </frameworkExtensions>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+
+        <profile>
+            <id>mac-os</id>
+            <activation>
+                <os>
+                    <family>mac</family>
+                </os>
+            </activation>
+            <properties>
+                <tycho.test.OSspecific>-XstartOnFirstThread</tycho.test.OSspecific>
+            </properties>
+        </profile>
+
+        <profile>
+            <id>other-os</id>
+            <activation>
+                <os>
+                    <family>!mac</family>
+                </os>
+            </activation>
+            <properties>
+                <tycho.test.OSspecific />
+            </properties>
+        </profile>
+    </profiles>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <extensions>true</extensions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>target-platform-configuration</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <!-- target from sub-module eclipse-target-definition project -->
+                    <target>
+                        <artifact>
+                            <groupId>org.locationtech.udig-target</groupId>
+                            <artifactId>udig-indigo-target</artifactId>
+                            <version>3.7</version>
+                        </artifact>
+                    </target>
+                    <resolver>p2</resolver>
+                    <dependency-resolution>
+                        <optionalDependencies>ignore</optionalDependencies>
+                    </dependency-resolution>
+                    <!-- filter out optional dependency -->
+                    <!-- currently allowed in until jconsole is fixed
+                    <filters>
+                       <filter>
+                          <type>eclipse-plugin</type>
+                          <id>org.eclipse.ui.ide</id>
+                          <removeAll/>
+                       </filter>
+                    </filters> 
+                    -->
+                    <!-- example 3: work around Equinox bug 348045 -->
+                    <filters>
+                        <filter>
+                            <type>eclipse-plugin</type>
+                            <id>org.eclipse.jdt.core</id>
+                            <removeAll/>
+                        </filter>
+                    </filters>
+
+                    <pomDependencies>consider</pomDependencies>
+
+                    <environments>
+                        <environment>
+                            <os>win32</os>
+                            <ws>win32</ws>
+                            <arch>x86</arch>
+                        </environment>
+                        <environment>
+                            <os>win32</os>
+                            <ws>win32</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>linux</os>
+                            <ws>gtk</ws>
+                            <arch>x86</arch>
+                        </environment>
+                        <environment>
+                            <os>linux</os>
+                            <ws>gtk</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>x86</arch>
+                        </environment>
+                        <environment>
+                            <os>macosx</os>
+                            <ws>cocoa</ws>
+                            <arch>x86_64</arch>
+                        </environment>
+                    </environments>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-compiler-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <configuration>
+                    <source>${java-version}</source>
+                    <target>${java-version}</target>
+                    <encoding>${project.build.sourceEncoding}</encoding>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-source-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <executions>
+                    <execution>
+                        <id>plugin-source</id>
+                        <goals>
+                            <goal>plugin-source</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-eclipse-plugin</artifactId>
+                <version>2.5</version>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>the-execution-id</id>
+                        <phase>none</phase>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                   <groupId>org.codehaus.mojo</groupId>
+                   <artifactId>build-helper-maven-plugin</artifactId>
+                   <version>1.8</version>
+                </plugin>
+
+                <plugin>
+                   <artifactId>maven-clean-plugin</artifactId>
+                   <version>2.5</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.eclipse.tycho</groupId>
+                    <artifactId>tycho-surefire-plugin</artifactId>
+                    <version>${tycho-version}</version>
+                    <configuration>
+                        <useUIHarness>true</useUIHarness>
+                        <product>org.locationtech.udig-product</product>
+                        <argLine>-Xmx1024m -XX:MaxPermSize=256m -Dlauncher.suppressErrors -Dsdtcore.headless ${tycho.test.OSspecific}</argLine>
+                    </configuration>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <reporting>
+        <plugins>
+            <!-- Code coverage report -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>cobertura-maven-plugin</artifactId>
+                <version>2.2</version>
+            </plugin>
+
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>findbugs-maven-plugin</artifactId>
+                <version>2.1</version>
+            </plugin>
+        </plugins>
+    </reporting>
+
+    <modules>
+        <module>targets</module>
+        <module>plugins</module>
+        <module>features</module>
+    </modules>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.locationtech</groupId>
+        <artifactId>udig-target</artifactId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <groupId>org.locationtech.udig-target</groupId>
+    <artifactId>udig-indigo-target</artifactId>
+    <version>3.7</version>
+    <packaging>eclipse-target-definition</packaging>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.locationtech</groupId>
+        <artifactId>udig-tycho</artifactId>
+        <version>2.0.0-SNAPSHOT</version>
+    </parent>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.eclipse.tycho</groupId>
+                <artifactId>tycho-maven-plugin</artifactId>
+                <version>${tycho-version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <artifactId>udig-target</artifactId>
+    <packaging>pom</packaging>
+
+    <modules>
+        <module>indigo</module>
+    </modules>
+</project>

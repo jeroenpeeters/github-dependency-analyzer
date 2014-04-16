@@ -1,0 +1,374 @@
+<project name="jsoar" default="dist">
+   <!-- See jsoar-build/readme.txt. Build results are in jsoar-build/dist -->
+   <target name="dist">
+      <ant dir="jsoar-build"/>
+   </target>
+
+   <target name="clean">
+      <ant dir="jsoar-build" target="clean"/>
+   </target>
+
+   <target name="sign">
+      <ant dir="jsoar-build" target="sign"/>
+   </target>
+   <target name="zip">
+      <ant dir="jsoar-build" target="zip"/>
+   </target>
+   <target name="doc">
+      <ant dir="jsoar-build" target="doc"/>
+   </target>
+</project>
+<project name="jsoar" default="dist" basedir=".">
+   <!-- Use -Dversion=X.X.X to override the JSoar version number -->
+   <property name="soarVersion" value="9.0.1" />
+   <property name="copyright" value="(c) Dave Ray, 2010"/>
+   <property name="manifest.vendor" value="Dave Ray"/>
+
+   <property name="dist" location="dist" />
+   <property name="dist.lib" location="${dist}/lib" />
+   <property name="dist.bin" location="${dist}/bin" />
+	
+
+   <target name="init-props" description="Create temporary build directories">
+      <tstamp />
+      <!-- version defaults to snapshot-XXXXX. Use -Dversion=X.X.X on command-line to override -->
+      <property name="version" value="snapshot-${DSTAMP}" />
+      <property name="dist.zip" location="${ant.project.name}-${version}.zip"/>
+   	
+      <filterset id="filters">
+        <filter token="JSOAR_VERSION" value="${version}"/>
+        <filter token="JSOAR_DEBUGGER_JAR" value="lib/jsoar-debugger-${version}.jar"/>
+        <filter token="JSOAR_DEMOS_JAR" value="lib/jsoar-demos-${version}.jar"/>
+      </filterset>
+   </target>
+
+   <target name="init" depends="init-props" description="Create output directories">
+      <mkdir dir="${dist}" />
+      <mkdir dir="${dist.lib}" />
+      <mkdir dir="${dist.bin}"/>
+
+      <copy todir="${dist}" file="resources/license.txt"/>
+      <copy todir="${dist}">
+         <fileset file="resources/readme.txt"/>
+      	 <fileset file="resources/license.txt"/>
+      	 <filterset refid="filters"/>
+      </copy>
+      <copy todir="${dist.bin}">
+         <fileset file="resources/bin/jsoar.bat"/>
+  	 	 <fileset file="resources/bin/jsoar"/>
+      	
+         <fileset file="resources/bin/soar2soar.bat"/>
+      	
+         <fileset file="resources/bin/soarunit.bat"/>
+         <fileset file="resources/bin/soarunit"/>
+      	
+    	 <filterset refid="filters"/>
+      </copy>
+ 	  <chmod file="${dist.bin}/jsoar" perm="+x"/>
+ 	  <chmod file="${dist.bin}/soarunit" perm="+x"/>
+   </target>
+
+   <target name="dist" depends="init">
+      <ant dir="../jsoar-core" antfile="build.xml"/>
+       <ant dir="../jsoar-debugger" antfile="build.xml"/>
+       <ant dir="../jsoar-tcl" antfile="build.xml"/>
+       <ant dir="../jsoar-legilimens" antfile="build.xml"/>
+       <ant dir="../jsoar-soarunit" antfile="build.xml"/>
+       <ant dir="../jsoar-sml" antfile="build.xml"/>
+       <ant dir="../jsoar-demos" antfile="build.xml"/>
+       <ant dir="../jsoar-ruby" antfile="build.xml"/>
+       <ant dir="../jsoar-soar2soar" antfile="build.xml"/>
+    	
+      <antcall target="zip"/>
+   </target>
+    
+   <target name="zip" depends="init-props">
+      <zip destfile="${dist.zip}" >
+         <zipfileset dir="${dist}" prefix="${ant.project.name}-${version}"/>
+      </zip>
+   </target>
+
+   <target name="clean">
+      <delete dir="${dist}" />
+      <delete file="${dist.zip}"/>
+
+      <ant dir="../jsoar-core" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-debugger" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-tcl" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-legilimens" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-soarunit" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-sml" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-demos" antfile="build.xml" target="clean"/>
+      <ant dir="../jsoar-soar2soar" antfile="build.xml" target="clean"/>
+   </target>
+    
+    <target name="doc">
+       <ant dir="../jsoar-core" antfile="build.xml" target="doc"/>
+        <ant dir="../jsoar-debugger" antfile="build.xml" target="doc"/>
+        <ant dir="../jsoar-tcl" antfile="build.xml" target="doc"/>
+        <!--
+       <ant dir="../jsoar-sml" antfile="build.xml" target="doc"/>
+       <ant dir="../jsoar-demos" antfile="build.xml" target="doc"/>
+       -->
+    </target>
+
+   <!--
+   Sign the jars. This is necessary for applets since some libraries jsoar
+   uses (Google Collections, Jacl, etc) use restricted operations. To set
+   up the keystore:
+
+   $ keytool -genkey -alias jsoar
+   $ keytool -selfcert -alias jsoar
+   
+   Be sure to follow this with another call to "zip"
+   -->
+   <target name="sign" depends="init-props">
+      <input message="Keystore password:" addproperty="storepass"/>
+
+      <signjar alias="jsoar" storepass="${storepass}">
+         <path>
+            <fileset dir="${dist.lib}" includes="*.jar"/>
+         </path>
+      </signjar>
+   </target>
+</project>
+<project name="jsoar-core" default="dist" basedir=".">
+    <description>jsoar-core</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!-- set global properties for this build -->
+    <property name="tools" location="tools" />
+    <property name="demos" location="demos" />
+    <property name="src.html" location="src/main/html"/>
+	
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+	
+    <target name="dist" depends="jar,licenses,doc" description="generate the distribution">
+    	
+    	<!-- Copy database drivers to dist lib -->
+        <copy todir="${dist.lib}" >
+            <fileset dir="${lib}/db">
+                <include name="*.jar"/>
+                <include name="*.txt"/>
+                <include name="*.htm*"/>
+            </fileset>
+        </copy>
+		
+        <copy todir="${dist.bin}" >
+            <fileset dir="${tools}">
+                <include name="*.bat"/>
+            </fileset>
+        </copy>
+
+        <copy todir="${dist.lib}">
+            <fileset dir="${src.html}">
+                <include name="*.html"/>
+            </fileset>
+            <filterset>
+               <filter token="JSOAR_VERSION" value="${version}"/>
+            </filterset>
+        </copy>
+    </target>
+
+</project>
+<project name="jsoar-debugger" default="dist" basedir=".">
+    <description>jsoar-debugger</description>
+
+    <!-- set global properties for this build -->
+    <property name="manifest.classpath" value="jsoar-core-${version}.jar"/>
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    <property name="demos" location="demos" />
+	
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+	<target name="dist" depends="jar,licenses,doc" description="generate the distribution"/>
+
+</project>
+<project name="jsoar-demos" default="dist" basedir=".">
+    <description>jsoar-demos</description>
+
+    <!-- set global properties for this build -->
+    <property name="manifest.classpath" value="jsoar-core-${version}.jar jsoar-debugger-${version}.jar"/>
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    <property name="demos" location="demos" />
+	
+
+    <import file="../jsoar-build/build-common.xml"/>
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution">
+		
+    	  <!-- Copy demos -->
+        <mkdir dir="${dist}/demos"/>
+        <copy todir="${dist}/demos">
+            <fileset dir="${demos}">
+                <exclude name="**/.svn"/>
+            </fileset>
+        </copy>
+    </target>
+
+</project>
+<project name="jsoar-legilimens" default="dist" basedir=".">
+   <description>jsoar-sml</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!--
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    -->
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution"/>
+		
+
+</project>
+<project name="jsoar-performance-testing" default="build" basedir=".">
+	<description>jsoar-performance-testing</description>
+
+	<property name="dist" value="dist" />
+	<property name="dist.lib" value="${dist}/lib" />
+	<property name="dist.bin" value="${dist}/bin" />
+
+	<property name="jsoar" value="../jsoar-core" />
+	<property name="lib.dir" value="lib" />
+	<property name="jsoar.lib.dir" value="${jsoar}/dist/lib/" />
+
+	<tstamp />
+	<property name="version" value="snapshot-${DSTAMP}" />
+
+	<target name="clean">
+		<delete dir="build" />
+	</target>
+
+	<path id="classpath">
+		<fileset dir="${lib.dir}" includes="**/*.jar" />
+		<fileset dir="${jsoar.lib.dir}" includes="**/*.jar" />
+	</path>
+
+	<target name="compile" depends="clean">
+		<mkdir dir="${jsoar.lib.dir}" />
+
+		<ant dir="${jsoar}" antfile="build.xml" target="dist" />
+
+		<mkdir dir="build/classes" />
+		<javac srcdir="src" destdir="build/classes" classpathref="classpath" />
+	</target>
+
+	<target name="jar" depends="compile">
+		<mkdir dir="build/jar" />
+		<jar destfile="build/jar/jsoar-performance-testing.jar" basedir="build/classes">
+			<manifest>
+				<attribute name="Main-Class" value="org.jsoar.performancetesting.PerformanceTesting" />
+				<attribute name="Class-Path" value="." />
+			</manifest>
+			<zipfileset excludes="META-INF/*.SF" src="${jsoar.lib.dir}/jsoar-core-${version}.jar" />
+			<zipfileset excludes="META-INF/*.SF" src="${jsoar.lib.dir}/jsoar-core-${version}.src.jar" />
+			<zipfileset excludes="META-INF/*.SF" src="${jsoar.lib.dir}/sqlite-jdbc-3.7.2.jar" />
+			<zipfileset excludes="META-INF/*.SF" src="lib/slf4j-nop-1.7.5.jar" />
+			<zipfileset excludes="META-INF/*.SF" src="lib/snakeyaml-1.6.jar" />
+			<fileset dir="build/classes" />
+			<fileset dir="src" />
+		</jar>
+	</target>
+
+	<target name="resources">
+		<mkdir dir="build/jar/resources" />
+		<copy todir="build/jar/resources/">
+			<fileset dir="resources" />
+		</copy>
+	</target>
+
+	<target name="build" depends="jar,resources" />
+
+	<target name="run" depends="build">
+		<java fork="true" classname="org.jsoar.performancetesting.PerformanceTesting">
+			<classpath>
+				<path refid="classpath" />
+				<path location="build/jar/jsoar-performance-testing.jar" />
+			</classpath>
+			<arg line="-C resources/example_configuration.yaml" />
+		</java>
+	</target>
+
+	<target name="dist" depends="build">
+		<zip destfile="build/jsoar-performance-testing.zip">
+			<fileset dir="build/jar/" />
+		</zip>
+	</target>
+</project>
+<project name="jsoar-ruby" default="dist" basedir=".">
+    <description>jsoar-ruby</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!-- set global properties for this build -->
+    <property name="dist.ruby" location="${dist}/ruby" />
+	
+    <target name="dist" depends="" description="generate the distribution">
+		
+		<mkdir dir="${dist.ruby}/lib"/>        
+        <copy todir="${dist.ruby}/lib">
+            <fileset dir="lib">
+                <exclude name="**/.svn"/>
+            </fileset>
+        </copy>
+        
+		<mkdir dir="${dist.ruby}/examples"/>        
+        <copy todir="${dist.ruby}/examples">
+            <fileset dir="examples">
+                <exclude name="**/.svn"/>
+            </fileset>
+        </copy>
+    </target>
+
+</project>
+<project name="jsoar-sml" default="dist" basedir=".">
+   <description>jsoar-sml</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!--
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    -->
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution"/>
+		
+
+</project>
+<project name="jsoar-soar2soar" default="dist" basedir=".">
+   <description>jsoar-soar2soar</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!--
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    -->
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution"/>
+		
+
+</project>
+<project name="jsoar-soarunit" default="dist" basedir=".">
+   <description>jsoar-soarunit</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!--
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    -->
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution"/>
+</project>
+<project name="jsoar-tcl" default="dist" basedir=".">
+   <description>jsoar-tcl</description>
+
+    <import file="../jsoar-build/build-common.xml"/>
+
+    <!--
+    <property name="jar.main.class" value="org.jsoar.debugger.JSoarDebugger"/>
+    -->
+	
+    <target name="dist" depends="jar,licenses" description="generate the distribution"/>
+		
+
+</project>

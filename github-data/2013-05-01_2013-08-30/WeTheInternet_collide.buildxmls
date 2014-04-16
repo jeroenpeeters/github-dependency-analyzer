@@ -1,0 +1,973 @@
+<project name="collide" default="build">
+  <property name="dirs.root" location="."/>
+  <!-- Import common properties and macros -->
+  <import optional="false" file="${dirs.root}/macros.ant.xml"/>
+
+  <!-- Include subdirectory targets.  For each <include as="foo" .../>, the
+       targets in that file are available here as foo.targetname. -->
+  <include optional="false" as="tools.dtogen"
+     file="${dirs.src}/${dirs.toppkg}/dtogen/build.xml"/>
+
+  <include optional="false" as="src.json"
+     file="${dirs.src}/${dirs.toppkg}/json/build.xml"/>
+  <include optional="false" as="src.shared"
+     file="${dirs.src}/${dirs.toppkg}/shared/build.xml"/>
+  <include optional="false" as="src.dto"
+     file="${dirs.src}/${dirs.toppkg}/dto/build.xml"/>
+  <include optional="false" as="src.clientlibs"
+     file="${dirs.src}/${dirs.toppkg}/clientlibs/build.xml"/>
+  <include optional="false" as="src.client"
+     file="${dirs.src}/${dirs.toppkg}/client/build.xml"/>
+  <include optional="false" as="src.server"
+     file="${dirs.src}/${dirs.toppkg}/server/build.xml"/>
+
+  <include optional="false" as="test.api"
+     file="${dirs.test}/${dirs.toppkg}/server/api/build.xml"/>
+  <include optional="false" as="test.json"
+     file="${dirs.test}/${dirs.toppkg}/json/build.xml"/>
+  <include optional="false" as="test.shared"
+     file="${dirs.test}/${dirs.toppkg}/shared/build.xml"/>
+  <include optional="false" as="test.dtogen"
+     file="${dirs.test}/${dirs.toppkg}/dtogen/build.xml"/>
+  <include optional="false" as="test.codemirror2"
+     file="${dirs.test}/${dirs.toppkg}/codemirror2/build.xml"/>
+  <include optional="false" as="test.client"
+     file="${dirs.test}/${dirs.toppkg}/client/build.xml"/>
+  <include optional="false" as="test.clientlibs"
+     file="${dirs.test}/${dirs.toppkg}/clientlibs/build.xml"/>
+
+
+  <target name="dist" description="Package up the distribution"
+          depends="build">
+    <!-- Copy the launch and bootstrap scripts to the dist folder. -->
+    <copy todir="${dirs.dist}">
+      <fileset dir="${dirs.bin}">
+        <include name="bootstrap.js" />
+        <include name="collide" />
+      </fileset>
+    </copy>
+
+    <!-- Copy the GWT client. -->
+    <copy todir="${dirs.dist}/static">
+      <fileset dir="${dirs.bin}/static" />
+    </copy>
+
+    <!-- To preserve executable file permissions on launcher script. -->
+    <chmod dir="${dirs.dist}" perm="ugo+rx"  includes="collide"/>
+
+    <!-- Create a server jar from all the classes and drop it in the dist/lib folder. -->
+    <jar destfile="${dirs.dist}/lib/collide-server.jar"
+         basedir="${dirs.bin}"
+         includes="**/*.class **/*.js"/>
+
+    <!-- Copy all deps to the dist/lib folder -->
+    <copy todir="${dirs.dist}/lib" flatten="true">
+      <path refid="paths.server.runtime" />
+    </copy>
+
+    <!-- Copy vertx into the deploy folder -->
+    <copy todir="${dirs.dist}/lib/vertx">
+    	<fileset dir="${dirs.vertx}" />
+    </copy>
+    <chmod file="${dirs.dist}/lib/vertx/bin/vertx" perm="ugo+rx"/>
+  </target>
+
+  <target name="copy.launch">
+    <!-- Copy launch scripts to bin directory. -->
+    <copy todir="${dirs.bin}">
+      <fileset dir="${dirs.root}">
+        <include name="bootstrap.js" />
+        <include name="collide" />
+      </fileset>
+    </copy>
+
+    <!-- To preserve executable file permissions on launcher script. -->
+    <chmod dir="${dirs.bin}" perm="ugo+rx"  includes="collide"/>
+  </target>
+
+  <target name="build" description="Build the whole Collide executable"
+      depends="src.shared.build, src.dto.build, src.client.build,
+	       src.server.build, copy.launch">
+  </target>
+
+  <!-- TODO: enable test.client.test -->
+  <target name="test" description="Run all the tests"
+      depends="test-compile, test.shared.test, test.json.test, test.dtogen.test,
+	       test.codemirror2.test, test.clientlibs.test, test.api.test"/>
+
+  <target name="test-compile" description="Build all the test code"
+      depends="test.shared.build, test.api.build, test.json.build,
+               test.dtogen.build, test.codemirror2.build, test.client.build,
+	       test.clientlibs.build">
+    <!-- Copy all deps to the ${dirs.testbin}/lib folder -->
+    <copy todir="${dirs.testbin}/lib" flatten="true">
+      <path refid="paths.server.build" />
+      <path refid="paths.client.build" />
+    </copy>
+  </target>
+
+</project>
+<project name="client" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import optional="false" file="${dirs.root}/macros.ant.xml"/>
+
+  <!-- Include subdirectory targets.  For each <include as="foo" .../>, the
+       targets in that file are available here as foo.targetname. -->
+  <include optional="false" as="src.json"
+	   file="${dirs.src}/${dirs.toppkg}/json/build.xml"/>
+  <include optional="false" as="src.shared"
+	   file="${dirs.src}/${dirs.toppkg}/shared/build.xml"/>
+  <include optional="false" as="src.dto"
+	   file="${dirs.src}/${dirs.toppkg}/dto/build.xml"/>
+
+  <target name="build" depends="build-java, build-gwt"
+       description="JavaC and GWT compile client"/>
+
+  <target name="build-java" depends="src.json.build, src.dto.client,
+       src.shared.build">
+    <!-- The groupings here ensure that at least a clean build enforces some
+         modularity, so that the "low-level" subpackages don't compile if they
+         accidentally reach higher-level subpackage code. -->
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/mvp/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/bootstrap/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/util/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/testing/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/status/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/communication/*.java"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/client/**/*.java"/>
+      <exclude name="${dirs.toppkg}/client/bootstrap/**"/>
+      <exclude name="${dirs.toppkg}/client/communication/**"/>
+      <exclude name="${dirs.toppkg}/client/util/**"/>
+      <exclude name="${dirs.toppkg}/client/status/**"/>
+      <exclude name="${dirs.toppkg}/client/testing/**"/>
+      <exclude name="${dirs.toppkg}/clientlibs/**"/>
+      <exclude name="${dirs.toppkg}/codemirror2/**"/>
+      <classpath refid="paths.client.build"/>
+    </do.javac>
+  </target>
+
+  <target name="build-gwt" depends="build-java">
+    <mkdir dir="${dirs.gen}/${dirs.toppkg}/codemirror2"/>
+    <copy todir="${dirs.gen}/${dirs.toppkg}/codemirror2" overwrite="false">
+      <fileset dir="${dirs.lib}/codemirror2">
+        <include name="*.js"/>
+      </fileset>
+    </copy>
+    <gwt.compile outdir="${dirs.webfe.gwtapp}" extradir="${dirs.gwtextra}"
+        style="${gwtc.style}" workers="${gwtc.workers}"
+        module="com.google.collide.client.Collide">
+      <sources>
+        <fileset dir="${dirs.src}/${dirs.toppkg}">
+          <include name="client/**"/>
+          <include name="shared/**"/>
+          <include name="dtogen/shared/**"/>
+          <include name="dto/*.java"/>
+          <include name="dto/client/**"/>
+          <include name="dto/shared/**"/>
+	  <!-- TODO: Arguably, these should refactor under client -->
+          <include name="clientlibs/**"/>
+          <include name="codemirror2/**"/>
+          <include name="mvp/**"/>
+        </fileset>
+        <fileset dir="${dirs.gen}/${dirs.toppkg}">
+          <include name="dto/client/**"/>
+        </fileset>
+      </sources>
+      <srcroots>
+        <pathelement location="${dirs.src}"/>
+        <pathelement location="${dirs.gen}"/>
+      </srcroots>
+    </gwt.compile>
+  </target>
+
+  <target name="dev-gwt" depends="build-java">
+    <mkdir dir="${dirs.gen}/${dirs.toppkg}/codemirror2"/>
+    <copy todir="${dirs.gen}/${dirs.toppkg}/codemirror2" overwrite="false">
+      <fileset dir="${dirs.lib}/codemirror2">
+        <include name="*.js"/>
+      </fileset>
+    </copy>
+    <gwt.devmode outdir="${dirs.webfe.gwtapp}" extradir="${dirs.gwtextra}"
+        gwtflags="-noserver -bindAddress 0.0.0.0"
+        startupUrl="http://localhost:8080/"
+        module="com.google.collide.client.Collide">
+      <sources>
+        <fileset dir="${dirs.src}/${dirs.toppkg}">
+          <include name="client/**"/>
+          <include name="shared/**"/>
+          <include name="dtogen/shared/**"/>
+          <include name="dto/*.java"/>
+          <include name="dto/client/**"/>
+          <include name="dto/shared/**"/>
+    <!-- TODO: Arguably, these should refactor under client -->
+          <include name="clientlibs/**"/>
+          <include name="codemirror2/**"/>
+          <include name="mvp/**"/>
+        </fileset>
+        <fileset dir="${dirs.gen}/${dirs.toppkg}">
+          <include name="dto/client/**"/>
+        </fileset>
+      </sources>
+      <srcroots>
+        <pathelement location="${dirs.src}"/>
+        <pathelement location="${dirs.gen}"/>
+      </srcroots>
+    </gwt.devmode>
+  </target>
+
+</project>
+<project name="clientlibs" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <target name="build" depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/clientlibs/**/*.java"/>
+      <classpath refid="paths.clientlibs"/>
+    </do.javac>
+  </target>
+</project>
+<project name="dto" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import optional="false" file="${dirs.root}/macros.ant.xml"/>
+
+  <include optional="false" as="tools.dtogen"
+     file="${dirs.src}/${dirs.toppkg}/dtogen/build.xml"/>
+
+  <target name="build" description="Build DTO implementations"
+          depends="client,server"/>
+
+  <target name="interfaces">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset dir="${dirs.src}/${dirs.toppkg}/dto"/>
+      </sourcefiles>
+      <targetfiles path="${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"/>
+      <sequential>
+        <mkdir dir="${dirs.bin}/${dirs.toppkg}/dto"/>
+        <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+          <include name="${dirs.toppkg}/dto/*.java"/>
+        </do.javac>
+        <jar destfile="${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"
+             basedir="${dirs.bin}" includes="${dirs.toppkg}/dto/*.class"
+             filesonly="true">
+        </jar>
+      </sequential>
+    </outofdate>
+  </target>
+
+  <target name="client" depends="interfaces,tools.dtogen.build">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset dir="${dirs.bin}/${dirs.toppkg}/dtogen"/>
+        <fileset file="${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"/>
+      </sourcefiles>
+      <targetfiles
+          path="${dirs.gen}/${dirs.toppkg}/dto/client/DtoClientImpls.java"/>
+      <sequential>
+        <mkdir dir="${dirs.gen}/${dirs.toppkg}/dto/client"/>
+        <java classname="${pkg.toppkg}.dtogen.DtoGenerator" fork="true"
+              failonerror="true" timeout="5000">
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+	        <arg value="--dto_jar=${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"/>
+          <arg value="--gen_file_name=${dirs.gen}/${dirs.toppkg}/dto/client/DtoClientImpls.java"/>
+          <arg value="--impl=client"/>
+          <arg value="--package_base=gen/"/>
+        </java>
+        <do.javac srcdir="${dirs.gen}" destdir="${dirs.bin}">
+          <include name="${dirs.toppkg}/dto/client/**/*.java"/>
+          <classpath>
+	          <path refid="paths.client.build"/>
+	        </classpath>
+	      </do.javac>
+	      <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      	  <include name="${dirs.toppkg}/dto/client/**/*.java"/>
+	        <classpath>
+	          <path refid="paths.client.build"/>
+	        </classpath>
+	      </do.javac>
+      </sequential>
+    </outofdate>
+  </target>
+
+  <target name="server" depends="interfaces,tools.dtogen.build">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset dir="${dirs.bin}/${dirs.toppkg}/dtogen"/>
+        <fileset file="${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"/>
+      </sourcefiles>
+      <targetfiles
+         path="${dirs.gen}/${dirs.toppkg}/dto/server/DtoServerImpls.java"/>
+      <sequential>
+        <mkdir dir="${dirs.gen}/${dirs.toppkg}/dto/server"/>
+        <java classname="${pkg.toppkg}.dtogen.DtoGenerator" fork="true"
+          failonerror="true" timeout="5000">
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+          <arg value="--dto_jar=${dirs.bin}/${dirs.toppkg}/dto/dto-interfaces.jar"/>
+	  <arg value="--gen_file_name=${dirs.gen}/${dirs.toppkg}/dto/server/DtoServerImpls.java"/>
+          <arg value="--impl=server"/>
+          <arg value="--package_base=gen/"/>
+        </java>
+        <do.javac srcdir="${dirs.gen}" destdir="${dirs.bin}">
+          <include name="${dirs.toppkg}/dto/server/**/*.java"/>
+          <classpath>
+            <path refid="paths.server.build"/>
+          </classpath>
+        </do.javac>
+        <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+          <include name="${dirs.toppkg}/dto/server/**/*.java"/>
+          <classpath>
+            <path refid="paths.server.build"/>
+          </classpath>
+        </do.javac>
+      </sequential>
+    </outofdate>
+  </target>
+</project>
+<project name="dtogen" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import optional="false" file="${dirs.root}/macros.ant.xml"/>
+
+  <include optional="false" as="src.json" file="${dirs.src}/${dirs.toppkg}/json/build.xml"/>
+
+  <target name="build" depends="src.json.build">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/dtogen/**/*.java"/>
+      <classpath refid="paths.shared"/>
+      <classpath refid="paths.server.build"/>
+    </do.javac>
+  </target>
+</project>
+<project name="json" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import optional="false" file="${dirs.root}/macros.ant.xml"/>
+
+  <target name="json.shared">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/json/shared/**/*.java"/>
+      <classpath refid="paths.shared"/>
+    </do.javac>
+  </target>
+
+  <target name="json.client" depends="json.shared">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/json/client/**/*.java"/>
+      <classpath refid="paths.shared"/>
+    </do.javac>
+  </target>
+
+  <target name="json.server" depends="json.shared">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/json/server/**/*.java"/>
+      <classpath refid="paths.shared"/>
+    </do.javac>
+  </target>
+
+  <target name="build" depends="json.client, json.server" />
+
+</project>
+<project name="server" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <property name="server.src" location="${dirs.src}/${dirs.toppkg}/server/"/>
+
+  <include optional="false" as="src.dto" file="${dirs.src}/${dirs.toppkg}/dto/build.xml"/>
+
+  <!-- Include subdirectory targets.  For each <include as="foo" .../>, the
+       targets in that file are available here as foo.targetname.
+
+       We have sub-targets instead of a single recursive glob so that in the future if we want
+       to package each up as a separate module, we have the flexibility to do so. -->
+  <include optional="false" as="src.sharedserver"
+           file="${server.src}/shared/build.xml"/>
+
+  <include optional="false" as="src.fe"
+           file="${server.src}/fe/build.xml"/>
+
+  <include optional="false" as="src.documents"
+           file="${server.src}/documents/build.xml"/>
+
+  <include optional="false" as="src.filetree"
+           file="${server.src}/filetree/build.xml"/>
+
+  <include optional="false" as="src.participants"
+           file="${server.src}/participants/build.xml"/>
+
+  <include optional="false" as="src.workspace"
+           file="${server.src}/workspace/build.xml"/>
+
+  <target name="build" description="Builds the collide server vertx modules."
+          depends="src.sharedserver.build, src.dto.server, src.documents.build, src.fe.build,
+                   src.participants.build, src.filetree.build, src.workspace.build">
+  </target>
+</project>
+<project name="documents" default="build">
+  <property name="dirs.root" location="../../../../../.." />
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml" />
+
+  <target name="build" description="Builds the documents verticle." depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/server/documents/**/*.java" />
+      <classpath>
+        <path refid="paths.server.build" />
+        <pathelement location="${dirs.bin}" />
+      </classpath>
+    </do.javac>
+  </target>
+</project>
+<project name="fe" default="build">
+  <property name="dirs.root" location="../../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <include optional="false" as="src.dto" file="${dirs.src}/${dirs.toppkg}/dto/build.xml"/>
+
+  <target name="build" description="Builds the fe verticle." depends="src.dto.server">
+    <!-- Copy all bundles resources to the bin folder. -->
+    <copy todir="${dirs.bin}">
+      <fileset dir="${dirs.src}/${dirs.toppkg}/server/fe">
+        <exclude name="**/*.java"/>
+        <exclude name="build.xml"/>
+      </fileset>
+    </copy>
+
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/server/fe/**/*.java"/>
+      <classpath refid="paths.server.build"/>
+    </do.javac>
+  </target>
+</project>
+<project name="filetree" default="build">
+  <property name="dirs.root" location="../../../../../.." />
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml" />
+
+  <target name="build" description="Builds the filetree verticle." depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/server/filetree/**/*.java" />
+      <classpath>
+        <path refid="paths.server.build" />
+        <pathelement location="${dirs.bin}" />
+      </classpath>
+    </do.javac>
+  </target>
+</project>
+<project name="participants" default="build">
+  <property name="dirs.root" location="../../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <property name="participants.src"
+            location="${dirs.src}/${dirs.toppkg}/server/participants"/>
+  <property name="participants.out" location="${dirs.bin}/${dirs.toppkg}/server/participants"/>
+
+  <target name="build" description="Builds the participant list verticle."
+          depends="">
+  	<do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+  	  <include name="${dirs.toppkg}/server/participants/**/*.java" />
+  	  <classpath>
+  	    <path refid="paths.server.build" />
+  	    <pathelement location="${dirs.bin}" />
+  	  </classpath>
+  	</do.javac>
+  </target>
+</project>
+<project name="sharedserver" default="build">
+  <property name="dirs.root" location="../../../../../.." />
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml" />
+
+  <target name="build" description="Builds code shared across server pieces." depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/server/shared/**/*.java" />
+      <classpath>
+        <path refid="paths.server.build" />
+        <pathelement location="${dirs.bin}" />
+      </classpath>
+    </do.javac>
+  </target>
+</project><project name="workspace" default="build">
+	<property name="dirs.root" location="../../../../../.." />
+	<!-- Import common properties and macros -->
+	<import file="${dirs.root}/macros.ant.xml" />
+
+	<property name="workspace.src" location="${dirs.src}/${dirs.toppkg}/server/workspace" />
+	<property name="workspace.out" location="${dirs.bin}/${dirs.toppkg}/server/workspace" />
+
+	<target name="build" description="Builds the workspace verticle." depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/server/workspace/**/*.java" />
+      <classpath>
+        <path refid="paths.server.build" />
+        <pathelement location="${dirs.bin}" />
+      </classpath>
+    </do.javac>
+	</target>
+</project>
+<project name="shared" default="build">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <target name="build" depends="">
+    <do.javac srcdir="${dirs.src}" destdir="${dirs.bin}">
+      <include name="${dirs.toppkg}/shared/**/*.java"/>
+      <classpath refid="paths.shared"/>
+    </do.javac>
+  </target>
+</project>
+<project name="client-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+
+  <target name="interfaces">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset dir="${dirs.test}/${dirs.toppkg}/client/testing/dto"/>
+      </sourcefiles>
+      <targetfiles path="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+      <sequential>
+        <mkdir dir="${dirs.testbin}/${dirs.toppkg}/client/testing/dto"/>
+        <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+          <include name="${dirs.toppkg}/client/testing/dto/*.java"/>
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+          </classpath>
+        </do.javac>
+	<delete file="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+        <jar destfile="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"
+             basedir="${dirs.testbin}" filesonly="true"
+             includes="${dirs.toppkg}/client/testing/dto/*.class">
+        </jar>
+      </sequential>
+    </outofdate>
+  </target>
+
+  <target name="gen" depends="interfaces">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset file="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+      </sourcefiles>
+      <targetfiles>
+      	<pathelement path="${dirs.testgen}/${dirs.toppkg}/client/testing/CollideDtoClientTestingImpls.java"/>
+      </targetfiles>
+      <sequential>
+        <mkdir dir="${dirs.testgen}/${dirs.toppkg}/client/testing"/>
+        <java classname="${pkg.toppkg}.dtogen.DtoGenerator" fork="true"
+              failonerror="true" timeout="5000">
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+          <arg value="--dto_jar=${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+          <arg value="--gen_file_name=${dirs.testgen}/${dirs.toppkg}/client/testing/CollideDtoClientTestingImpls.java"/>
+          <arg value="--impl=client"/>
+          <arg value="--package_base=gen/"/>
+        </java>
+        <do.javac srcdir="${dirs.testgen}" destdir="${dirs.testbin}">
+          <include name="${dirs.toppkg}/client/**/*.java"/>
+          <classpath>
+            <pathelement
+	       location="${dirs.testbin}/${dirs.toppkg}/client/client-testdtos.jar"/>
+            <pathelement location="${dirs.testbin}"/>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+        </do.javac>
+      </sequential>
+    </outofdate>
+  </target>
+  
+  <target name="build" depends="gen" description="compile tests for 'client'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/client/**/*.java"/>
+      <classpath>
+        <pathelement
+	   location="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+        <pathelement location="${dirs.testbin}"/>
+        <pathelement location="${dirs.bin}"/>
+        <path refid="paths.client.build"/>
+        <path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+  <target name="test" description="Run tests for 'client' subproject only"
+	  depends="build">
+    <do.junit reportdir="client">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <patternset includes="${dirs.toppkg}/client/**/${junit.testpattern}"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <path refid="paths.client.runtime"/>
+        <pathelement
+            location="${dirs.testbin}/${dirs.toppkg}/client/testing/dto/client-testdtos.jar"/>
+        <pathelement
+            location="${dirs.testgen}"/>
+        <pathelement
+            location="${dirs.gen}"/>
+      </libraries>
+    </do.junit>
+  </target>
+</project>
+<project name="clientlibs-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+
+  <target name="build" description="compile tests for 'clientlibs'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/clientlibs/**/*.java"/>
+      <classpath>
+	<pathelement location="${dirs.testbin}"/>
+	<pathelement location="${dirs.bin}"/>
+	<path refid="paths.shared"/>
+	<path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+
+  <target name="test" description="Run tests for 'clientlibs' subproject only"
+	  depends="build">
+    <do.junit reportdir="clientlibs">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/clientlibs/**/${junit.testpattern}"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+	<path refid="paths.shared"/>
+      </libraries>
+    </do.junit>
+  </target>
+</project>
+<project name="codemirror2-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+
+  <target name="build" description="compile tests for 'codemirror2'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/codemirror2/**/*.java"/>
+      <classpath>
+	<pathelement location="${dirs.testbin}"/>
+	<pathelement location="${dirs.bin}"/>
+	<path refid="paths.shared"/>
+	<path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+
+  <target name="test" description="Run tests for 'codemirror2' subproject only"
+	  depends="build">
+    <do.junit reportdir="codemirror2">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/codemirror2/**/${junit.testpattern}"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+	<path refid="paths.shared"/>
+      </libraries>
+    </do.junit>
+  </target>
+</project>
+<project name="dtogen-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+
+  <target name="interfaces">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset dir="${dirs.test}/${dirs.toppkg}/dtogen"/>
+      </sourcefiles>
+      <targetfiles path="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+      <sequential>
+        <mkdir dir="${dirs.testbin}/${dirs.toppkg}/dtogen"/>
+        <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+          <include name="${dirs.toppkg}/dtogen/definitions/*.java"/>
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+          </classpath>
+        </do.javac>
+        <jar destfile="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"
+             basedir="${dirs.testbin}" filesonly="true"
+             includes="${dirs.toppkg}/dtogen/definitions/*.class">
+        </jar>
+      </sequential>
+    </outofdate>
+  </target>
+
+  <target name="gen" depends="interfaces">
+    <outofdate>
+      <sourcefiles>
+        <fileset file="build.xml"/>
+        <fileset file="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+      </sourcefiles>
+      <targetfiles>
+      	<pathelement path="${dirs.testgen}/${dirs.toppkg}/dtogen/client/TestDtoClientImpls.java"/>
+      	<pathelement path="${dirs.testgen}/${dirs.toppkg}/dtogen/server/TestDtoServerImpls.java"/>
+      </targetfiles>
+      <sequential>
+        <mkdir dir="${dirs.testgen}/${dirs.toppkg}/dtogen/server"/>
+        <java classname="${pkg.toppkg}.dtogen.DtoGenerator" fork="true"
+              failonerror="true" timeout="5000">
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+          <arg value="--dto_jar=${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+          <arg value="--gen_file_name=${dirs.testgen}/${dirs.toppkg}/dtogen/server/TestDtoServerImpls.java"/>
+          <arg value="--impl=server"/>
+          <arg value="--package_base=gen/"/>
+        </java>
+        <mkdir dir="${dirs.testgen}/${dirs.toppkg}/dtogen/client"/>
+        <java classname="${pkg.toppkg}.dtogen.DtoGenerator" fork="true"
+              failonerror="true" timeout="5000">
+          <classpath>
+            <pathelement location="${dirs.bin}"/>
+            <path refid="paths.shared"/>
+          </classpath>
+          <arg value="--dto_jar=${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+          <arg value="--gen_file_name=${dirs.testgen}/${dirs.toppkg}/dtogen/client/TestDtoClientImpls.java"/>
+          <arg value="--impl=client"/>
+          <arg value="--package_base=gen/"/>
+        </java>
+        <do.javac srcdir="${dirs.testgen}" destdir="${dirs.testbin}">
+          <include name="${dirs.toppkg}/dtogen/**/*.java"/>
+          <classpath>
+            <pathelement
+         location="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+            <pathelement
+         location="${dirs.testbin}"/>
+            <pathelement
+         location="${dirs.bin}"/>
+            <path refid="paths.server.build"/>
+          </classpath>
+        </do.javac>
+      </sequential>
+    </outofdate>
+  </target>
+  
+  <target name="build" depends="gen" description="compile tests for 'dtogen'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/dtogen/**/*.java"/>
+      <classpath>
+        <pathelement
+	          location="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+        <pathelement location="${dirs.testbin}"/>
+        <pathelement location="${dirs.bin}"/>
+        <path refid="paths.client.build"/>
+        <path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+  <target name="test" description="Run tests for 'dtogen' subproject only"
+	  depends="build">
+
+    <do.junit reportdir="dtogen">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/dtogen/server/**/${junit.testpattern}"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <path refid="paths.server.build"/>
+      </libraries>
+    </do.junit>
+
+<!--      
+    <do.junit reportdir="dtogen">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/dtogen/client/**/${junit.testpattern}"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <path refid="paths.client.runtime"/>
+        <pathelement
+            location="${dirs.testbin}/${dirs.toppkg}/dtogen/dtogen-testdtos.jar"/>
+        <pathelement
+            location="${dirs.testgen}"/>
+      </libraries>
+    </do.junit>
+-->
+  </target>
+</project>
+<project name="json-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <target name="build"
+        description="compile tests for 'json'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/json/server/**/*.java"/>
+      <classpath>
+        <pathelement path="${dirs.bin}"/>
+        <path refid="paths.server.build"/>
+        <path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/json/client/**/*.java"/>
+      <classpath>
+        <pathelement path="${dirs.bin}"/>
+        <path refid="paths.client.build"/>
+        <path refid="paths.test"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+  <target name="test" description="Run tests for 'json' subproject only"
+	  depends="build">
+<!-- Temporarily commenting out the client side tests
+    <do.junit reportdir="json">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/json/client/**/*Test.java"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <path refid="paths.client.runtime"/>
+      </libraries>
+    </do.junit>
+-->
+
+    <do.junit reportdir="json">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/json/server/**/*Test.java"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <path refid="paths.server.build"/>
+      </libraries>
+    </do.junit>
+  </target>
+</project>
+<project name="api_tests" default="build">
+  <property name="dirs.root" location="../../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <property name="api_tests.src"
+            location="${dirs.test}/${dirs.toppkg}/server/api"/>
+  <property name="api_tests.out" location="${dirs.testbin}/${dirs.toppkg}/server/api"/>
+
+  <target name="build" description="Copies the API level test scripts to the testbin."
+          depends="">
+    <copy todir="${api_tests.out}">
+      <fileset dir="${api_tests.src}">
+        <exclude name="**/*.java"/>
+        <exclude name="build.xml"/>
+      </fileset>
+    </copy>
+
+    <!-- To preserve executable file permissions on script. -->
+    <chmod dir="${api_tests.out}" perm="ugo+rx"  includes="run_api_test"/>
+  </target>
+
+  <!-- WARNING: Note that currently vertx does not exit the process after running these
+       testing scripts. Probably don't want to call this from the main test runner just
+       yet. -->
+  <target name="test" description="Runs the API level tests." depends="build">
+    <exec executable="${api_tests.out}/run_api_test" failonerror="true">
+      <arg file="${dirs.vertx}"/>
+      <arg value="all_tests.js"/>
+      <arg file="${dirs.bin}"/>
+      <arg file="${dirs.testbin}"/>
+    </exec>
+  </target>
+</project>
+<project name="shared-tests" default="test">
+  <property name="dirs.root" location="../../../../.."/>
+  <!-- Import common properties and macros -->
+  <import file="${dirs.root}/macros.ant.xml"/>
+
+  <include optional="false" as="src.shared"
+	   file="${dirs.src}/${dirs.toppkg}/shared/build.xml"/>
+  <include optional="false" as="src.dto"
+	   file="${dirs.src}/${dirs.toppkg}/dto/build.xml"/>
+
+  <target name="build" depends="src.shared.build,src.dto.build"
+        description="compile tests for 'shared'">
+    <do.javac srcdir="${dirs.test}" destdir="${dirs.testbin}">
+      <include name="${dirs.toppkg}/shared/**/*.java"/>
+      <classpath>
+        <pathelement path="${dirs.bin}"/>
+        <path refid="paths.shared"/>
+        <path refid="paths.test"/>
+        <pathelement location="${dirs.lib}/wave-${libs.wave}/model.jar"/>
+      </classpath>
+    </do.javac>
+  </target>
+
+  <target name="test" description="Run tests for 'shared' subproject only"
+	  depends="build">
+    <do.junit reportdir="shared">
+      <testpackages>
+        <fileset dir="${dirs.test}">
+          <include name="${dirs.toppkg}/shared/**/${junit.testpattern}"/>
+          <include name="${dirs.toppkg}/shared/**/*Tests.java"/>
+        </fileset>
+      </testpackages>
+      <libraries>
+        <!-- Shared tests need server path for vertx.JsonObject &co. -->
+        <path refid="paths.server.build"/>
+        <pathelement location="${dirs.lib}/wave-${libs.wave}/model.jar"/>
+      </libraries>
+    </do.junit>
+  </target>
+</project>

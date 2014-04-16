@@ -1,0 +1,144 @@
+/*
+ * Copyright 2013 ChronoTrack
+ *
+ *    Licensed under the Apache License, Version 2.0 (the "License");
+ *    you may not use this file except in compliance with the License.
+ *    You may obtain a copy of the License at
+ *
+ *        http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *    Unless required by applicable law or agreed to in writing, software
+ *    distributed under the License is distributed on an "AS IS" BASIS,
+ *    WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *    See the License for the specific language governing permissions and
+ *    limitations under the License.
+ */
+
+
+apply plugin: 'scala'
+apply plugin: 'idea'
+apply plugin: 'application'
+
+version = "0.1.0-beta"
+group = "com.chronotrack"
+
+mainClassName = "com.chronotrack.flurry.Runner"
+
+project.ext {
+  scalaVersion = "2.10.2"
+  scalaDependencyVersion = "2.10"
+  akkaScalaVersion = "_2.10"
+
+  akkaVersion = "2.2.0"
+}
+
+repositories {
+  mavenCentral()
+  maven { url "http://repo.typesafe.com/typesafe/releases/" }
+  maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+  maven { url "https://oss.sonatype.org/content/repositories/releases/" }
+
+}
+
+dependencies {
+  compile "org.scala-lang:scala-library:${scalaVersion}"
+  compile("org.scala-lang:scala-reflect:${scalaVersion}") { force = true }
+  compile("org.scala-lang:scala-actors:${scalaVersion}") { force = true }
+
+  compile "com.typesafe.akka:akka-slf4j${akkaScalaVersion}:${akkaVersion}"
+  compile "com.typesafe.akka:akka-actor${akkaScalaVersion}:${akkaVersion}"
+  compile "ch.qos.logback:logback-classic:1.0.13"
+//    compile "io.netty:netty-all:4.0.7.Final"
+  compile "org.apache.thrift:libthrift:0.9.0"
+  compile "com.facebook.nifty:nifty-core:0.8.0"
+  compile("com.google.inject:guice:3.0") {
+    force = true
+  }
+  compile "com.typesafe:scalalogging-slf4j_${scalaDependencyVersion}:1.0.1"
+
+  testCompile "org.scalatest:scalatest_${scalaDependencyVersion}:1.9.1"
+}
+
+test {
+  testLogging.showStandardStreams = true
+
+  //tweaking memory settings for the forked vm that runs tests
+  jvmArgs '-Xmx1024m', '-XX:MaxPermSize=1024m'
+
+  //listening to test execution events
+  beforeTest { descriptor ->
+    logger.lifecycle("Running: " + descriptor)
+  }
+  onOutput { descriptor, event ->
+    logger.lifecycle("Test: " + descriptor + " produced standard out/err: " + event.message)
+  }
+}
+
+
+task wrapper(type: Wrapper) { gradleVersion = "1.7" }
+
+tasks.withType(ScalaCompile) {
+  scalaCompileOptions.useAnt = false
+  scalaCompileOptions.fork = true
+  configure(scalaCompileOptions.forkOptions) {
+    memoryMaximumSize = '1g'
+    jvmArgs = ['-XX:MaxPermSize=512m']
+  }
+}
+
+task thrift << {
+  def thriftFiles = fileTree(dir: 'src/main/resources').matching { include '**/*.thrift' }
+  exec {
+    executable = 'thrift'
+    args = ['--gen', 'java', '-o', buildDir, thriftFiles.collect { relativePath(it) }.join(",")]
+  }
+  copy {
+    from "$buildDir/gen-java"
+    into "$projectDir/src/main/java"
+  }
+  delete "$buildDir/gen-java"
+
+  exec {
+    executable = 'thrift'
+    args = ['--gen', 'py', '-o', buildDir, thriftFiles.collect { relativePath(it) }.join(",")]
+  }
+  copy {
+    from "$buildDir/gen-py"
+    into "$projectDir/examples/python"
+  }
+  delete "$projectDir/examples/python/__init__.py"
+  delete "$buildDir/gen-py"
+
+  exec {
+    executable = 'thrift'
+    args = ['--gen', 'php', '-o', buildDir, thriftFiles.collect { relativePath(it) }.join(",")]
+  }
+}
+
+// Application distribution stuff
+
+jar {
+  manifest {
+    attributes("Class-Path": sourceSets.main.compileClasspath*.name.collect({'lib/' + it}).join(' '),
+               "Main-Class": mainClassName)
+  }
+}
+
+task flurryZip(type: Zip) {
+  def baseDir = archiveName - ".zip"
+  exclude { it.file == jar.archiveName }
+  into(baseDir) {
+    from(jar)
+  }
+  into(baseDir + "/lib") {
+    from(project.configurations.runtime)
+    exclude archiveName
+  }
+  into(baseDir) {
+    from(projectDir)
+    include('service/**/*')
+    include('LICENSE')
+    include('NOTICE')
+  }
+}
+

@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+
+<project name="pushy" default="jar">
+    <!-- Append system classpath to the end of the Ant classpath. -->
+    <property name="build.sysclasspath" value="last"/>
+
+    <target name="clean">
+        <delete dir="build"/>
+    </target>
+
+    <target name="doc">
+        <mkdir dir="build/doc"/>
+        <javadoc
+            destdir="build/doc"
+            sourcepath="src"
+            additionalparam="-notimestamp"
+            author="true"
+            version="true"
+            doctitle="Pushy API Documentation"
+            windowtitle="Pushy API Documentation">
+            <link
+                href="http://download.oracle.com/javase/1.4.2/docs/api/"
+                packageListURL="http://download.oracle.com/javase/1.4.2/docs/api/package-list"/>
+        </javadoc>
+    </target>
+
+    <target name="compile">
+        <mkdir dir="build/classes"/>
+        <javac srcdir="src" destdir="build/classes" source="1.4" target="1.4" debug="true">
+            <compilerarg value="-Xlint"/>
+        </javac>
+    </target>
+
+    <target name="jar" depends="compile">
+        <!-- Get the bzr revision number. -->
+        <exec executable="bzr" outputproperty="revno"
+              failifexecutionfails="false" errorproperty="">
+            <arg value="revno"/>
+        </exec>
+
+        <!-- If bzr failed, then set revno to 0. -->
+        <condition property="revno" value="0">
+            <not><isset property="revno"/></not>
+        </condition>
+
+        <echo message="Building pushy.jar for revision ${revno}"/>
+
+        <copy todir="build/classes/pushy">
+            <fileset dir="../pushy">
+                <include name="**/*.py"/>
+            </fileset>
+        </copy>
+        <jar destfile="build/pushy.jar">
+            <fileset dir="build/classes"/>
+            <fileset dir="src/python"/>
+            <manifest>
+                <!-- Information about the program itself -->
+                <attribute name="Manifest-Version" value="1.0"/>
+                <attribute name="Bundle-ManifestVersion" value="2"/>
+                <attribute name="Bundle-Name" value="Pushy"/>
+                <attribute name="Bundle-SymbolicName" value="pushy"/>
+                <attribute name="Bundle-Version" value="0.5.3.${revno}"/>
+                <attribute name="Export-Package"
+                           value="pushy, pushy.io, pushy.net, pushy.modules"/>
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="compile_tests" depends="jar">
+        <mkdir dir="build/unittest-classes"/>
+        <javac srcdir="unittest" destdir="build/unittest-classes"
+               source="1.4" target="1.4" debug="true">
+            <compilerarg value="-Xlint"/>
+            <classpath>
+                <pathelement path="${classpath}"/>
+                <pathelement location="build/pushy.jar"/>
+            </classpath>
+        </javac>
+    </target>
+
+    <target name="test" depends="jar,compile_tests">
+        <junit fork="yes" showoutput="true" haltonfailure="true">
+            <jvmarg value="-enableassertions"/>
+            <classpath>
+                <pathelement path="${classpath}"/>
+                <pathelement location="build/pushy.jar"/>
+                <pathelement location="build/unittest-classes"/>
+            </classpath>
+            <formatter type="brief" usefile="false"/>
+            <batchtest>
+                <fileset dir="unittest">
+                    <include name="**/*Test.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+</project>
+

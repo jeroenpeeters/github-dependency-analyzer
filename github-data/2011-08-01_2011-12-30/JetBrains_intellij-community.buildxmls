@@ -1,0 +1,1228 @@
+<project default="zips" name="Regular Expression Support">
+
+  <property file="regexp-lang.properties" />
+
+  <fail unless="jdk.home.idea_8.0">
+    Please set the property 'jdk.home.idea_8.0' to point to your IntelliJ IDEA 8.0 installation directory.
+  </fail>
+
+  <!-- override for embedded build -->
+  <property name="src.zip" value="build/src_RegExpSupport.zip" />
+  <property name="src.zip.update" value="false" />
+
+  <import file="regexp-lang.xml" />
+
+  <path id="jdk.bootclasspath.idea_6.0">
+    <path>
+      <fileset dir="${jdk.home.idea_8.0}">
+        <include name="jre/lib/charsets.jar" />
+        <include name="jre/lib/deploy.jar" />
+        <include name="jre/lib/javaws.jar" />
+        <include name="jre/lib/jce.jar" />
+        <include name="jre/lib/jsse.jar" />
+        <include name="jre/lib/plugin.jar" />
+        <include name="jre/lib/rt.jar" />
+        <include name="jre/lib/resources.jar" />
+        <include name="jre/lib/tools.jar" />
+        <include name="jre/lib/ext/dnsns.jar" />
+        <include name="jre/lib/ext/localedata.jar" />
+        <include name="jre/lib/ext/sunjce_provider.jar" />
+        <include name="jre/lib/ext/sunpkcs11.jar" />
+      </fileset>
+    </path>
+    <pathelement location="${jdk.home.idea_8.0}/lib/boot.jar" />
+  </path>
+
+  <target name="build" depends="jflex, all" />
+
+  <target name="jar" depends="build">
+    <mkdir dir="build" />
+    <jar file="build/RegExpSupport.jar" compress="false">
+      <fileset dir="${regexp-lang.output.dir}">
+        <include name="**/*.*" />
+        <exclude name="${excluded-stuff}" />
+      </fileset>
+      <fileset dir=".">
+        <include name="META-INF/plugin.xml" unless="regexp-lang.embedded"/>
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="jflex">
+    <taskdef name="jflex" classname="JFlex.anttask.JFlexTask">
+      <classpath location="${jdk.home.idea_8.0}/tools/jflex/lib/JFlex.jar" />
+    </taskdef>
+
+    <jflex skeleton="${jdk.home.idea_8.0}/tools/jflex/idea-flex.skeleton"
+           file="src/org/intellij/lang/regexp/regexp-lexer.flex"
+           destdir="src"
+           nobak="true"
+           charat="true" />
+  </target>
+
+  <target name="test" depends="build" description="run tests">
+    <junit fork="true" dir="${basedir}" failureproperty="junit.failed" errorproperty="junit.failed">
+      <sysproperty key="idea.load.plugins" value="false" />
+
+      <bootclasspath refid="jdk.bootclasspath.idea_6.0" />
+      <classpath refid="jdk.classpath.idea_8.0" />
+
+      <classpath>
+        <pathelement location="${regexp-lang.output.dir}" />
+        <pathelement location="${regexp-lang.testoutput.dir}" />
+      </classpath>
+
+      <test name="test.MainParseTest">
+        <formatter type="plain" />
+      </test>
+    </junit>
+
+    <fail if="junit.failed" />
+  </target>
+
+  <target name="src.zip">
+    <zip file="${src.zip}" update="${src.zip.update}">
+      <zipfileset dir="src" prefix="RegExpSupport/src">
+        <include name="org/**/*.java" />
+        <include name="org/**/*.png" />
+        <include name="**/*.flex" />
+      </zipfileset>
+      <zipfileset dir="test" prefix="RegExpSupport/test">
+        <include name="**/*.java" />
+      </zipfileset>
+      <zipfileset dir="testData" prefix="RegExpSupport/testData">
+        <include name="**/*.regexp" />
+        <exclude name="psi/gen/**/*" />
+        <include name="**/*.xml" />
+      </zipfileset>
+      <zipfileset dir="." prefix="RegExpSupport">
+        <include name="build.xml" />
+        <include name="log4j.dtd" />
+        <include name="regexp-lang.xml" />
+        <include name="regexp-lang.ipr" />
+        <include name="regexp-lang.iml" />
+        <include name="regexp-lang-java.iml" />
+        <include name="META-INF/plugin.xml" />
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="bin.zip" depends="jar">
+    <zip file="build/RegExpSupport.zip">
+      <zipfileset dir="build" prefix="RegExpSupport/lib">
+        <include name="*.jar" />
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="zips" depends="bin.zip, src.zip" />
+
+</project>
+<project name="IntelliJ IDEA Community Edition" default="all">
+  <property name="project.home" value="${basedir}"/>
+  <property name="out.dir" value="${project.home}/out"/>
+  <property name="tmp.dir" value="${project.home}/out/tmp"/>
+
+  <target name="cleanup">
+    <delete dir="${out.dir}" failonerror="false"/>
+  </target>
+
+  <target name="init">
+    <mkdir dir="${out.dir}"/>
+    <mkdir dir="${tmp.dir}"/>
+  </target>
+
+  <macrodef name="call_gant">
+    <attribute name="script" />
+    <sequential>
+      <java failonerror="true" jar="${project.home}/lib/ant/lib/ant-launcher.jar" fork="true">
+        <jvmarg line="-Xmx612m -XX:MaxPermSize=152m"/>
+        <sysproperty key="java.awt.headless" value="true"/>
+        <arg line="&quot;-Dgant.script=@{script}&quot;"/>
+        <arg line="&quot;-Dteamcity.build.tempDir=${tmp.dir}&quot;"/>
+        <arg line="&quot;-Didea.test.group=ALL_EXCLUDE_DEFINED&quot;"/>
+        <arg value="-f"/>
+        <arg value="${project.home}/build/gant.xml"/>
+      </java>
+    </sequential>
+  </macrodef>
+
+  <target name="build" depends="init">
+    <call_gant script="${project.home}/build/scripts/dist.gant"/>
+  </target>
+
+  <target name="test" depends="init">
+    <call_gant script="${project.home}/build/scripts/tests.gant"/>
+  </target>
+
+  <target name="all" depends="cleanup,build"/>
+</project>
+<project name='Intellij debian packager' default='deb'>
+	<property name='product' value='idea'/>
+	<property name='build' value='IU-98.486'/>
+	<property name='version' value='10.0-${build}-RC2'/>
+	<property name='build.dir' value='deb'/>
+
+	<property name='jdeb.url' value='http://vafer.org/projects/jdeb/versions/0.7/jdeb_0.7.zip'/>
+	<available property='deps.retrieved' file='deps/done'/>
+
+	<target name='retrieve-deps' unless='deps.retrieved'>
+		<mkdir dir='deps'/>
+		<get src='${jdeb.url}' dest='deps/jdeb.zip'/> 
+		<unjar src='deps/jdeb.zip' dest='deps'/>
+	</target>
+
+	<target name='deb' depends='retrieve-deps'>
+		<delete dir='${build.dir}'/>
+		<mkdir dir='${build.dir}/control'/>
+		<taskdef name="deb" classname="org.vafer.jdeb.ant.DebAntTask">
+			<classpath>
+				<fileset dir='deps' includes='*.jar'/>
+			</classpath>
+		</taskdef>
+		<copy todir="${build.dir}/control">
+			<fileset dir="control"/>
+			<filterset begintoken="@" endtoken="@">
+			  <filter token="product" value="${product}"/>
+			  <filter token="build" value="${product}${build}"/>
+			  <filter token="package_name" value="${product}-${build}"/>
+			  <filter token="version" value="${version}"/>
+			</filterset>
+		</copy>
+		<deb destfile="${build.dir}/${product}-${version}.deb" control="${build.dir}/control">
+			<tarfileset dir='bin' prefix='/usr/bin' filemode="755"/>
+			<tarfileset dir='desktop' prefix='/usr/share/applications'/>
+		</deb>
+	</target>
+</project>
+
+<products>
+    <product name="IntelliJ IDEA">
+        <code>IU</code>
+        <code>IC</code>
+        <channel id="maiaEAP" name="IntelliJ IDEA 9 updates" status="release"
+                 url="http://www.jetbrains.com/idea/whatsnew"
+                 feedback="http://youtrack.jetbrains.net">
+            <build number="95.627" version="9.0.4">
+                <message>IntelliJ IDEA 9.0.4 is available.
+                    Please visit http://www.jetbrains.com/idea to learn more and download it.
+                </message>
+                <patch from="95.429" size="2"/>
+            </build>
+        </channel>
+
+        <channel id="idea90" name="IntelliJ IDEA 9 updates" status="release" url="http://www.jetbrains.com/idea/whatsnew">
+            <build number="95.627" version="9.0.4">
+                <message>IntelliJ IDEA 9.0.4 is available.
+                    Please visit http://www.jetbrains.com/idea to learn more and download it.
+                </message>
+                <patch from="95.429" size="2"/>
+            </build>
+        </channel>
+
+        <channel id="IDEA10EAP" name="IntelliJ IDEA X EAP" status="eap" url="http://confluence.jetbrains.net/display/IDEADEV/IDEA+X+EAP">
+            <build number="98.620" version="10">
+                <message>IntelliJ IDEA X RC is available.
+                    Please visit http://confluence.jetbrains.net/display/IDEADEV/IDEA+X+EAP to learn more and download it.
+                </message>
+                <!--<patch from="98.486" size="1"/>-->
+            </build>
+        </channel>
+    </product>
+</products>
+<?xml version="1.0" encoding="ISO-8859-1"?>
+
+<project name="InspectionGadgets" default="compile">
+    <taskdef name="javac2" classname="com.intellij.ant.Javac2" classpathref="project.class.path"/>
+    <property name="src.dir" value="src"/>
+    <property name="idea.dir" value="\Applications\Demetra"/>
+    <property name="idea.plugin.dir" value="\Users\dgriffith\Library\Application Support\IntelliJIdea60"/>
+    <property name="debug" value="true"/>
+    <property name="optimize" value="off"/>
+    <property name="deprecation" value="off"/>
+    <property name="project.fullname" value="InspectionGadgets"/>
+    <property name="project.version" value="1.0"/>
+    <property name="jar.file" value="InspectionGadgets.jar"/>
+    <property name="resources.file" value="resources_en.jar"/>
+    <property name="dist.zip.file" value="${project.fullname}.${project.version}.zip"/>
+
+    <path id="project.class.path">
+        <pathelement location="${idea.dir}/lib/openAPI.jar"/>
+        <pathelement location="${idea.dir}/lib/idea.jar"/>
+        <pathelement location="${idea.dir}/lib/jdom.jar"/>
+        <pathelement location="${idea.dir}/lib/extensions.jar"/>
+    </path>
+
+    <target name="init">
+        <property name="build.classes.dir" value="classes"/>
+        <property name="src.dir" value="src"/>
+        <property name="build.compiler" value="modern"/>
+    </target>
+
+    <target name="prepare" depends="init">
+        <mkdir dir="${build.classes.dir}"/>
+    </target>
+
+    <target name="compile" depends="prepare">
+        <javac2 srcdir="${src.dir}" destdir="${build.classes.dir}" includes="com/siyeh/**" debug="${debug}">
+            <classpath refid="project.class.path"/>
+        </javac2>
+    </target>
+
+    <target name="deploy" depends="clean, compile" description="deploy the plugin">
+        <delete file="${jar.file}"/>
+        <jar
+            jarfile="${jar.file}">
+            <fileset dir="${build.classes.dir}"/>
+            <fileset dir="${src.dir}">
+                <include name="META-INF/plugin.xml"/>
+            </fileset>
+
+        </jar>
+        <delete file="${resources.file}"/>
+        <jar
+            jarfile="${resources.file}">
+            <fileset dir="${src.dir}">
+                <include name="inspectionDescriptions/**"/>
+            </fileset>
+            <fileset dir="src">
+                <include name="com/siyeh/InspectionGadgetsBundle.properties"/>
+            </fileset>
+
+        </jar>
+        <mkdir dir="${idea.plugin.dir}"/>
+        <mkdir dir="${idea.plugin.dir}/InspectionGadgets"/>
+        <mkdir dir="${idea.plugin.dir}/InspectionGadgets/lib"/>
+        <copy file="${jar.file}" todir="${idea.plugin.dir}/InspectionGadgets/lib" overwrite="true" />
+        <copy file="${resources.file}" todir="${idea.plugin.dir}/InspectionGadgets/lib" overwrite="true" />
+    </target>
+
+    <target name="clean" depends="init" description="Cleans up the distribution">
+        <delete failonerror="false"  dir="${build.classes.dir}"/>
+        <delete failonerror="false"  file="${jar.file}"/>
+    </target>
+
+
+</project>
+<project name="IntelliLang" default="zips">
+
+  <property file="IntelliLang.properties"/>
+
+  <fail unless="jdk.home.idea_8.0">
+    Please set the property 'jdk.home.idea_8.0' to point to your IntelliJ IDEA 8.0 installation directory.
+  </fail>
+
+  <import file="IntelliLang.xml" />
+
+  <target name="jars" depends="all, jar.IntelliLang" />
+
+  <target name="jar.IntelliLang" depends="compile.module.intellilang">
+    <mkdir dir="build" />
+    <jar file="build/IntelliLang.jar" compress="false">
+      <fileset dir="${intellilang.output.dir}">
+        <include name="**/*.*" />
+      </fileset>
+      <fileset dir=".">
+        <include name="META-INF/plugin.xml" />
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="src.zip">
+    <zip file="build/src_IntelliLang.zip">
+      <zipfileset dir="src" prefix="IntelliLang/src">
+        <include name="org/**/*.java" />
+        <include name="org/**/*.png" />
+        <include name="**/*.html" />
+        <include name="**/*.xml" />
+      </zipfileset>
+      <zipfileset dir="annotations" prefix="IntelliLang/annotations">
+        <include name="src/org/**/*.java" />
+      </zipfileset>
+      <zipfileset dir="." prefix="IntelliLang">
+        <include name="build.xml" />
+        <include name="IntelliLang.xml" />
+        <include name="IntelliLang-standalone.ipr" />
+        <include name="IntelliLang.iml" />
+        <include name="annotations.iml" />
+        <include name="META-INF/plugin.xml" />
+        <include name="LICENSE" />
+      </zipfileset>
+
+      <!-- help jar already contains plain HTML sources - no need to supply them in another form -->
+      <zipfileset dir="help" prefix="IntelliLang/help">
+        <include name="*.jar" />
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="jar.regexp-support">
+    <ant dir="../RegExpSupport" target="jar">
+      <property name="regexp-lang.embedded" value="true" />
+    </ant>
+  </target>
+
+  <target name="bin.zip" depends="jars, jar.regexp-support">
+    <zip file="build/IntelliLang.zip">
+      <zipfileset dir="build" prefix="IntelliLang/lib">
+        <include name="*.jar" />
+      </zipfileset>
+      <zipfileset dir="help" prefix="IntelliLang/help">
+        <include name="*.jar" />
+      </zipfileset>
+      <zipfileset dir="../RegExpSupport/build" prefix="IntelliLang/lib">
+        <include name="*.jar" />
+      </zipfileset>
+      <zipfileset dir="." prefix="IntelliLang">
+        <include name="LICENSE" />
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="zips" depends="bin.zip, src.zip">
+    <ant dir="../RegExpSupport" target="src.zip">
+      <property name="src.zip" value="${basedir}/build/src_IntelliLang.zip" />
+      <property name="src.zip.update" value="true" />
+    </ant>
+  </target>
+
+  <target name="test.regexp-support">
+    <ant dir="../RegExpSupport" target="test" />
+  </target>
+
+</project><project name="ant-project" default="show-message">
+    <target name="show-message">
+        <echo message="message"/>
+    </target>
+
+    <target name="create-file">
+        <echo file="${artifact.output.path}/echo.txt" message="${message.text}"/>
+    </target>
+</project><project name="Build GroovyResetAgent" default="gragent">
+  <dirname property="module.home" file="${ant.file}"/>
+  <dirname property="idea.home" file="${module.home}/../../"/>
+  <property name="build.lib.path" value="${idea.home}/build/lib"/>
+  <property name="idea.lib.path" value="${idea.home}/lib"/>
+  <property name="output.jar.path" value="${module.home}/gragent.jar"/>
+  <property environment="env"/>
+
+  <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="${build.lib.path}/jarjar-1.0.jar"/>
+
+  <target name="gragent">
+    <delete dir="anttask.classes" failonerror="false"/>
+    <delete dir="anttask.src" failonerror="false"/>
+
+    <mkdir dir="anttask.classes"/>
+    <mkdir dir="anttask.src"/>
+
+    <copy todir="anttask.src">
+      <fileset dir="${module.home}/agentSrc">
+        <include name="**/*.java"/>
+      </fileset>
+    </copy>
+
+    <javac source="1.5" target="1.5" destdir="anttask.classes" fork="true">
+      <src path="anttask.src"/>
+      <classpath>
+        <fileset dir="${build.lib.path}">
+          <include name="*.jar"/>
+        </fileset>
+        <fileset dir="${idea.lib.path}">
+          <include name="asm*.jar"/>
+        </fileset>
+      </classpath>
+    </javac>
+
+    <jarjar jarfile="${output.jar.path}" manifest="${module.home}/agentSrc/META-INF/MANIFEST.MF">
+      <fileset dir="anttask.classes"/>
+      <zipfileset src="${idea.lib.path}/asm.jar"/>
+      <rule pattern="org.objectweb.**" result="groovyResetJarjarAsm.@1"/>
+    </jarjar>
+
+    <delete dir="anttask.classes" failonerror="false"/>
+    <delete dir="anttask.src" failonerror="false"/>
+
+  </target>
+</project>
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<project name="deploy" default="jar_plugin" basedir="..">
+  <property name="plugname" value="Svn4Idea"/>
+  <property name="build.path" value="build_out"/>
+
+
+  <target name="deploy-javasvn">
+    <ant dir="../org.tmatesoft.javasvn" antfile="../org.tmatesoft.javasvn/build.xml" target="clean"/>
+    <ant dir="../org.tmatesoft.javasvn" antfile="../org.tmatesoft.javasvn/build.xml" target="build-library"/>
+    <copy file="../org.tmatesoft.javasvn/build/lib/javasvn.jar" tofile="lib/javasvn.jar" overwrite="true"/>
+  </target>
+
+  <target name="jar_plugin">
+
+    <delete includeEmptyDirs="true" failonerror="false">
+      <fileset dir="${build.path}/com"/>
+      <fileset dir="${build.path}/META-INF"/>
+    </delete>
+
+    <mkdir dir="${build.path}"/>
+
+    <copy todir="${build.path}/META-INF">
+      <fileset dir="src/META-INF"/>
+    </copy>
+
+    <copy todir="${build.path}/com">
+      <fileset dir="classes/com"/>
+    </copy>
+
+    <jar jarfile="${build.path}/${plugname}.jar" basedir="${build.path}"
+         excludes="${plugname}.jar"/>
+
+    <mkdir dir="${idea.path}/plugins/svn4idea"/>
+    <mkdir dir="${idea.path}/plugins/svn4idea/lib"/>
+    <copy todir="${idea.path}/plugins/svn4idea/lib">
+      <fileset file="${build.path}/${plugname}.jar"/>
+      <fileset file="${svnjavahl.path}"/>
+    </copy>
+  </target>
+  <target name="package">
+    <tstamp/>
+    <property file="version.properties"/>
+    <condition property="version" value="unknown">
+      <not>
+        <isset property="version"/>
+      </not>
+    </condition>
+    <property name="targetdir" value="svn4idea-${version}"/>
+    <delete failonerror="false" includeemptydirs="true">
+      <fileset dir="${targetdir}"/>
+    </delete>
+    <mkdir dir="${targetdir}"/>
+    <mkdir dir="${targetdir}/src"/>
+    <copy todir="${targetdir}/src">
+      <fileset dir="src">
+        <exclude name="**/.svn*"/>
+        <exclude name="com/qintsoft/svn4idea/test/**"/>
+      </fileset>
+    </copy>
+    <copy todir="${targetdir}">
+      <fileset file="README.txt"/>
+    </copy>
+    <mkdir dir="${targetdir}/build"/>
+    <copy todir="${targetdir}/build">
+      <fileset file="build/build.xml"/>
+    </copy>
+    <mkdir dir="${targetdir}/cls"/>
+    <replace file="${targetdir}/src/com/qintsoft/svn4idea/Version.java" token="@devbuild@" value="${version}"/>
+    <replace file="${targetdir}/src/com/qintsoft/svn4idea/Version.java" token="@tstamp@" value="${TSTAMP}"/>
+    <replace file="${targetdir}/src/com/qintsoft/svn4idea/Version.java" token="@date@" value="${DSTAMP}"/>
+    <javac compiler="modern" destdir="${targetdir}/cls">
+      <src path="${targetdir}/src"/>
+      <classpath path="${svnjavahl.path}"/>
+      <classpath path="${svnup.path}"/>
+      <classpath path="${idea.path}/lib/dev/openapi.jar"/>
+      <classpath path="${idea.path}/lib/jdom.jar"/>
+      <exclude name="META-INF/plugin.xml"/>
+    </javac>
+    <mkdir dir="${targetdir}/cls/META-INF"/>
+    <copy todir="${targetdir}/cls/META-INF">
+      <fileset file="${targetdir}/src/META-INF/plugin.xml"/>
+    </copy>
+    <jar jarfile="svn4idea-${version}.jar" basedir="${targetdir}/cls">
+    </jar>
+    <delete includeemptydirs="true" failonerror="false">
+      <fileset dir="${targetdir}/cls"/>
+    </delete>
+    <zip zipfile="svn4idea-${version}.zip" basedir="." includes="${targetdir}/**"/>
+    <delete includeemptydirs="true" failonerror="false">
+      <fileset dir="${targetdir}"/>
+    </delete>
+  </target>
+</project><project name="testng" default="dist">
+
+    <property file="build.properties"/>
+    <property name="src.dir" value="src"/>
+    <property name="test.dir" value="tests"/>
+    <property name="lib.dir" value="lib"/>
+    <property name="bin.dir" value="build"/>
+    <property name="dst.dir" value="dist"/>
+
+    <property name="idea.home" value="/Users/amrk/Applications/Selena.app"/>
+    <property name="idea.plugins.home" value="/Users/amrk/Applications/Selena.app/plugins"/>
+
+    <path id="compile.classpath">
+        <fileset dir="${idea.home}/lib">
+            <include name="openapi.jar"/>
+            <include name="idea.jar"/>
+            <include name="idea_rt.jar"/>
+            <include name="jdom.jar"/>
+            <include name="bcel.jar"/>
+            <include name="junit.jar"/>
+            <include name="log4j.jar"/>
+            <include name="extensions.jar"/>
+            <include name="picocontainer.jar"/>
+            <include name="trove4j.jar"/>
+        </fileset>
+        <fileset dir="${idea.home}/redist">
+            <include name="annotations.jar"/>
+            <include name="forms_rt.jar"/>
+            <include name="extensions.jar"/>
+            <include name="javac2.jar"/>
+        </fileset>
+        <fileset dir="lib">
+            <include name="testng-*.jar"/>
+        </fileset>
+    </path>
+
+
+    <path id="uidesigner.classpath">
+        <fileset dir="${idea.home}/lib">
+            <include name="jdom.jar"/>
+            <include name="bcel.jar"/>
+            <include name="asm.jar"/>
+            <include name="asm-commons.jar"/>
+            <include name="jgoodies-forms.jar"/>
+        </fileset>
+        <fileset dir="${idea.home}/redist">
+            <include name="annotations.jar"/>
+            <include name="forms_rt.jar"/>
+            <include name="extensions.jar"/>
+            <include name="javac2.jar"/>
+        </fileset>
+    </path>
+
+    <taskdef name="javac2"
+             classname="com.intellij.ant.Javac2"
+             classpathref="uidesigner.classpath"/>
+
+    <target name="init">
+        <mkdir dir="${bin.dir}/classes"/>
+        <mkdir dir="${bin.dir}/classes.test"/>
+        <mkdir dir="${bin.dir}/jars"/>
+        <mkdir dir="${dst.dir}"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${bin.dir}"/>
+        <delete dir="${dst.dir}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac2 srcdir="${src.dir}" destdir="${bin.dir}/classes" debug="true" classpathref="compile.classpath"
+                deprecation="true" source="1.5" target="jsr14"/>
+        <copy todir="${bin.dir}/classes">
+            <fileset dir="${src.dir}">
+                <include name="**/*.properties"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="build" depends="clean, compile"/>
+
+
+    <target name="dist" depends="build">
+
+        <jar jarfile="${bin.dir}/jars/${ant.project.name}.jar">
+            <zipfileset dir="${bin.dir}/classes"/>
+            <zipfileset dir="${src.dir}/resources" prefix="resources"/>
+            <zipfileset dir="src/META-INF" prefix="META-INF">
+                <include name="plugin.xml"/>
+            </zipfileset>
+        </jar>
+        <jar jarfile="${bin.dir}/jars/resources_en.jar">
+            <zipfileset dir="${src.dir}">
+                <include name="**/*.html"/>
+            </zipfileset>
+        </jar>
+        <zip destfile="${dst.dir}/${ant.project.name}.zip" compress="true">
+            <zipfileset dir="${lib.dir}" prefix="${ant.project.name}/lib">
+                <include name="testng-jdk15.jar"/>
+            </zipfileset>
+            <zipfileset dir="${bin.dir}/jars" prefix="${ant.project.name}/lib" includes="*.jar"/>
+            <zipfileset dir="${lib.dir}" prefix="${ant.project.name}/lib-jdk14">
+                <include name="testng-jdk14.jar"/>
+            </zipfileset>
+            <zipfileset dir="src/META-INF" prefix="${ant.project.name}/META-INF">
+                <include name="plugin.xml"/>
+            </zipfileset>
+        </zip>
+
+    </target>
+
+    <target name="deploy" depends="dist">
+        <unzip src="${dst.dir}/${ant.project.name}.zip" dest="${idea.plugins.home}"/>
+    </target>
+
+</project>
+<project default="all" name="xpath-lang">
+
+  <property file="build.properties"/>
+
+  <dirname file="${ant.file}" property="project.dir" />
+  <property name="src.dir" value="${project.dir}/src" />
+
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="build.classes.dir" value="${build.dir}/classes" />
+
+  <path id="idea.classpath">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+
+  <path id="classpath.uidesigner">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+
+  <taskdef name="javac2" classname="com.intellij.ant.Javac2">
+    <classpath refid="classpath.uidesigner" />
+  </taskdef>
+  <taskdef name="jflex" classname="JFlex.anttask.JFlexTask">
+    <classpath location="${idea.home}/tools/jflex/lib/JFlex.jar"/>
+  </taskdef>
+
+  <target name="init">
+  </target>
+
+  <target name="jflex" depends="init">
+    <jflex skeleton="${idea.home}/tools/jflex/idea-flex.skeleton" nobak="true"
+           file="${src.dir}/org/intellij/lang/xpath/xpath-lexer.flex" destdir="${src.dir}" charat="true"/>
+  </target>
+
+  <target name="compile" depends="init, jflex">
+    <mkdir dir="${build.classes.dir}"/>
+    <mkdir dir="${build.dir}/xslt-rt/classes"/>
+
+    <javac2 srcdir="${src.dir}" destdir="${build.classes.dir}" source="1.5" target="1.5" debug="${compile.debug}" optimize="${compile.optimize}">
+      <classpath refid="idea.classpath"/>
+      <exclude name="com/**/*" />
+    </javac2>
+
+    <javac2 srcdir="../xslt-rt/src" destdir="${build.dir}/xslt-rt/classes" source="1.4" target="1.4" debug="${compile.debug}" optimize="${compile.optimize}">
+      <exclude name="com/**/*" />
+    </javac2>
+  </target>
+
+  <target name="build" depends="compile" description="Build project"/>
+
+  <target name="jar" depends="build">
+    <jar file="${build.dir}/xpath-lang.jar" compress="false">
+      <zipfileset dir="${build.classes.dir}">
+        <include name="**/*"/>
+        <exclude name="**/run/rt/*"/>
+      </zipfileset>
+      <zipfileset dir="${src.dir}">
+        <include name="icons/**/*"/>
+        <include name="intentionDescriptions/**/*.*"/>
+        <include name="inspectionDescriptions/**/*.*"/>
+        <include name="**/*.xml"/>
+        <include name="**/*.xsd"/>
+        <include name="**/*.xsl"/>
+        <include name="**/*.xhtml"/>
+      </zipfileset>
+      <zipfileset dir="${project.dir}">
+        <include name="LICENSE"/>
+        <include name="W3C Document License.htm"/>
+        <include name="META-INF/*.*" unless="xpath-lang.embedded"/>
+      </zipfileset>
+    </jar>
+
+    <jar file="${build.dir}/xslt-rt/xslt-rt.jar" compress="false">
+      <zipfileset dir="${build.dir}/xslt-rt/classes">
+        <include name="**/run/rt/**/*"/>
+      </zipfileset>
+    </jar>
+  </target>
+
+  <target name="all" depends="compile, jar"/>
+
+  <target name="clean">
+    <delete dir="${build.dir}"/>
+  </target>
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="xpath-view" default="build">
+
+  <property file="${basedir}/build.properties"/>
+  <property name="idea.plugins.path" value="${idea.home}/config/plugins"/>
+
+  <property name="build.dir" value="${basedir}/build"/>
+  <property name="build.help.dir" value="${basedir}/build/help"/>
+  <property name="build.classes.dir" value="${build.dir}/classes"/>
+  <property name="build.xpath-lang.dir" value="${build.dir}/xpath-lang"/>
+
+  <property name="path.source1" value="./src"/>
+
+  <path id="path.source">
+    <pathelement location="${path.source1}"/>
+  </path>
+  <path id="idea.classpath">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+  <path id="path.xpath-lang.class">
+    <pathelement location="${build.dir}/xpath-lang/classes" />
+  </path>
+
+  <path id="classpath.uidesigner">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+
+  <taskdef name="javac2" classname="com.intellij.ant.Javac2">
+    <classpath refid="classpath.uidesigner" />
+  </taskdef>
+
+  <target name="init">
+    <tstamp/>
+  </target>
+
+  <target name="xpath-lang">
+    <ant antfile="../xpath-lang/build.xml" target="jar" inheritall="false">
+      <property name="build.dir" value="${build.xpath-lang.dir}" />
+      <property name="xpath-lang.embedded" value="true" />
+    </ant>
+  </target>
+
+  <target name="compile" depends="init, xpath-lang" description="Compiles sources">
+    <mkdir dir="${build.classes.dir}"/>
+    <javac2 sourcepathref="path.source" destdir="${build.classes.dir}" debug="on" deprecation="on" target="1.5">
+      <src refid="path.source"/>
+      <classpath refid="idea.classpath" />
+      <classpath refid="path.xpath-lang.class" />
+      <exclude name="com/**/*" />
+    </javac2>
+  </target>
+
+  <target name="build" depends="compile" description="Rebuilds project"/>
+
+  <target name="clean" depends="init" description="Removes classses and javadoc">
+    <delete dir="${build.dir}"/>
+  </target>
+
+  <target name="jar" depends="init, compile">
+    <jar file="${build.dir}/xpath-view.jar" compress="false">
+      <fileset dir="${build.classes.dir}">
+        <include name="org/**/*.class"/>
+        <exclude name="org/**/support/**/*.class"/>
+      </fileset>
+      <fileset dir="src">
+        <include name="icons/**/*.*"/>
+      </fileset>
+      <zipfileset dir=".">
+        <include name="LICENSE"/>
+        <include name="META-INF/**/*.*"/>
+      </zipfileset>
+    </jar>
+    <jar file="${build.dir}/xpath-support.jar" compress="false">
+      <fileset dir="${build.classes.dir}">
+        <include name="org/**/support/**/*.class"/>
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="help" depends="init">
+    <mkdir dir="${build.help.dir}" />
+
+    <xslt style="help/html2jh.xsl" in="help/src/root.xhtml" out="${build.help.dir}/root.html">
+      <param name="output" expression="${build.help.dir}/" />
+    </xslt>
+
+    <copy todir="${build.help.dir}">
+      <fileset dir="help/src">
+        <exclude name="**/*.xhtml" />
+      </fileset>
+    </copy>
+
+    <jar file="${build.dir}/help.jar" compress="false">
+      <fileset dir="${build.help.dir}" />
+    </jar>
+  </target>
+
+  <target name="javadoc">
+    <javadoc sourcepath="src" source="1.5" destdir="doc" packagenames="org.*" author="true" windowtitle="XPathView plugin" classpathref="idea.classpath"/>
+  </target>
+
+  <target name="deploy" depends="jar" description="Copy built JARs to IDEA plugin dir">
+    <mkdir dir="${idea.plugins.path}/xpath-view/lib" />
+    <copy todir="${idea.plugins.path}/xpath-view/lib">
+      <fileset dir="${build.dir}">
+        <include name="xpath-support.jar"/>
+        <include name="xpath-view.jar"/>
+      </fileset>
+      <fileset dir="${build.xpath-lang.dir}">
+        <include name="xpath-lang.jar"/>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="dist" depends="jar, help">
+    <zip file="${build.dir}/src_xpath-view.zip">
+      <zipfileset dir=".">
+        <include name="META-INF/**/*.*"/>
+      </zipfileset>
+      <zipfileset dir="src">
+        <include name="**/*"/>
+        <exclude name="com/**/*" />
+      </zipfileset>
+      <zipfileset dir=".">
+        <include name="build.xml"/>
+      </zipfileset>
+    </zip>
+    <zip file="${build.dir}/src_xpath-lang.zip">
+      <zipfileset dir="../xpath-lang/src">
+        <include name="**/*"/>
+        <exclude name="com/**/*" />
+      </zipfileset>
+      <zipfileset dir="../xpath-lang">
+        <include name="build.xml"/>
+      </zipfileset>
+    </zip>
+
+    <mkdir dir="dist"/>
+
+    <zip file="dist/xpath-view.zip">
+      <zipfileset dir="${build.dir}" prefix="xpath-view/lib">
+        <include name="xpath-support.jar"/>
+        <include name="xpath-view.jar"/>
+      </zipfileset>
+      <zipfileset dir="${build.dir}" prefix="xpath-view/help">
+        <include name="help.jar"/>
+      </zipfileset>
+      <zipfileset dir="${build.xpath-lang.dir}" prefix="xpath-view/lib">
+        <include name="xpath-lang.jar"/>
+      </zipfileset>
+      <zipfileset dir="${build.xpath-lang.dir}/xslt-rt" prefix="xpath-view/lib/rt">
+        <include name="xslt-rt.jar"/>
+      </zipfileset>
+      <zipfileset dir="." prefix="xpath-view">
+        <include name="README.txt"/>
+        <include name="LICENSE"/>
+      </zipfileset>
+      <zipfileset dir="../xpath-lang" prefix="xpath-view">
+        <include name="W3C Document License.htm"/>
+      </zipfileset>
+    </zip>
+
+    <zip file="dist/src.zip">
+      <zipfileset dir="${build.dir}" prefix="xpath-view/src">
+        <include name="src_xpath-view.zip"/>
+        <include name="src_xpath-lang.zip"/>
+      </zipfileset>
+    </zip>
+  </target>
+</project>
+
+<project default="rebuild" name="xslt-debugger">
+
+  <property file="build.properties"/>
+
+  <dirname file="${ant.file}" property="project.dir"/>
+  <property name="src.dir" value="${project.dir}/src"/>
+  <property name="src.rt.dir" value="${project.dir}/engine/src"/>
+  <property name="src.rt.impl.dir" value="${project.dir}/engine/impl/src"/>
+
+  <property name="build.dir" value="${basedir}/build"/>
+  <property name="build.classes.dir" value="${build.dir}/classes"/>
+  <property name="build.classes.rt.dir" value="${build.dir}/rt/classes"/>
+
+  <path id="classpath.uidesigner">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+
+  <taskdef name="javac2" classname="com.intellij.ant.Javac2">
+    <classpath refid="classpath.uidesigner"/>
+  </taskdef>
+  <taskdef name="jflex" classname="JFlex.anttask.JFlexTask">
+    <classpath location="${idea.home}/tools/jflex/lib/JFlex.jar"/>
+  </taskdef>
+
+  <path id="idea.classpath">
+    <fileset dir="${idea.home}">
+      <include name="lib/*.jar"/>
+      <include name="redist/*.jar"/>
+    </fileset>
+  </path>
+
+  <path id="rt.classpath">
+    <fileset dir="${idea.home}/lib">
+      <include name="trove4j.jar" />
+    </fileset>
+    <fileset dir="engine/impl/lib">
+      <include name="*.jar"/>
+    </fileset>
+  </path>
+
+  <property name="xpathview.plugin.home" value="${idea.plugins.home}/xpath"/>
+
+  <target name="init">
+    <condition property="xpathview.src.available">
+      <available file="${xpathview.src.home}/build.xml"/>
+    </condition>
+  </target>
+
+  <target name="xpathview.compile" depends="init" if="xpathview.src.available">
+    <echo message="Building XPathView from source: ${xpathview.src.home}"/>
+
+    <property name="build.xpathview.dir" value="${build.dir}/xpathview"/>
+    <mkdir dir="${build.xpathview.dir}"/>
+
+    <ant dir="${xpathview.src.home}" target="jar">
+      <property name="build.dir" value="${build.xpathview.dir}"/>
+    </ant>
+
+    <path id="xpathview.classpath">
+      <fileset dir="${build.xpathview.dir}">
+        <include name="xpath-lang/*.jar"/>
+        <include name="*.jar"/>
+      </fileset>
+    </path>
+    <path id="xpathview.rt.classpath">
+      <fileset dir="${build.xpathview.dir}">
+        <include name="xpath-lang/xslt-rt/*.jar"/>
+      </fileset>
+    </path>
+  </target>
+
+  <target name="xpathview.binary" depends="init" unless="xpathview.src.available">
+    <available file="${xpathview.plugin.home}/lib/xpath.jar" property="xpathview.binary.available"/>
+    <available file="${xpathview.plugin.home}/lib/xpath-view.jar" property="xpathview.binary.available"/>
+    <fail unless="xpathview.binary.available">
+      The XPathView plugin is required to build the XSLT-Debugger. Please set the property "xpathview.plugin.home" to
+      point to the installation of the plugin in IntelliJ IDEA.
+    </fail>
+
+    <path id="xpathview.classpath">
+      <fileset dir="${xpathview.plugin.home}">
+        <include name="lib/*.jar"/>
+      </fileset>
+    </path>
+    <path id="xpathview.rt.classpath">
+      <fileset dir="${xpathview.plugin.home}">
+        <include name="lib/rt/*.jar"/>
+      </fileset>
+    </path>
+  </target>
+
+  <target name="compile" depends="init, xpathview.compile, xpathview.binary">
+    <mkdir dir="${build.classes.dir}"/>
+    <mkdir dir="${build.classes.rt.dir}"/>
+
+    <javac2 srcdir="${src.rt.dir}" destdir="${build.classes.rt.dir}" source="1.5" target="1.5" debug="${compile.debug}"
+            optimize="${compile.optimize}">
+      <classpath refid="rt.classpath"/>
+      <classpath refid="xpathview.rt.classpath"/>
+      <exclude name="com/**/*"/>
+    </javac2>
+
+    <javac2 srcdir="${src.rt.impl.dir}" destdir="${build.classes.rt.dir}" source="1.5" target="1.5" debug="${compile.debug}"
+            optimize="${compile.optimize}">
+      <classpath refid="rt.classpath"/>
+      <classpath refid="xpathview.rt.classpath"/>
+      <exclude name="com/**/*"/>
+    </javac2>
+
+    <javac2 srcdir="${src.dir}" destdir="${build.classes.dir}" source="1.5" target="1.5" debug="${compile.debug}"
+            optimize="${compile.optimize}">
+      <classpath refid="idea.classpath"/>
+      <classpath refid="xpathview.classpath"/>
+      <classpath location="${build.classes.rt.dir}"/>
+      <exclude name="com/**/*"/>
+      <exclude name="Main.java"/>
+    </javac2>
+
+    <rmic base="${build.classes.rt.dir}">
+      <include name="**/remote/Remote*Impl.class"/>
+      <include name="**/remote/DebuggerServer.class"/>
+    </rmic>
+
+    <jar destfile="${build.dir}/rmi-stubs.jar">
+      <fileset dir="${build.classes.rt.dir}">
+        <include name="**/remote/Remote*Impl_*.class"/>
+        <include name="**/remote/DebuggerServer_*.class"/>
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="build" depends="compile" description="Build project"/>
+
+  <target name="jar" depends="build">
+    <jar file="${build.dir}/xslt-debugger.jar" compress="false">
+      <zipfileset dir="${build.classes.dir}">
+        <include name="**/*"/>
+      </zipfileset>
+      <zipfileset dir=".">
+        <include name="META-INF/*.xml"/>
+      </zipfileset>
+      <zipfileset dir="${src.dir}">
+        <include name="**/*.xml"/>
+        <include name="**/*.png"/>
+      </zipfileset>
+    </jar>
+
+    <mkdir dir="${build.dir}/rt"/>
+    <jar file="${build.dir}/xslt-debugger-engine.jar" compress="false">
+      <zipfileset dir="${build.classes.rt.dir}">
+        <include name="**/*"/>
+      </zipfileset>
+      <zipfileset dir="${src.rt.dir}">
+        <include name="**/*.xml"/>
+        <include name="**/*.png"/>
+      </zipfileset>
+    </jar>
+  </target>
+
+  <target name="rebuild" depends="clean, jar" description="Clean and rebuild"/>
+
+  <target name="clean">
+    <delete dir="build"/>
+  </target>
+
+  <target name="dist" depends="rebuild" description="Build distribution ZIP">
+    <mkdir dir="dist"/>
+    <zip file="dist/xslt-debugger.zip">
+      <zipfileset dir="build" prefix="xslt-debugger/lib">
+        <include name="*.jar"/>
+      </zipfileset>
+      <zipfileset dir="engine/impl/lib" prefix="xslt-debugger/lib/rt">
+        <include name="saxon*"/>
+        <include name="xalan.jar"/>
+        <include name="serializer.jar"/>
+      </zipfileset>
+      <zipfileset dir="doc" prefix="xslt-debugger/help">
+        <include name="help.jar"/>
+      </zipfileset>
+      <zipfileset dir="." prefix="xslt-debugger">
+        <include name="LICENSE"/>
+      </zipfileset>
+    </zip>
+    <zip file="dist/xslt-debugger_src.zip">
+      <zipfileset dir="." prefix="xslt-debugger">
+        <include name="src/**/*"/>
+        <include name="rt/src/**/*"/>
+
+        <include name="rt/*.iml"/>
+        <include name="*.iml"/>
+        <include name="*.ipr"/>
+
+        <include name="META-INF/*.xml"/>
+
+        <include name="build.xml"/>
+        <include name="build.properties"/>
+
+        <include name="LICENSE"/>
+        <include name="readme-project.txt"/>
+      </zipfileset>
+    </zip>
+  </target>
+</project><project name="PyCharm Community Edition" default="all">
+  <property name="project.home" value="${basedir}/.."/>
+  <property name="python.home" value="${basedir}"/>
+  <property name="out.dir" value="${project.home}/out"/>
+  <property name="tmp.dir" value="${project.home}/out/tmp"/>
+
+  <target name="cleanup">
+    <delete dir="${out.dir}" failonerror="false"/>
+  </target>
+
+  <target name="init">
+    <mkdir dir="${out.dir}"/>
+    <mkdir dir="${tmp.dir}"/>
+  </target>
+
+  <macrodef name="call_gant">
+    <attribute name="script" />
+    <sequential>
+      <java failonerror="true" jar="${project.home}/lib/ant/lib/ant-launcher.jar" fork="true">
+        <jvmarg line="-Xmx612m -XX:MaxPermSize=152m -Didea.build.number=${idea.build.number} &quot;-DideaPath=${idea.path}&quot;"/>
+        <sysproperty key="java.awt.headless" value="true"/>
+        <arg line="&quot;-Dgant.script=@{script}&quot;"/>
+        <arg line="&quot;-Dteamcity.build.tempDir=${tmp.dir}&quot;"/>
+        <arg line="&quot;-Didea.build.number=${idea.build.number}&quot;"/>
+        <arg line="&quot;-Didea.test.group=ALL_EXCLUDE_DEFINED&quot;"/>
+        <arg value="-f"/>
+        <arg value="${project.home}/build/gant.xml"/>
+      </java>
+    </sequential>
+  </macrodef>
+
+  <target name="build" depends="init">
+    <call_gant script="${python.home}/build/pycharm_community_build.gant"/>
+  </target>
+
+  <target name="plugin" depends="init">
+    <call_gant script="${python.home}/build/python_plugin_build.gant"/>
+  </target>
+  <!--
+  <target name="test" depends="init">
+    <call_gant script="${project.home}/build/scripts/tests.gant"/>
+  </target>
+  -->
+
+  <target name="all" depends="cleanup,build"/>
+</project>
+<project name="Generate lexer from buildout.cfg.flex" default="dist">
+  <property name="jflex.dir" value="/usr/local/java/idea-8.1-dev/tools/jflex"/>
+
+  <property name="lexer.dir" value="."/>
+  <property name="lexer.file" value="${lexer.dir}/_BuildoutCfgFlexLexer.java"/>
+  <property name="lexer.log" value="${lexer.dir}/jflex.log"/>
+  <property name="lexer.source" value="${lexer.dir}/buildout.cfg.flex"/>
+  <property name="lexer.skeleton" value="${jflex.dir}/idea-flex.skeleton"/>
+  <property name="compiler.max.memory" value="256m"/>
+  <property name="jflex.file" value="${jflex.dir}/lib/JFlex.jar"/>
+
+  <target name="clean">
+    <delete file="${lexer.file}~"/>
+    <delete file="${lexer.file}"/>
+    <delete file="${lexer.log}"/>
+  </target>
+
+  <target name="jflex" description="Produces Jflex based lexer" depends="clean">
+    <java jar="${jflex.file}" output="${lexer.log}" fork="true" maxmemory="${compiler.max.memory}">
+      <arg value="--charat"/>
+      <arg value="-skel"/>
+      <arg value="${lexer.skeleton}"/>
+      <arg value="${lexer.source}"/>
+    </java>
+  </target>
+
+  <target name="dist" depends="clean, jflex" description="main target"/>
+
+</project>
+<?xml version="1.0" encoding="ISO-8859-1"?>
+<project name="deploy" default="jar_plugin" basedir="..">
+  <property name="plugname" value="Sample"/>
+  <property name="build.path" value="${project.path}/build_out"/>
+
+  <target name="jar_plugin">
+
+    <delete includeEmptyDirs="true" failonerror="false">
+      <fileset dir="${build.path}/com" />
+      <fileset dir="${build.path}/META-INF" />
+    </delete>
+
+    <mkdir dir="${build.path}"/>
+
+    <copy todir="${build.path}/META-INF">
+       <fileset dir="${project.path}/src/META-INF"/>
+    </copy>
+
+    <copy todir="${build.path}/com">
+       <fileset dir="${project.path}/classes/com"/>
+    </copy>
+
+    <jar jarfile="${build.path}/${plugname}.jar" basedir="${build.path}"
+      excludes="${plugname}.jar"
+     />
+
+  </target>
+</project>

@@ -1,0 +1,396 @@
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'download-task'
+
+ext.configDir = new File(rootDir, 'config')
+ext.hadoop_version = project.getProperties().get('hadoop_version', '2.3')
+ext.versionMap = [
+        '0.23': '0.23.10',
+        '1.0' : '1.0.4',
+        '1.1' : '1.1.2',
+        'cdh4': '2.0.0-cdh4.6.0',
+        '2.2' : '2.2.0',
+        '2.3' : '2.3.0'
+].withDefault {
+    throw new GradleException("Unknown hadoop version: ${hadoop_version}")
+}
+ext.hadoopVersion = versionMap[hadoop_version]
+ext.hadoopBinaries = "${System.getProperty('user.home')}/hadoop-binaries"
+ext.hadoopHome = "${hadoopBinaries}/hadoop-${hadoopVersion}"
+
+println "Building against hadoop ${hadoop_version} using ${hadoopVersion} libraries"
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+        jcenter()
+    }
+    dependencies {
+        classpath 'me.trnl:clirr-gradle-plugin:0.4'
+        classpath 'com.antwerkz.github:github-release-gradle-plugin:1.1.0'
+        classpath 'de.undercouch:gradle-download-task:1.0'
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.10'
+}
+
+configure(subprojects) {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+    apply plugin: 'checkstyle'
+    apply plugin: 'findbugs'
+
+    repositories {
+        mavenCentral()
+        mavenLocal()
+        maven { url "https://repository.cloudera.com/artifactory/cloudera-repos/" }
+    }
+
+    group = 'org.mongodb'
+    version = '1.2.1-SNAPSHOT'
+
+    sourceCompatibility = JavaVersion.VERSION_1_6
+    targetCompatibility = JavaVersion.VERSION_1_6
+
+    dependencies {
+        compile "org.mongodb:mongo-java-driver:2.11.4"
+
+        testCompile 'junit:junit:4.11'
+        testCompile 'org.hamcrest:hamcrest-all:1.3'
+        testCompile 'org.zeroturnaround:zt-exec:1.5'
+    }
+
+    /* Compiling */
+    tasks.withType(AbstractCompile) {
+        options.encoding = 'ISO-8859-1'
+        options.fork = true
+        options.debug = true
+        options.compilerArgs = [/*'-Xlint:all', */ '-Xlint:-options']
+    }
+
+    project.ext.buildingWith = { n ->
+        project.hasProperty(n) && project.property(n).toBoolean()
+    }
+
+    /* Testing */
+    tasks.withType(Test) {
+        maxParallelForks = 1
+        systemProperty 'hadoop.version', hadoop_version
+        systemProperty 'hadoop.release.version', hadoopVersion
+        systemProperties << System.getProperties()
+
+        beforeTest { descr ->
+            logger.info("[Test ${descr.className} > ${descr.name}]")
+        }
+    }
+
+    task testAll(dependsOn: tasks.withType(Test))
+    check.dependsOn testAll
+
+    /* Code quality */
+    checkstyle {
+        configFile = new File("$configDir/checkstyle.xml")
+    }
+
+    checkstyleTest {
+        classpath += configurations.compile
+    }
+
+    checkstyleMain {
+        classpath += configurations.compile
+    }
+
+    findbugs {
+        excludeFilter = new File("$configDir/findbugs-exclude.xml")
+        sourceSets = [sourceSets.main]
+    }
+
+    tasks.withType(FindBugs) {
+        reports {
+            xml.enabled = project.buildingWith('xmlReports.enabled')
+            html.enabled = !project.buildingWith('xmlReports.enabled')
+        }
+    }
+
+    jar {
+        classifier = "hadoop_${hadoop_version}"
+    }
+
+    javadoc {
+        options.version = true
+        options.links 'http://docs.oracle.com/javase/6/docs/api/'
+        options.links 'http://hadoop.apache.org/docs/r2.3.0/api'
+        options.links 'http://api.mongodb.org/java/2.11.4/'
+    }
+
+    task listDependencies << {
+        configurations.compile.each { File file -> println file }
+    }
+}
+
+configure(subprojects.findAll { it.name.contains('examples/') }) {
+    def exampleName = project.name.split('/')[1]
+    jar {
+        baseName = exampleName
+    }
+    group += ".mongo-hadoop-examples"
+
+}
+
+project(":core") {
+    archivesBaseName = "mongo-hadoop-core"
+
+    dependencies {
+        switch (hadoop_version) {
+            case ("0.23"):
+                compile "org.apache.hadoop:hadoop-common:${hadoopVersion}"
+                mapReduceDeps(it, hadoopVersion)
+                break
+            case ("1.0"):
+                compile "org.apache.hadoop:hadoop-core:${hadoopVersion}"
+                break
+            case ("1.1"):
+                compile "org.apache.hadoop:hadoop-core:${hadoopVersion}"
+                break
+            case ("cdh4"):
+                compile "org.apache.hadoop:hadoop-common:${hadoopVersion}"
+                mapReduceDeps(it, hadoopVersion)
+                break
+            case ("2.2"):
+                compile "org.apache.hadoop:hadoop-common:${hadoopVersion}"
+                mapReduceDeps(it, hadoopVersion)
+                break
+            case ("2.3"):
+                compile "org.apache.hadoop:hadoop-common:${hadoopVersion}"
+                mapReduceDeps(it, hadoopVersion)
+                break
+        }
+    }
+}
+
+project(":hive") {
+    archivesBaseName = "mongo-hadoop-hive"
+    dependencies {
+        compile project(':core')
+
+        compile "org.apache.hive:hive-exec:0.10.0"
+        if (hadoop_version == "cdh4") {
+            compile "org.apache.hive:hive-serde:0.10.0-cdh4.2.0"
+        } else {
+            compile "org.apache.hive:hive-serde:0.10.0"
+        }
+    }
+}
+
+project(":pig") {
+    archivesBaseName = "mongo-hadoop-pig"
+    dependencies {
+        compile project(':core')
+        compile "org.antlr:antlr:3.4"
+
+        if (hadoop_version == "cdh4") {
+            compile "org.apache.pig:pig:0.10.0-cdh4.2.0"
+        } else {
+            compile "org.apache.pig:pig:0.9.2"
+        }
+    }
+
+    jar {
+        from project(':core').sourceSets.main.output
+        from sourceSets.main.output
+
+        configurations.compile.filter {
+            it.name.startsWith('mongo-java-driver')
+        }.each {
+            from zipTree(it)
+        }
+    }
+
+}
+
+project(":streaming") {
+    archivesBaseName = "mongo-hadoop-streaming"
+
+    dependencies {
+        compile project(':core')
+        compile "org.apache.hadoop:hadoop-streaming:${hadoopVersion}"
+    }
+
+    jar {
+        from project(':core').sourceSets.main.output
+        from sourceSets.main.output
+
+        configurations.compile.filter {
+            it.name.startsWith('mongo-java-driver')
+        }.each {
+            from zipTree(it)
+        }
+    }
+
+    uploadArchives.onlyIf { hadoop_version != "1.0" }
+}
+
+project(":flume") {
+    dependencies {
+        compile project(':core')
+        compile "com.cloudera:flume-core:0.9.4-cdh3u3"
+    }
+}
+
+project(":examples/treasury_yield") {
+    uploadArchives.onlyIf { false }
+    dependencies {
+        compile project(':core')
+    }
+}
+
+project(":examples/enron") {
+    uploadArchives.onlyIf { false }
+    dependencies {
+        compile project(':core')
+    }
+}
+
+project(":examples/sensors") {
+    uploadArchives.onlyIf { false }
+    dependencies {
+        compile project(':core')
+    }
+}
+
+project(":testing") {
+    uploadArchives.onlyIf { false }
+    dependencies {
+        testCompile project(':core')
+        testCompile project(':examples/treasury_yield')
+        testCompile "commons-logging:commons-logging:1.1.3"
+        testCompile "com.fasterxml.jackson.core:jackson-core:2.3.2"
+    }
+}
+
+task installHadoop() << {
+    new File(hadoopHome).getParentFile().mkdirs()
+
+    if (!new File("${hadoopHome}").exists()) {
+        def url
+        switch (hadoop_version) {
+            case ("cdh4"):
+                url = "http://archive.cloudera.com/cdh4/cdh/4/hadoop-${hadoopVersion}.tar.gz"
+                break
+            default:
+                url = "http://archive.apache.org/dist/hadoop/common/hadoop-${hadoopVersion}/hadoop-${hadoopVersion}.tar.gz"
+                break
+        }
+        download {
+            src url
+            dest hadoopBinaries
+            onlyIfNewer true
+        }
+
+        println "Extracting hadoop ${hadoopVersion} download"
+        copy {
+            from(tarTree("${hadoopBinaries}/hadoop-${hadoopVersion}.tar.gz"))
+            into hadoopBinaries
+        }
+    }
+    copyJars()
+}
+
+task historicalYield(dependsOn: 'installHadoop') << {
+    exec() {
+        commandLine "mongoimport", "-d", "mongo_hadoop", "-c", "yield_historical.in", "--drop",
+                    "examples/treasury_yield/src/main/resources/yield_historical_in.json"
+    }
+
+    hadoop("examples/treasury_yield/build/libs/treasury_yield-${project(':core').version}-hadoop_${hadoop_version}.jar",
+           "com.mongodb.hadoop.examples.treasury.TreasuryYieldXMLConfig", [])
+}
+
+task sensorData(dependsOn: [installHadoop]) << {
+    hadoop("examples/sensors/build/libs/sensors-${project(':core').version}-hadoop_${hadoop_version}.jar",
+           "com.mongodb.hadoop.examples.sensors.Devices", [])
+
+    hadoop("examples/sensors/build/libs/sensors-${project(':core').version}-hadoop_${hadoop_version}.jar",
+           "com.mongodb.hadoop.examples.sensors.Logs", ["io.sort.mb=100"])
+}
+
+task enronEmails(dependsOn: 'installHadoop') << {
+    download {
+        src 'https://s3.amazonaws.com/mongodb-enron-email/enron_mongo.tar.bz2'
+        dest 'examples/data/'
+        onlyIfNewer true
+    }
+    if (!new File('examples/data/dump').exists()) {
+        println "extracting email data"
+        copy {
+            from(tarTree('examples/data/enron_mongo.tar.bz2'))
+            into 'examples/data'
+        }
+    }
+
+    exec() {
+        commandLine "mongorestore", "-v", "-d", "mongo_hadoop", "--drop", "examples/data/dump/enron_mail"
+    }
+
+    hadoop("examples/enron/build/libs/enron-${project(':core').version}-hadoop_${hadoop_version}.jar",
+           "com.mongodb.hadoop.examples.enron.EnronMail", ["mongo.input.split_size=64"])
+}
+
+def hadoop(jar, className, args) {
+
+    def line = ["${hadoopHome}/bin/hadoop",
+                "jar", jar, className,
+                //Split settings
+                "-Dmongo.input.split_size=8",
+                "-Dmongo.job.verbose=true",
+    ]
+    args.each {
+        line << "-D${it}"
+    }
+    println "Executing hadoop job:\n ${line.join(' \\\n\t')}"
+    def hadoopEnv = [:]
+    if (hadoop_version.startsWith("cdh")) {
+        hadoopEnv.MAPRED_DIR = 'share/hadoop/mapreduce2'
+    }
+    exec() {
+        environment << hadoopEnv
+
+        commandLine line
+    }
+}
+
+def copyJars() {
+    def hadoopLib
+    if (hadoop_version.startsWith("1")) {
+        hadoopLib = "${hadoopHome}/lib"
+    } else {
+        hadoopLib = "${hadoopHome}/share/hadoop/common"
+    }
+
+    copy {
+        from "core/build/libs/mongo-hadoop-core-${project(':core').version}-hadoop_${hadoop_version}.jar"
+        into hadoopLib
+        rename { "mongo-hadoop-core.jar" }
+    }
+    download {
+        src 'http://central.maven.org/maven2/org/mongodb/mongo-java-driver/2.11.4/mongo-java-driver-2.11.4.jar'
+        dest "${hadoopLib}/mongo-java-driver.jar"
+        onlyIfNewer true
+    }
+}
+
+def mapReduceDeps(it, version) {
+    ["core", "common", "shuffle", "app", "jobclient"].each { module ->
+        it.compile("org.apache.hadoop:hadoop-mapreduce-client-${module}:${version}") {
+            exclude group: "org.apache.hadoop", module: "hadoop-hdfs"
+        }
+    }
+}
+
+apply from: 'gradle/maven-deployment.gradle'
+//apply from: 'testing/treasury-tests.gradle'

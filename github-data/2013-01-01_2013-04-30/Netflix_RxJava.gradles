@@ -1,0 +1,763 @@
+ext.githubProjectName = 'RxJava'
+
+apply from: file('gradle/convention.gradle')
+apply from: file('gradle/maven.gradle')
+//apply from: file('gradle/check.gradle')
+apply from: file('gradle/license.gradle')
+apply from: file('gradle/release.gradle')
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+        jcenter()
+    }
+
+    apply from: file('gradle/buildscript.gradle'), to: buildscript
+}
+
+allprojects {
+    apply plugin: 'eclipse'
+    apply plugin: 'idea'
+    repositories { 
+        mavenLocal()
+        mavenCentral()
+    }
+}
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'shadow'
+    group = "com.netflix.rxjava"
+
+    // make 'examples' use the same classpath
+    configurations { 
+        examplesCompile.extendsFrom compile
+        examplesRuntime.extendsFrom runtime
+        perfCompile.extendsFrom compile
+        perfRuntime.extendsFrom runtime
+    }
+
+
+    tasks.withType(Javadoc).each {
+        it.classpath = sourceSets.main.compileClasspath
+    }
+
+    sourceSets {
+        examples
+        perf {
+            compileClasspath += sourceSets.main.output
+        }
+    }
+
+    tasks.build { 
+        //include 'examples' in build task
+        dependsOn(examplesClasses)
+        dependsOn(perfClasses)
+    }
+
+    task perfJar(type: Jar, dependsOn: perfClasses) {
+        from sourceSets.perf.output + sourceSets.main.output
+    }
+
+    dependencies {
+        perfCompile 'org.openjdk.jmh:jmh-core:0.5.3'
+        perfCompile 'org.openjdk.jmh:jmh-generator-annprocess:0.5.3'
+        //perfCompile project
+    }
+
+    artifacts {
+        perfRuntime perfJar
+    }
+    
+    eclipse {  
+        classpath {
+            plusConfigurations += configurations.perfCompile
+            
+            downloadSources = true
+            downloadJavadoc = true
+        }
+    }
+
+    idea {
+        module {
+            scopes.PROVIDED.plus  += configurations.perfCompile
+            scopes.PROVIDED.minus += configurations.compile
+        }
+    }
+
+    /**
+     * By default: Run without arguments this will execute all benchmarks that are found (can take a long time).
+     *
+     * Optionally pass arguments for custom execution. Example:
+     *
+     *  ../gradlew benchmarks '-Pjmh=-f 1 -tu ns -bm avgt -wi 5 -i 5 -r 1 .*OperatorSerializePerf.*'
+     *
+     * To see all options:
+     *
+     *  ../gradlew benchmarks '-Pjmh=-h'
+     */
+    task benchmarks(type: JavaExec) {
+        main = 'org.openjdk.jmh.Main'
+        classpath = sourceSets.perf.runtimeClasspath + sourceSets.main.output
+        maxHeapSize = "512m"
+
+        if (project.hasProperty('jmh')) {
+            args(jmh.split(' '))
+        } else {
+            //args '-h' // help output
+            args '-f' // fork
+            args '1'
+            args '-tu' // time unit
+            args 'ns'
+            args '-bm' // benchmark mode
+            args 'avgt'
+            args '-wi' // warmup iterations
+            args '5'
+            args '-i' // test iterations
+            args '5'
+            args '-r' // time per execution in seconds
+            args '5'
+            //args '-prof' // profilers
+            //args 'HS_GC' // HotSpot (tm) memory manager (GC) profiling via implementation-specific MBeans
+            //args 'HS_RT' // HotSpot (tm) runtime profiling via implementation-specific MBeans
+            //args 'HS_THR' // HotSpot (tm) threading subsystem via implementation-specific MBeans
+            //args 'HS_COMP' // HotSpot (tm) JIT compiler profiling via implementation-specific MBeans
+            //args 'HS_CL' // HotSpot (tm) classloader profiling via implementation-specific MBeans
+            //args 'STACK' // Simple and naive Java stack profiler
+            args '.*OperatorSerializePerf.*' // for running only a specific test
+        }
+    }
+
+    shadow {
+        classifier = "benchmarks"
+        includeDependenciesFor = ["runtime", "perfRuntime"]
+
+        transformer(com.github.jengelman.gradle.plugins.shadow.transformers.ManifestResourceTransformer) {
+            mainClass = "org.openjdk.jmh.Main"
+        }
+    }
+
+    shadowJar.dependsOn perfJar
+}
+
+project(':rxjava-core') {
+    sourceSets.test.java.srcDir 'src/test/java'
+}
+apply plugin: 'clojure'
+apply plugin: 'osgi'
+
+dependencies {
+    compile project(':rxjava-core')
+
+    // clojure
+    compile 'org.clojure:clojure:1.4.+'
+
+    // this should be 'compile' for the 'examples' module ... can't figure that out right now so making 'provided'
+    provided 'clj-http:clj-http:0.6.4' // https://clojars.org/clj-http
+}
+
+tasks.compileExamplesClojure.classpath = files(tasks.compileClojure.destinationDir) + tasks.compileClojure.classpath
+
+/*
+ * Clojure
+ */
+aotCompile = true
+warnOnReflection = false
+
+buildscript {
+  repositories { maven { url "http://clojars.org/repo" } }
+  dependencies { classpath "clojuresque:clojuresque:1.5.8" }
+}
+
+repositories {
+  clojarsRepo()
+}
+
+/*
+ * Add Counterclockwise and include 'provided' dependencies
+ */
+eclipse {
+  project {
+    natures "ccw.nature"
+  }
+}
+
+tasks.clojureTest {
+    classpath = classpath + configurations.provided
+}
+
+jar {
+    manifest {
+        name = 'rxjava-clojure'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+
+
+////////////////////////////////////////////////////////////////////////////////
+// Define a task that runs an nrepl server. The port is given with the nreplPort
+// property:
+//    gradlew nrepl -PnreplPort=9999
+// or put the property in ~/.gradle/gradle.properties
+
+def nreplPortValue = (project.hasProperty('nreplPort') && !project.nreplPort.isEmpty()) ? project.nreplPort : '9999'
+configurations { nrepl }
+dependencies { nrepl 'org.clojure:tools.nrepl:0.2.2' }
+task nrepl(type: JavaExec) {
+    classpath configurations.nrepl,
+              project.sourceSets.main.clojure.srcDirs,
+              project.sourceSets.test.clojure.srcDirs,
+              sourceSets.main.runtimeClasspath,
+              sourceSets.test.runtimeClasspath
+
+    main = "clojure.main"
+    args '--eval', "(ns gradle-nrepl (:require [clojure.tools.nrepl.server :refer (start-server stop-server)]))",
+         '--eval', "(println \"Starting nrepl server on port $nreplPortValue\")",
+         '--eval', "(def server (start-server :port $nreplPortValue))"
+}
+apply plugin: 'groovy'
+apply plugin: 'osgi'
+
+dependencies {
+    compile project(':rxjava-core')
+    compile 'org.codehaus.groovy:groovy-all:2.+'
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-groovy'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}apply plugin: 'osgi'
+
+repositories {
+    maven {
+        url 'http://deux.gemjars.org'
+    }
+    mavenCentral()
+}
+
+configurations {
+    rspec
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/spec/ruby'
+        }
+    }
+}
+
+dependencies {
+    compile project(':rxjava-core')
+    compile 'org.jruby:jruby:1.7+'
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+    rspec 'org.jruby:jruby-complete:1.7.4'
+    rspec 'org.rubygems:rspec:2.14.1'
+}
+
+/* // benjchristensen => commenting out until internal Netflix build system can handle ruby gems
+task(rspec, type: JavaExec) {
+    main 'org.jruby.Main'
+    classpath configurations.rspec + runtimeClasspath
+    args 'classpath:bin/rspec', 'src/spec/ruby'
+}
+
+tasks.build.dependsOn << 'rspec'
+*/
+
+jar {
+    manifest {
+        name = 'rxjava-jruby'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+buildscript {
+    repositories() {
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:0.6.1673'
+    }
+}
+
+apply plugin: 'kotlin'
+apply plugin: 'osgi'
+
+dependencies {
+    compile project(':rxjava-core')
+    compile 'org.jetbrains.kotlin:kotlin-stdlib:0.6.1673'
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-kotlin'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}apply plugin: 'scala'
+apply plugin: 'osgi'
+
+tasks.withType(ScalaCompile) {
+	scalaCompileOptions.fork = true
+    scalaCompileOptions.unchecked = true
+    scalaCompileOptions.setAdditionalParameters(['-feature'])
+
+    configure(scalaCompileOptions.forkOptions) {
+        memoryMaximumSize = '1g'
+        jvmArgs = ['-XX:MaxPermSize=512m']
+    }
+}
+
+sourceSets { 
+	main { 
+        scala { 
+            srcDir 'src/main/scala'
+        }
+    }
+    test { 
+        scala { 
+            srcDir 'src/main/scala'
+            srcDir 'src/test/scala'
+            srcDir 'src/examples/scala'
+            //srcDir 'src/examples/java'
+        }
+        java.srcDirs = []
+    }
+    examples {
+        // It seems that in Gradle, the dependency "compileScala depends on compileJava" is hardcoded,
+        // or at least not meant to be removed.
+        // However, compileScala also runs javac at the very end, so we just add the Java sources to
+        // the scala source set:
+        scala { 
+            srcDir 'src/examples/scala'
+            //srcDir 'src/examples/java'
+        }
+        java.srcDirs = []
+    }
+}
+
+dependencies {
+    compile 'org.scala-lang:scala-library:2.10.+'
+
+    compile project(':rxjava-core')
+    
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+    provided 'org.scalatest:scalatest_2.10:1.9.1'
+}
+
+tasks.compileScala {  
+    classpath = classpath + (configurations.compile + configurations.provided)
+}
+
+tasks.compileExamplesScala {  
+    classpath = classpath + files(compileScala.destinationDir) + (configurations.compile + configurations.provided)
+}
+
+// Add RxJava core to Scaladoc input:
+// tasks.scaladoc.source(project(':rxjava-core').tasks.getByPath(':rxjava-core:compileJava').source)
+// println("-------")
+// println(tasks.scaladoc.source.asPath)
+
+task test(overwrite: true, dependsOn: testClasses) << {
+    ant.taskdef(name: 'scalatest',
+            classname: 'org.scalatest.tools.ScalaTestAntTask',
+            classpath: configurations.provided.asPath + ':' + configurations.testRuntime.asPath + ":" + compileScala.destinationDir
+    )
+    ant.scalatest(runpath: sourceSets.test.output.classesDir,
+            haltonfailure: 'true',
+            fork: 'false') {reporter(type: 'stdout')}
+}
+
+jar {
+    manifest {
+        name = 'rxjava-scala'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,!org.scalatest.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+tasks.build.doLast {
+  def androidHome = System.getenv("ANDROID_HOME")
+  if (project.hasProperty('buildAndroidSamples') && !androidHome.isEmpty()) {
+    println("Android SDK detected at $androidHome, running samples build")
+    project.exec {
+      workingDir '../rxjava-android-samples'
+
+      commandLine "./gradlew", "clean", "packageDebug"
+    }
+  }
+}// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.9.+'
+    }
+}
+
+allprojects {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+}
+apply plugin: 'android'
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion "19.0.0"
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 19
+        versionCode 1
+        versionName "1.0"
+    }
+    buildTypes {
+        release {
+            runProguard false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.txt'
+        }
+    }
+}
+
+// make sure we always compile against the latest version of RxJava
+def rootProjectProperties = new Properties()
+file("../../../gradle.properties").withReader { reader ->
+    rootProjectProperties.load(reader)
+    properties.putAll(rootProjectProperties)
+}
+
+dependencies {
+    def rxjVersion = rootProjectProperties.get("version")
+    compile "com.netflix.rxjava:rxjava-android:$rxjVersion"
+    compile fileTree(dir: 'libs', include: ['*.jar'])
+}
+apply plugin: 'osgi'
+
+dependencies {
+    compile project(':rxjava-core')
+    provided 'com.google.android:android:4.0.1.2'
+    provided 'com.google.android:support-v4:r7'
+
+    // testing
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+    provided 'org.robolectric:robolectric:2.2'
+}
+
+javadoc {
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Android Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava Android</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-android'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+
+test {
+    testLogging {
+        exceptionFormat "full"
+        events "started"
+        displayGranularity 2
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    compile 'org.apache.httpcomponents:httpclient:4.3'
+    compile 'org.apache.httpcomponents:httpcore-nio:4.3'
+    compile 'org.apache.httpcomponents:httpasyncclient:4.0'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-apache-http'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-async-util'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-computation-expressions'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+javadoc {
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-debug'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+javadoc {
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-math'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_7
+
+configurations {
+    quasar
+}
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+    // maven { url "https://oss.sonatype.org/content/repositories/snapshots" }
+}
+
+dependencies {
+    compile project(':rxjava-core')
+    compile 'co.paralleluniverse:quasar-core:0.5.0'
+    quasar  'co.paralleluniverse:quasar-core:0.5.0'
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-quasar'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+    }
+}
+
+tasks.withType(Test) {
+    jvmArgs "-javaagent:${configurations.quasar.iterator().next()}" // =vdmc (verbose, debug, allow monitors, check class)
+}
+
+tasks.withType(JavaExec) {
+    jvmArgs "-javaagent:${configurations.quasar.iterator().next()}" // =vdmc (verbose, debug, allow monitors, check class)
+}
+
+test {
+    // excluding out all tests until they stop hanging CloudBees
+    excludes = ['**/**']
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    testCompile project(":rxjava-core").sourceSets.test.output 
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+javadoc {
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-string'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    compile project(':rxjava-core')
+    provided 'junit:junit-dep:4.10'
+    provided 'org.mockito:mockito-core:1.8.5'
+}
+
+javadoc {
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-swing'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Fragment-Host', 'com.netflix.rxjava.core'
+    }
+}
+apply plugin: 'maven'
+apply plugin: 'osgi'
+
+sourceCompatibility = JavaVersion.VERSION_1_6
+targetCompatibility = JavaVersion.VERSION_1_6
+
+dependencies {
+    testCompile 'junit:junit-dep:4.10'
+    testCompile 'org.mockito:mockito-core:1.8.5'
+}
+
+javadoc {
+    // we do not want the org.rx.operations package include
+    exclude '**/operations/**'
+
+    options {
+        doclet = "org.benjchristensen.doclet.DocletExclude"
+        docletpath = [rootProject.file('./gradle/doclet-exclude.jar')]
+        stylesheetFile = rootProject.file('./gradle/javadocStyleSheet.css')
+        windowTitle = "RxJava Javadoc ${project.version}"
+    }
+    options.addStringOption('top').value = '<h2 class="title" style="padding-top:40px">RxJava</h2>'
+}
+
+jar {
+    manifest {
+        name = 'rxjava-core'
+        instruction 'Bundle-Vendor', 'Netflix'
+        instruction 'Bundle-DocURL', 'https://github.com/Netflix/RxJava'
+        instruction 'Import-Package', '!org.junit,!junit.framework,!org.mockito.*,*'
+        instruction 'Eclipse-ExtensibleAPI', 'true'
+    }
+}

@@ -1,0 +1,217 @@
+<!-- $Id: build.xml,v 1.45 2008-10-19 08:53:25 hzeller Exp $ -->
+<project name="HenPlus" default="compile" basedir=".">
+     <!-- installation properties -->
+     <property name="prefix"               value="/usr" />
+     <property name="DESTDIR"              value="/" />
+
+     <!-- properties -->
+     <property name="version"              value="0.9.8" />
+     <property name="title"                value="Yay Labor Day" />
+     <property name="src"                  value="src" />
+     <property name="bin"                  value="bin" />
+     <property name="lib"                  value="lib" />
+     <property name="build"                value="build" />
+     <property name="javadoc"              value="javadoc" />
+     <property name="classes"              value="${build}/classes" />
+     <property name="build.compiler"       value="modern" />
+     <property name="build.compiler.emacs" value="true" />
+     <property name="tarbase"              value="henplus-${version}" />
+
+     <!-- libs -->
+     <property name="commons-cli" value="commons-cli-1.2.jar"/>
+     <property name="libreadline-java" value="libreadline-java-0.8.0.jar"/>
+
+     <path id="compile.classpath">
+        <fileset dir="${lib}">
+           <include name="${libreadline-java}"/>
+           <include name="${commons-cli}"/>
+        </fileset>
+     </path>
+
+     <path id="run.classpath">
+        <path refid="compile.classpath" />
+        <pathelement path="${classes}" />
+     </path>
+
+     <target name="server">
+        <taskdef name="ant-server" classname="net.sweetohm.ant.server.ServerTask">
+           <classpath>
+              <pathelement location="${lib}/build/sat-0.7.jar" />
+           </classpath>
+        </taskdef>
+
+        <ant-server/>
+     </target>
+
+     <target name="prepare">
+        <tstamp>
+          <format property="COMPTIME" pattern="MMMM dd yyyy HH:mm"/>
+        </tstamp>
+        <mkdir dir="${build}" />
+        <mkdir dir="${classes}" />
+     </target>
+
+     <target name="Version.java">
+       <filter token="HENPLUS_VERSION" value="${version}"/>
+       <filter token="HENPLUS_VERSION_TITLE" value="${title}"/>
+       <filter token="COMPILE_TIME" value="${COMPTIME}"/>
+       <copy file="${src}/henplus/Version.java.in"
+             tofile="${src}/henplus/Version.java"
+             filtering="yes"/>
+     </target>
+
+     <target name="compile" depends="prepare,Version.java" 
+	     description="compile it">
+        <javac debug="true" source="1.5" target="1.5" 
+	       encoding="ISO-8859-1" srcdir="${src}" destdir="${classes}">
+           <classpath refid="compile.classpath" />
+        </javac>
+     </target>
+
+     <target name="run" depends="compile">
+        <java classname="henplus.HenPlus">
+           <classpath refid="run.classpath" />
+        </java>
+     </target>
+     
+     
+     <target name="jar" depends="compile" description="make jar">
+        <jar jarfile="${build}/henplus.jar" manifest="manifest.txt">
+           <fileset dir="${classes}">
+              <include name="**/*.class"/>
+           </fileset>
+        </jar>
+     </target>
+
+     <target name="install" depends="jar" 
+             description="create jar and install it">
+	  <mkdir dir="${DESTDIR}/${prefix}/bin" />
+	  <mkdir dir="${DESTDIR}/${prefix}/share/henplus" />
+          <copy file="${bin}/henplus"
+	        todir="${DESTDIR}/${prefix}/bin/" />
+	  <chmod file="${DESTDIR}/${prefix}/bin/henplus" perm="ugo+x" />
+          <copy file="${build}/henplus.jar"
+	        todir="${DESTDIR}/${prefix}/share/henplus" />
+          <copy file="${lib}/${commons-cli}"
+	        todir="${DESTDIR}/${prefix}/share/henplus" />
+     </target>
+
+     <target name="henplus.spec" description="create RPM spec file">
+       <filter token="HENPLUS_VERSION" value="${version}"/>
+       <copy file="henplus.spec.in"
+             tofile="henplus.spec"
+             filtering="yes"/>
+     </target>
+
+    <target name="javadoc"
+            description="Create Javadoc-API documentation">
+       <mkdir  dir="${javadoc}"/>
+       <javadoc destdir="${javadoc}/api"
+	        doctitle="HenPlus ${version}"
+	        bottom="&#169; 1997..2006 Henner Zeller">
+
+         <fileset dir="." defaultexcludes="yes">
+           <include name="src/henplus/**/*.java" />
+         </fileset>
+         <link href="http://java.sun.com/j2se/1.4/docs/api/"/>
+       </javadoc>
+     </target>
+
+     <target name="dist" depends="clean,henplus.spec"
+	     description="create distribution tar and spec file">
+       <mkdir dir="${tarbase}" />
+       <copy todir="${tarbase}">
+          <fileset dir=".">
+            <include name="${src}/**" />
+            <include name="${bin}/**" />
+            <include name="${lib}/*.jar"/>
+            <include name="${lib}/build/*.jar"/>
+            <include name="doc/**" />
+	    <include name="debian/*" />
+            <include name="build.xml" />
+            <include name="henplus.spec.in" />
+            <include name="henplus.spec" />
+            <include name="manifest.txt" />
+	    <include name="README"/>
+	    <include name="COPYING"/>
+	    <exclude name="**/CVS" />
+	    <exclude name="**/*.class" />
+	    <!--exclude name="**/*.jar" /-->
+	    <exclude name="**/*~" />
+          </fileset>
+       </copy>
+
+       <tar tarfile="${tarbase}.tar">
+         <tarfileset dir="." mode="755">
+           <include name="${tarbase}/bin/henplus" />
+	   <include name="${tarbase}/debian/rules" />
+         </tarfileset>
+         <tarfileset dir=".">
+           <include name="${tarbase}/**"/>
+           <exclude name="${tarbase}/bin/henplus" />
+	   <exclude name="${tarbase}/debian/rules" />
+           <exclude name="${tarbase}/bin/" />
+         </tarfileset>
+       </tar>
+       <gzip zipfile="${tarbase}.tar.gz" src="${tarbase}.tar" />
+
+       <delete file="${tarbase}.tar" />
+       <delete dir="${tarbase}"/>
+     </target>
+
+     <target name="check.rpmbuild" description="Tests whether the rpmbuild command is available on this system. If so, the rpmbuild.executable property is set to 'rpmbuild', default it's 'rpm'.">
+         <property name="rpmbuild.executable" value="rpm" />
+         <property environment="env"/>
+         <available property="rpmbuild.executable" value="rpmbuild"
+                    file="rpmbuild" type="file" filepath="${env.PATH}" />
+     </target>
+
+     <target name="rpm" depends="dist,check.rpmbuild" description="create distribution rpm">
+        <mkdir dir="${build}" />
+        <mkdir dir="${build}/SPECS" />
+        <mkdir dir="${build}/SOURCES" />
+        <mkdir dir="${build}/BUILD" />
+        <mkdir dir="${build}/SRPMS" />
+        <mkdir dir="${build}/RPMS" />
+	<copy file="${tarbase}.tar.gz" todir="${build}/SOURCES" />
+	<copy file="henplus.spec" todir="${build}/SPECS" />
+        <!--rpm specFile="henplus.spec" topDir="${build}" command="-ba" /-->
+        <!--echo message="${rpmbuild.executable}"/-->
+        <exec dir="${build}" executable="${rpmbuild.executable}">
+            <arg line="-ba"/>
+            <arg line="--define '_topdir ${basedir}/${build}'"/>
+            <arg line="SPECS/henplus.spec"/>
+        </exec>
+     </target>
+
+     <target name="deb" depends="dist" description="create distribution debian package">
+        <echo>
+	  ** Make sure, that the current version is written to the
+	  ** changelog.
+	</echo>
+        <mkdir dir="${build}/debian" />
+	<copy  file="${tarbase}.tar.gz" todir="${build}/debian"/>
+	<gunzip src="${build}/debian/${tarbase}.tar.gz"/>
+	<untar src="${build}/debian/${tarbase}.tar" dest="${build}/debian"/>
+	<!-- for some stupid reason, the mode is not set appropriately.. -->
+	<chmod perm="755">
+	    <fileset dir="${build}/debian">
+	        <include name="${tarbase}/bin/henplus" />
+	        <include name="${tarbase}/debian/rules" />
+            </fileset>
+        </chmod>
+	<exec dir="${build}/debian/${tarbase}" executable="dpkg-buildpackage">
+	   <arg line="-rfakeroot"/>
+	</exec>
+     </target>
+
+     <target name="clean" description="remove">
+        <delete file="${tarbase}.tar" />
+        <delete file="${tarbase}.tar.gz" />
+        <delete file="${src}/henplus/Version.java" />
+        <delete file="henplus.spec" />
+        <delete dir="${tarbase}"/>
+        <delete dir="${classes}"/>
+        <delete dir="${build}"/>
+     </target>
+</project>

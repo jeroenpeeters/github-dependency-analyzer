@@ -1,0 +1,146 @@
+subprojects {
+    repositories {
+        // Maven repo with viewpagerindicator: https://github.com/Goddchen/mvn-repo
+        maven { url 'https://github.com/Goddchen/mvn-repo/raw/master/' }
+        mavenCentral()
+        mavenLocal()
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.9';
+}
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.7.+'
+    }
+}
+apply plugin: 'android'
+
+dependencies {
+    compile 'com.android.support:support-v4:18.0.+'
+
+    compile "ch.acra:acra:4.4.0"                 // Android Crash Reporter
+    compile "org.slf4j:slf4j-android:1.6.1-RC1"  // Android Logging API
+
+    compile "commons-codec:commons-codec:1.8"
+
+    // These provide support for older android devices
+    compile "com.actionbarsherlock:actionbarsherlock:4.4.0@aar"
+    compile "com.actionbarsherlock:viewpagerindicator:2.4.1"
+
+    // We need the weechat-relay library for connecting to weechat    
+    compile(project(':weechat-relay')) {
+        // Exclude this because slf4j-android is a superset of this
+        exclude group: 'org.slf4j', module:'slf4j-api'
+    }
+}
+
+android {
+    compileSdkVersion 17
+    buildToolsVersion "17"
+
+    defaultConfig {
+        versionCode 12
+        versionName "0.08"
+
+        minSdkVersion 8
+        targetSdkVersion 17
+    }
+
+    signingConfigs {
+	releasePlayConfig
+	devPlayConfig
+    }
+
+    // Setup a bit of buildconfiguration
+    buildTypes {
+        // Debug version, only ever used locally
+        debug {
+            packageNameSuffix ".debug"
+            versionNameSuffix "-debug"
+            buildConfigField "String", "VERSION_BANNER", "\""+versionBanner()+"\""
+            buildConfigField "String", "BLAH", "\"true\""
+        }
+
+        // These are the real releases in the Google Play Store
+        release {
+            buildConfigField "String", "VERSION_BANNER", "\""+versionBanner()+"\""
+	        signingConfig signingConfigs.releasePlayConfig
+        }
+
+        // Development releases in the Google Play Store(signed same as the cloudbees site)
+	devrelease.initWith(buildTypes.release)
+        devrelease {
+            packageNameSuffix ".dev"
+            versionNameSuffix "-dev"
+	        signingConfig signingConfigs.devPlayConfig
+        }
+    }
+}
+
+// Load properties from the user's local gradle.properties file(for both release and "dev" release builds)
+if (project.hasProperty('devStorefile') &&
+    project.hasProperty('devStorePassword') &&
+    project.hasProperty('devKeyAlias') &&
+    project.hasProperty('devKeyPassword')) {
+    android.signingConfigs.devPlayConfig.storeFile = file(devStorefile)
+    android.signingConfigs.devPlayConfig.storePassword = devStorePassword
+    android.signingConfigs.devPlayConfig.keyAlias = devKeyAlias
+    android.signingConfigs.devPlayConfig.keyPassword = devKeyPassword
+} else {
+    project.logger.warn('WARN: Set the values devStorefile, devStorePassword, devKeyAlias, and devKeyPassword in ~/.gradle/gradle.properties to sign the release.')
+    android.buildTypes.devrelease.signingConfig = null
+}
+
+if (project.hasProperty('releaseStorefile') &&
+    project.hasProperty('releaseStorePassword') &&
+    project.hasProperty('releaseKeyAlias') &&
+    project.hasProperty('releaseKeyPassword')) {
+    android.signingConfigs.releasePlayConfig.storeFile = file(releaseStorefile)
+    android.signingConfigs.releasePlayConfig.storePassword = releaseStorePassword
+    android.signingConfigs.releasePlayConfig.keyAlias = releaseKeyAlias
+    android.signingConfigs.releasePlayConfig.keyPassword = releaseKeyPassword
+} else {
+    project.logger.warn('WARN: Set the values releaseStorefile, releaseStorePassword, releaseKeyAlias, and releaseKeyPassword in ~/.gradle/gradle.properties to sign the release.')
+    android.buildTypes.release.signingConfig = null
+}
+
+
+String versionBanner() {
+    return 'git describe'.execute().text.trim()
+}
+
+
+
+apply plugin: 'java'
+apply plugin: 'application'
+
+dependencies {
+    compile project(':weechat-relay')
+    compile 'org.slf4j:slf4j-api:1.6.6'
+
+    runtime 'org.slf4j:slf4j-simple:1.6.6'
+}
+
+mainClassName="com.ubergeek42.relayexample.RelayExample"
+
+apply plugin: 'java'
+apply from:'https://raw.github.com/breskeby/gradleplugins/master/emmaPlugin/emma.gradle'
+
+dependencies {
+    emma "emma:emma:2.1.5320"
+    emma "emma:emma_ant:2.1.5320"
+    compile 'org.slf4j:slf4j-api:1.6.6'
+    compile 'com.jcraft:jsch:0.1.+'
+
+    testCompile 'junit:junit:4.+'
+}
+
+compileJava {
+    sourceCompatibility = 1.6
+    targetCompatibility = 1.6
+}

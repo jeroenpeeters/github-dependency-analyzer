@@ -1,0 +1,229 @@
+<project basedir=".">
+	<property file="build.properties" />
+	<property name="dashboard" value="../Dashboard/app" />
+	<property name="ui-strings" value="src/locale" />
+	<property name="app_dir" location="war/WEB-INF" />
+	<property name="app_classes_dir" location="${app_dir}/classes" />
+	<property name="app_lib_dir" location="${app_dir}/lib" />
+
+	<import file="${sdk.dir}/config/user/ant-macros.xml" />
+
+	<path id="project.classpath">
+		<pathelement location="src" />
+		<pathelement path="${app_classes_dir}" />
+
+		<fileset dir="${app_lib_dir}">
+			<include name="**/*.jar" />
+		</fileset>
+
+		<pathelement path="${gwtlibs.dir}/gwt-user.jar" />
+		<pathelement path="${gwtlibs.dir}/gwt-dev.jar" />
+		<pathelement path="${gwtlibs.dir}/validation-api-1.0.0.GA-sources.jar" />
+		<pathelement path="${gwtlibs.dir}/validation-api-1.0.0.GA.jar" />
+
+		<fileset dir="${sdk.dir}/lib">
+			<include name="shared/**/*.jar" />
+		</fileset>
+		<fileset dir="war">
+			<include name="poi-3.8-20120326.jar" />
+			<include name="poi-ooxml-3.8-20120326.jar" />
+			<include name="poi-ooxml-schemas-3.8-20120326.jar" />
+			<include name="velocity-1.6.2-dep.jar" />
+			<include name="geoapi-2.3-M1.jar" />
+			<include name="geoapi-pending-2.3-M1.jar" />
+			<include name="gt-api-2.6.5.jar" />
+			<include name="gt-main-2.6.5.jar" />
+			<include name="gt-metadata-2.6.5.jar" />
+			<include name="jts-1.11-serializable-indexes.jar" />
+			<include name="gt-api-2.6.5.jar" />
+			<include name="jcommon-1.0.16.jar" />
+			<include name="jfreechart-1.0.13.jar" />
+
+		</fileset>
+		<fileset dir="gwtlibs">
+			<include name="gwt-dnd-3.0.1.jar" />
+			<include name="gwt-maps.jar" />
+			<include name="gwt-visualization.jar" />
+		</fileset>
+		<pathelement location="build" />
+
+	</path>
+
+	<target name="check-files">
+	    <available file="build.properties" property="properties.file.exists" />
+	</target>
+
+	<target name="init" depends="check-files">
+	    <fail message="build.properties file doesn't exist">
+	        <condition>
+	            <not>
+	                <isset property="properties.file.exists"/>
+	            </not>
+	        </condition>
+	    </fail>
+	</target>
+
+	<target name="checkForBuiltFiles" description="Checks for any compiled files">
+		<available file="${app_classes_dir}" type="dir" property="built_classes_exist" />
+	</target>
+
+    <target name="clean" depends="checkForBuiltFiles" if="built_classes_exist" description="Clears any compiled files">
+	<delete dir="${app_classes_dir}" />
+	<delete dir="gwt-unitCache" />
+    </target>
+
+	<target name="copyconfig" depends="init" description="Copies the server configuration files">
+		<fail message="[config] property path must be present, e.g.: ant copyconfig -Dconfig=/path/to/config/folder">
+			<condition>
+				<not>
+					<isset property="config" />
+				</not>
+			</condition>
+		</fail>
+		<copy file="${config}/UploadConstants.properties" tofile="src/org/waterforpeople/mapping/app/gwt/client/util/UploadConstants.properties" overwrite="true" verbose="true" />
+		<copy file="${config}/appengine-web.xml" tofile="${app_dir}/appengine-web.xml" overwrite="true" verbose="true" />
+		<copy file="${config}/survey.properties" tofile="../WFPMapping/device/survey/res/raw/survey.properties" overwrite="true" verbose="true"/>
+		<copy file="${config}/portal.gwt.xml" tofile="src/org/waterforpeople/mapping/portal/portal.gwt.xml" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/surveyentry.gwt.xml" tofile="src/org/waterforpeople/mapping/surveyentry/surveyentry.gwt.xml" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/index.html" tofile="war/index.html" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/images/wsp_logo.gif" tofile="war/images/wfp-logo.gif" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/images/wsp_logo.jpg" tofile="war/images/wfp_flow.jpg" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/images/wsp_logo.jpg" tofile="war/images/wfp_flow_header.jpg" overwrite="true" verbose="true" failonerror="false"/>
+		<copy file="${config}/placemarkExternalMap.vm" tofile="war/placemarkExternalMap.vm" overwrite="true" verbose="true" failonerror="false"/>
+		<loadfile property="app.id" srcFile="${app_dir}/appengine-web.xml">
+			<filterchain>
+				<linecontains>
+					<contains value="application"/>
+                		</linecontains>
+				<tokenfilter>
+				<replaceregex pattern="(&lt;|&lt;/)application&gt;" replace="" flags="gi"/>
+				<trim/>
+				<ignoreblank/>
+				</tokenfilter>
+				<striplinebreaks/>
+			</filterchain>
+		</loadfile>
+	</target>
+
+	<target name="copyjars" depends="init" description="Copies the App Engine JARs to the WAR.">
+		<copy todir="${app_lib_dir}" flatten="true" verbose="true">
+			<fileset dir="${sdk.dir}/lib/user">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="${sdk.dir}/lib/opt/user/appengine-endpoints">
+				<include name="**/*.jar" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="GWTcompile" depends="copyjars,compile">
+		<fail message="GWT compilation is deprecated. You can force it with: ant GWTCompile -Dforce=yes">
+			<condition>
+				<not>
+					<isset property="force" />
+				</not>
+			</condition>
+		</fail>
+		<java classpathref="project.classpath" classname="com.google.gwt.dev.Compiler" fork="true" failonerror="true" maxmemory="512m">
+			<arg value="org.waterforpeople.mapping.portal.portal" />
+			<arg value="com.gallatinsystems.framework.gwt.PortletFramework" />
+			<arg value="org.waterforpeople.mapping.surveyentry.surveyentry" />
+		</java>
+	</target>
+
+	<target name="compile" depends="copyjars" description="Compiles Java source and copies other source files to the WAR.">
+		<mkdir dir="${app_classes_dir}" />
+		<copy todir="${app_classes_dir}">
+			<fileset dir="src">
+				<exclude name="**/*.java" />
+			</fileset>
+		</copy>
+		<javac source="1.6" target="1.6" encoding="UTF8" srcdir="src" destdir="${app_classes_dir}"
+			   classpathref="project.classpath" debug="on" includeantruntime="false" />
+	</target>
+
+	<target name="translate" depends="compile" description="Generates the en.properties file from handlebars template and JS files">
+    <java classname="services.TranslationGenerator" failonerror="true">
+      <arg line="${dashboard} ${ui-strings}" />
+      <classpath refid="project.classpath" />
+    </java>
+  </target>
+
+	<target name="datanucleusenhance" depends="init, compile" description="Performs JDO enhancement on compiled data classes.">
+		<enhance failonerror="true" api="JDO">
+			<classpath>
+				<pathelement path="${sdk.dir}/lib/appengine-tools-api.jar" />
+				<pathelement path="${app_classes_dir}" />
+				<fileset dir="${app_lib_dir}" includes="*.jar" />
+			</classpath>
+			<fileset dir="${app_classes_dir}/com/gallatinsystems" includes="**/domain/*.class" />
+			<fileset dir="${app_classes_dir}/org/waterforpeople/mapping" includes="**/domain/*.class" />
+		</enhance>
+	</target>
+
+	<target name="runserver" depends="datanucleusenhance" description="Starts the development server.">
+		<dev_appserver war="war">
+			<options>
+				<arg value="--jvm_flag=-Ddatastore.default_high_rep_job_policy_unapplied_job_pct=50"/>
+			</options>
+		</dev_appserver>
+	</target>
+
+	<target name="update" depends="compile,datanucleusenhance" description="Uploads the application to App Engine.">
+		<fail message="[pwd] property is not present, e.g.: ant update -Dpwd=/path/to/password.txt">
+			<condition>
+				<not>
+					<isset property="pwd" />
+				</not>
+			</condition>
+		</fail>
+
+		<delete failonerror="false">
+			<fileset dir="${app_dir}/deploy" includes="**/*.symbolMap"/>
+		</delete>
+
+		<delete file="war/PlacemarksNewLook.vm" failonerror="false" />
+
+		<echo message="Rebuilding Dashboard..." />
+
+		<exec dir="../Dashboard" executable="rake" failonerror="true">
+		    <env key="RAKEP_MODE" value="production" />
+		    <arg value="build" />
+		</exec>
+
+		<exec dir="../" executable="git" outputproperty="app.version">
+			<arg value="describe"/>
+		</exec>
+
+		<replace file="./war/admin/js/app.js" token="__VERSION__" value="${app.version}" />
+
+		<exec dir="." executable="sh">
+		    <arg value="-c" />
+		    <arg value="${sdk.dir}/bin/appcfg.sh --enable_jar_splitting --email=${email.address} --passin &lt; ${pwd} update war" />
+		</exec>
+
+		<exec dir="." executable="sh">
+		    <arg value="-c" />
+		    <arg value="${sdk.dir}/bin/appcfg.sh backends war update" />
+		</exec>
+	</target>
+
+	<target name="update_indexes" depends="datanucleusenhance" description="Uploads just the datastore index configuration to App Engine.">
+		<appcfg action="update_indexes" war="war" />
+	</target>
+
+	<target name="rollback" depends="datanucleusenhance" description="Rolls back an interrupted application update.">
+		<appcfg action="rollback" war="war" />
+	</target>
+
+	<target name="request_logs" description="Downloads log data from App Engine for the application.">
+		<appcfg action="request_logs" war="war">
+			<options>
+				<arg value="--num_days=5" />
+			</options>
+			<args>
+				<arg value="logs.txt" />
+			</args>
+		</appcfg>
+	</target>
+</project>

@@ -1,0 +1,2314 @@
+<!--
+  Internal build script for Carrot2 Command Line Interface. 
+  Please use the 'cli' target from the main build script to build them.
+  -->
+<project name="carrot2.cli" default="basedir.check">
+  <!-- Base dir determined from the build file location -->
+  <dirname property="carrot2.cli.basedir"
+           file="${ant.file.carrot2.cli}" />
+
+  <!-- Master build base dir -->
+  <property name="carrot2.master.basedir"
+            location="${carrot2.cli.basedir}/../../" />
+
+  <!-- Import common macros -->
+  <import file="${carrot2.master.basedir}/etc/ant/common/basedir.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/readme.xml" />
+  <import file="${carrot2.cli.basedir}/etc/ant/cli.xml" />
+
+  <!-- CLI build dirs -->
+  <property name="cli.dir" location="tmp/cli" />
+  <property name="cli.lib.dir" location="${cli.dir}/lib" />
+
+  <!-- CLI dist file name base -->
+  <property name="cli.dist.name" value="${carrot2.cli.base}-${carrot2.version}" />
+  <property name="cli.dist.folder" value="${cli.dist.name}" />
+  <property name="cli.dist.zip" location="${cli.dir}/../${cli.dist.folder}.zip" />
+
+  <!--
+       Builds the CLI applications
+    -->
+  <target name="carrot2.cli.build" depends="basedir.check, carrot2.cli.jar">
+    <copy todir="${cli.dir}">
+      <fileset dir="${carrot2.cli.basedir}/etc">
+        <include name="*.cmd" />
+        <include name="*.sh" />
+        <include name="invoker.jar" />
+      </fileset>
+    </copy>
+
+    <mkdir dir="${cli.dir}/input" />
+    <copy todir="${cli.dir}/input">
+      <fileset dir="${carrot2.master.basedir}/applications/carrot2-dcs/examples/shared">
+        <include name="data-mining.xml" />
+        <include name="seattle.xml" />
+      </fileset>
+    </copy>
+
+    <mkdir dir="${cli.dir}/suites" />
+    <copy todir="${cli.dir}/suites">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-component-suites/suites" />
+    </copy>
+
+    <mkdir dir="${cli.dir}/resources" />
+    <copy todir="${cli.dir}/resources">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-util-text/src-resources" />
+    </copy>
+
+    <delete dir="${cli.dir}/classes" />
+  </target>
+
+  <!--
+       Builds the cli ZIP archive.
+    -->
+  <target name="carrot2.cli.dist" depends="carrot2.cli.dist.verify">
+    <zip destfile="${cli.dist.zip}" update="true">
+      <zipfileset dir="${carrot2.master.basedir}" prefix="${cli.dist.folder}">
+        <include name="carrot2.LICENSE" />
+        <include name="carrot2.CONTRIBUTORS" />
+      </zipfileset>
+    </zip>
+  </target>
+  
+  <target name="carrot2.cli.dist.prepare" depends="basedir.check, carrot2.cli.build">
+    <carrot2.readme readme.src="${carrot2.cli.basedir}/etc/readme.txt"
+                    readme.dest="${cli.dir}/readme.txt" />
+                      
+    <zip destfile="${cli.dist.zip}">
+      <zipfileset dir="${cli.dir}" prefix="${cli.dist.folder}">
+        <exclude name="**/*.sh" />
+      </zipfileset>
+      <zipfileset dir="${cli.dir}" prefix="${cli.dist.folder}" filemode="755">
+        <include name="**/*.sh" />
+      </zipfileset>
+    </zip>
+    <delete dir="${cli.dir}" failonerror="false" />
+  </target>
+
+  <target name="carrot2.cli.dist.verify" depends="carrot2.cli.dist.prepare">
+    <carrot2.cli.validate cli.dist.zip="${cli.dist.zip}"
+                          cli.dist.folder="${cli.dist.folder}"
+                          work.dir="${cli.dir}" />
+  </target>
+
+  
+  <target name="carrot2.cli.lib" depends="basedir.check, jar.mini.build">
+    <mkdir dir="${cli.lib.dir}" />
+  
+    <copy todir="${cli.lib.dir}">
+      <fileset file="${jar.dir}/carrot2-mini-${carrot2.version}.jar" />
+      <fileset dir="${carrot2.master.basedir}">
+        <patternset refid="lib.core.mini" />
+        <exclude name="lib/**/slf4j-nop*.jar" />
+        <include name="lib/**/slf4j-log4j*.jar" />
+        <include name="lib/org.kohsuke.args4j/args4j*.jar" />
+        <include name="lib/org.kohsuke.args4j/args4j*.LICENSE" />
+        <include name="lib/org.simpleframework.xml/simple-xml*.jar" />
+        <include name="lib/org.simpleframework.xml/simple-xml*.LICENSE" />
+        <include name="lib/org.carrot2.attributes/attributes-binder-*.jar" />
+        <include name="lib/org.apache.log4j/log4j*.jar" />
+        <include name="lib/org.apache.log4j/log4j*.LICENSE" />
+        <include name="lib/org.apache.lucene/lucene-analyzers-*.jar" />
+        <include name="lib/morfologik/*.jar" />
+        <include name="lib/morfologik/*.LICENSE" />
+      </fileset>
+      <mapper type="flatten" />
+    </copy>
+  </target>
+    
+  <!-- 
+       Builds the CLI classes file.
+    -->
+  <target name="carrot2.cli.jar" depends="basedir.check, carrot2.cli.lib">
+    <mkdir dir="${cli.dir}/classes" />
+
+    <javac srcdir="${carrot2.cli.basedir}/src" destdir="${cli.dir}/classes">
+      <classpath>
+        <fileset dir="${cli.lib.dir}" />
+        <fileset dir="${carrot2.master.basedir}">
+          <include name="lib/org.carrot2.attributes/attributes-processor-*.jar" />
+        </fileset>
+      </classpath>
+    </javac>
+
+    <copy tofile="${cli.dir}/classes/log4j.xml"
+          file="${carrot2.master.basedir}/core/carrot2-util-log4j/src/log4j-cli.xml" />
+
+    <jar destfile="${cli.lib.dir}/${cli.dist.name}.jar">
+      <fileset dir="${cli.dir}/classes" excludes="**/*.java" />
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-util-log4j/src">
+        <include name="appender-*" />
+        <include name="filters-*" />
+      </fileset>
+      <manifest>
+        <attribute name="Main-Class" value="org.carrot2.cli.batch.BatchApp" />
+      </manifest>
+    </jar>
+  	
+  	<delete dir="${cli.dir}/classes" />
+  </target>
+
+  <target name="carrot2.cli.clean" depends="basedir.check">
+    <delete dir="${cli.dir}" />
+  </target>
+
+  <target name="basedir.check">
+    <basedir-check main-basedir="${basedir}" internal-basedir="${carrot2.cli.basedir}" />
+  </target>
+</project>
+<!--
+  Internal build script for Carrot2 Document Clustering Server. 
+  Please use the 'dcs' target from the main build script to build the DCS.
+  -->
+<project name="carrot2.dcs" default="basedir.check">
+  <!-- Base dir determined from the build file location -->
+  <dirname property="carrot2.dcs.basedir"
+           file="${ant.file.carrot2.dcs}" />
+
+  <!-- Master build base dir -->
+  <property name="carrot2.master.basedir"
+            location="${carrot2.dcs.basedir}/../../" />
+
+  <!-- Import common macros -->
+  <import file="${carrot2.master.basedir}/etc/ant/common/basedir.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/webtest.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/readme.xml" />
+
+  <!-- DCS build dirs -->
+  <property name="dcs.dir" location="tmp/dcs" />
+
+  <!-- DCS WAR -->
+  <property name="dcs.war.dir" location="${dcs.dir}/war" />
+  <property name="dcs.war.base.name" value="${carrot2.dcs.base}" />
+ 
+  <!-- Webtest results -->
+  <property name="dcs.webtest.report.dir" location="tmp/dcs-webtest-report" />
+  
+  <!-- DCS dist file name base -->
+  <property name="dcs.dist.base" value="${carrot2.dcs.base}" />
+
+  <!-- DCS-specific dependencies -->
+  <patternset id="lib.dcs">
+    <include name="applications/carrot2-dcs/lib/*.jar" />
+    <include name="applications/carrot2-dcs/lib/*.LICENSE" />
+    <include name="lib/org.apache.log4j/*.LICENSE" />
+    <include name="lib/org.apache.log4j/*.jar" />
+    <include name="lib/org.slf4j/slf4j.LICENSE" />
+    <include name="lib/org.slf4j/slf4j-log4j12-*.jar" />
+    <include name="lib/org.slf4j/slf4j-api-*.jar" />
+  </patternset>
+
+  <!--
+       Builds the DCS (includes bootstrap class and embedded jetty).
+    -->
+  <target name="carrot2.dcs.build" depends="basedir.check, carrot2.dcs.war">
+    <mkdir dir="${dcs.dir}/lib" />
+    <copy todir="${dcs.dir}/lib">
+      <fileset dir="${carrot2.master.basedir}/lib">
+        <include name="**/jetty*.jar" />
+        <include name="**/jetty*.LICENSE" />
+        <include name="**/args4j*.jar" />
+        <include name="**/args4j*.LICENSE" />
+        <include name="**/servlet-api*.jar" />
+        <include name="**/log4j-*.jar" />
+        <include name="**/log4j-*.LICENSE" />
+      	<include name="org.slf4j/slf4j-log4j12-*.jar" />
+      	<include name="org.slf4j/slf4j-api-*.jar" />
+      	<include name="org.slf4j/*.LICENSE" />
+      </fileset>
+      <mapper type="flatten" />
+    </copy>
+
+    <copy tofile="${dcs.dir}/classes/log4j.xml"
+          file="core/carrot2-util-log4j/src/log4j-dcs.xml" />
+    <jar jarfile="${dcs.dir}/lib/carrot2-dcs-bootstrap-${carrot2.version}.jar">
+      <fileset dir="${dcs.dir}/classes">
+        <include name="**/DcsApp*.class" />
+        <include name="**/Log4jJettyLog.class" />
+        <include name="**/*.xml" />
+        <exclude name="**/*.java" />
+      </fileset>
+      <fileset dir="core/carrot2-util-log4j/src">
+        <include name="appender-*" />
+        <include name="filters-*" />
+      </fileset>
+    </jar>
+
+    <copy todir="${dcs.dir}">
+      <fileset dir="${carrot2.dcs.basedir}/etc/distribution">
+        <include name="dcs.*" />
+        <include name="invoker.jar" />
+      </fileset>
+    </copy>
+
+    <copy todir="${dcs.dir}">
+      <fileset dir="${carrot2.dcs.basedir}">
+        <include name="examples/**" />
+		    <exclude name="**/tmp/**" />
+		    <exclude name="**/obj/**" />
+		    <exclude name="**/*.suo" />
+      </fileset>
+      <fileset dir="${carrot2.dcs.basedir}/etc/distribution">
+        <include name="readme.txt" />
+      </fileset>
+      <fileset dir="${carrot2.master.basedir}">
+        <include name="carrot2.LICENSE" />
+        <include name="carrot2.CONTRIBUTORS" />
+      </fileset>
+    </copy>
+
+    <delete dir="${dcs.dir}/classes" />
+  </target>
+
+  <!--
+       Builds the DCS ZIP archive.
+    -->
+  <target name="carrot2.dcs.dist" depends="basedir.check, carrot2.dcs.build, carrot2.dcs.webtest.war">
+    <carrot2.readme readme.src="${carrot2.dcs.basedir}/etc/distribution/readme.txt"
+                    readme.dest="${dcs.dir}/readme.txt" />
+    <zip destfile="${dcs.dir}/../${dcs.dist.base}-${carrot2.version}.zip">
+      <zipfileset dir="${dcs.dir}" prefix="${dcs.dist.base}-${carrot2.version}">
+        <exclude name="**/*.sh" />
+      </zipfileset>
+      <zipfileset dir="${dcs.dir}" prefix="${dcs.dist.base}-${carrot2.version}" filemode="755">
+        <include name="**/*.sh" />
+      </zipfileset>
+    </zip>
+    <delete dir="${dcs.dir}" failonerror="false" />
+  </target>
+
+  <!-- 
+       Runs webtests against some deployed DCS.
+    -->
+  <target name="carrot2.dcs.webtest.localhost" depends="basedir.check, carrot2.common.webtest.deployed.check">
+    <webtest-deployed webtest.tests.dir="${carrot2.dcs.basedir}/webtest"
+                      webtest.report.dir="${dcs.webtest.report.dir}" 
+                      webtest.basepath="/" />
+  </target>
+  
+  <!-- 
+       Deploys DCS WAR file and runs webtests against it.
+    -->
+  <target name="carrot2.dcs.webtest.war" depends="basedir.check, carrot2.common.webtest.war.prepare"
+          if="webtest.war.resources.available">
+    <webtest-war cargo.tmp.dir="tmp/cargo"
+                 webtest.port="8384"
+                 war.path="${dcs.war.dir}/${dcs.war.base.name}.war"
+                 war.base.name="${dcs.war.base.name}"
+                 webtest.tests.dir="${carrot2.dcs.basedir}/webtest"
+                 webtest.report.dir="${dcs.webtest.report.dir}" />
+  </target>
+    
+  <!-- 
+       Builds the DCS war file.
+    -->
+  <target name="carrot2.dcs.war" depends="basedir.check, jar, lib.flattened">
+    <!-- Add DCS-specific JARs -->
+  	<property name="dcs.lib.dir" location="${dcs.dir}/lib-tmp" />
+    <copy todir="${dcs.lib.dir}">
+      <fileset dir="${carrot2.master.basedir}">
+        <patternset refid="lib.dcs" />
+      </fileset>
+      <mapper type="flatten"/>
+    </copy>
+
+    <mkdir dir="${dcs.dir}/war" />
+    <mkdir dir="${dcs.dir}/classes" />
+
+    <javac srcdir="${carrot2.dcs.basedir}/src" destdir="${dcs.dir}/classes">
+      <classpath refid="lib.classpath" />
+      <classpath path="${jar.dir}/carrot2-core-${carrot2.version}.jar" />
+    </javac>
+
+    <copy tofile="${dcs.dir}/classes/log4j.xml"
+          file="core/carrot2-util-log4j/src/log4j-dcs.xml" />
+
+    <war destfile="${dcs.war.dir}/${dcs.war.base.name}.war"
+         webxml="${carrot2.dcs.basedir}/web/WEB-INF/web.xml">
+      <fileset dir="${carrot2.dcs.basedir}/web">
+        <exclude name="WEB-INF" />
+      </fileset>
+
+      <zipfileset prefix="WEB-INF/suites" dir="${carrot2.master.basedir}/core/carrot2-component-suites/suites">
+        <include name="algorithm-*.xml" />
+        <include name="source-*.xml" />
+        <include name="suite-dcs.xml" />
+      </zipfileset>
+      <zipfileset prefix="WEB-INF/resources" 
+      	          dir="${carrot2.master.basedir}/core/carrot2-util-text/src-resources" />
+
+      <lib dir="${lib.flattened}">
+      	<exclude name="**/slf4j-*" />
+      	<exclude name="**/carrot2-mini*.jar" />
+      	<exclude name="**/carrot2-core-sources*.jar" />
+      	<exclude name="**/commons-collections*" />
+      	<exclude name="**/commons-io*" />
+      </lib>
+      <lib dir="${dcs.lib.dir}" />
+
+      <classes dir="${dcs.dir}/classes">
+        <exclude name="**/*.java" />
+      </classes>
+      <classes dir="${carrot2.dcs.basedir}/src">
+        <include name="**/*.xml" />
+        <exclude name="**/*.java" />
+      </classes>
+      <classes dir="core/carrot2-util-log4j/src">
+        <include name="appender-*" />
+        <include name="filters-*" />
+      </classes>
+    </war>
+
+  	<delete dir="${dcs.lib.dir}" />
+  </target>
+
+  <!-- Copies the runtime resources to the compiled classes directory. -->
+  <target name="carrot2.dcs.resources.test" depends="basedir.check">
+    <mkdir dir="${build.dir.tests}" />
+
+    <copy todir="${build.dir.tests}" includeemptydirs="false">
+      <fileset dir="applications">
+        <include name="carrot2-dcs/src/**/*.xml" />
+      </fileset>
+      <regexpmapper from="^.*src(-resources)?(.*)$$" to="\2" />
+    </copy>
+  </target>
+
+  <target name="carrot2.dcs.clean" depends="basedir.check">
+    <delete dir="${dcs.dir}" />
+  </target>
+
+  <target name="basedir.check">
+    <basedir-check main-basedir="${basedir}" internal-basedir="${carrot2.dcs.basedir}" />
+  </target>
+</project>
+<!--
+     A build script that checks whether Carrot2 API examples compile
+     and run without exceptions.
+  -->
+<project name="carrot2.api" default="carrot2.api.test">
+  <!--
+       Builds the examples.
+    -->
+  <target name="carrot2.api.build">
+    <!--
+         Dependencies (JARs) required for clustering directly fed documents.
+      -->
+    <path id="libs.required">
+      <fileset dir="lib/required" includes="**/*.jar" />
+    </path>
+
+    <!--
+         Dependencies (JARs) required for both fetching documents using
+         document sources and clustering them using one of Carrot2 algorithms.
+      -->
+    <path id="libs.all">
+      <fileset dir="lib" includes="**/*.jar" />
+    </path>
+
+    <mkdir dir="tmp/classes" />
+
+    <javac srcdir="examples" destdir="tmp/classes" source="1.6" target="1.6" encoding="UTF-8">
+      <classpath>
+        <fileset dir=".">
+          <include name="**/*.jar" />
+        </fileset>
+      </classpath>
+    </javac>
+
+    <copy todir="tmp/classes">
+      <fileset dir="examples/">
+        <exclude name="*.java" />
+      </fileset>
+    </copy>
+  </target>
+
+  <!-- Runs selected classes -->
+  <target name="carrot2.api.test" depends="carrot2.api.build, carrot2.api.test.only">
+  </target>
+
+  <target name="carrot2.api.test.maven">
+    <path id="libs.all">
+      <fileset dir="${basedir}/target">
+        <include name="carrot2*.jar" />
+        <include name="dependency/*.jar" />
+      </fileset>
+    </path>
+    <path id="libs.required" refid="libs.all" />
+
+    <antcall target="carrot2.api.test.only" inheritrefs="true" />
+  </target>
+
+  <!-- Runs selected classes (invoked from Maven too). -->
+  <target name="carrot2.api.test.only">
+    <!-- Run some example classes -->
+    <run.example classname="org.carrot2.examples.source.ExampleCustomComponents" dependencies="libs.all" />
+    <run.example classname="org.carrot2.examples.research.ClusteringQualityBenchmark" dependencies="libs.all" />
+    <run.example classname="org.carrot2.examples.clustering.ClusteringDocumentList" dependencies="libs.required" />
+    <run.example classname="org.carrot2.examples.clustering.UsingCachingController" dependencies="libs.all" />
+    <run.example classname="org.carrot2.examples.clustering.UsingAttributes" dependencies="libs.all" />
+    <run.example classname="org.carrot2.examples.clustering.UsingComponentSuites" dependencies="libs.all" />
+    <run.example classname="org.carrot2.examples.clustering.UsingCustomLanguageModel" dependencies="libs.required" />
+    <run.example classname="org.carrot2.examples.clustering.UsingCustomLexicalResources" dependencies="libs.required" />
+    <run.example classname="org.carrot2.examples.core.LoadingAttributeValuesFromXml" dependencies="libs.required" />
+    <run.example classname="org.carrot2.examples.core.SavingAttributeValuesToXml" dependencies="libs.required" />
+
+    <!-- Create a simple Lucene index and run Lucene examples. -->
+    <delete dir="index" failonerror="true" includeemptydirs="true" />
+    <run.example classname="org.carrot2.examples.CreateLuceneIndex" dependencies="libs.all">
+      <arg file="index" />
+    </run.example>
+    <run.example classname="org.carrot2.examples.clustering.ClusteringDataFromLucene" dependencies="libs.all">
+      <arg file="index" />
+    </run.example>
+    <run.example classname="org.carrot2.examples.clustering.ClusteringDataFromLuceneWithCustomFields" dependencies="libs.all">
+      <arg file="index" />
+    </run.example>
+    <delete dir="index" failonerror="true" includeemptydirs="true" />
+  </target>
+
+  <!-- Removes all compiled binaries -->
+  <target name="clean">
+    <delete dir="tmp" />
+  </target>
+
+  <!-- A macro that runs the specified class. -->
+  <macrodef name="run.example">
+    <attribute name="classname" />
+    <attribute name="dependencies" />
+    <element name="args" implicit="true" optional="true" />
+
+    <sequential>
+      <echo>Running: @{classname}</echo>
+      <mkdir dir="tmp" />
+      <java fork="true" classname="@{classname}" logError="true" failonerror="true" output="tmp/@{classname}.log">
+        <classpath>
+          <pathelement location="tmp/classes" />
+          <path refid="@{dependencies}" />
+        </classpath>
+        <args />
+      </java>
+    </sequential>
+  </macrodef>
+</project>
+<!--
+  Internal build script for Carrot2 web application. 
+  Please use the 'webapp' target from the main build script to build the web application.
+  -->
+<project name="carrot2.webapp" default="basedir.check">
+  <!-- Base dir determined from the build file location -->
+  <dirname property="carrot2.webapp.basedir"
+           file="${ant.file.carrot2.webapp}" />
+
+  <!-- Master build base dir -->
+  <property name="carrot2.master.basedir"
+            location="${carrot2.webapp.basedir}/../../" />
+
+  <!-- Build number, provided by Bamboo -->
+  <property name="build.number" value="" />
+  <property file="${carrot2.master.basedir}/carrot2.version" />
+
+  <!-- Import common macros -->
+  <import file="${carrot2.master.basedir}/etc/ant/common/basedir.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/webtest.xml" />
+  <import file="${carrot2.webapp.basedir}/etc/ant/webapp.xml" />
+
+  <!-- Load properties from the master base dir, otherwise sprites generator will not work -->
+  <property file="${carrot2.master.basedir}/local.properties" />
+  
+  <!-- Customizable properties -->
+  <property name="jawr.properties.template.path"
+            location="${carrot2.webapp.basedir}/src/jawr.template.properties" />
+  <property name="config.xml.template.path"
+            location="${carrot2.webapp.basedir}/web/WEB-INF/webapp-config.template.xml" />
+  <property name="war.name.base" value="${carrot2.webapp.base}" />
+  
+
+  <!-- Webapp build dirs -->
+  <property name="webapp.dir" location="tmp/webapp" />
+  <property name="webapp.context.dir" location="${webapp.dir}/context" />
+  <property name="webapp.skins.dir" location="${webapp.context.dir}/skins${build.number}" />
+
+  <!-- Webtest parameters -->
+  <property name="cargo.dir" location="${carrot2.webapp.basedir}/tmp/cargo" />
+  <property name="webtest.report.dir" location="tmp/webapp-webtest-report" />
+
+  <!-- Webapp-specific dependencies -->
+  <patternset id="lib.webapp">
+    <include name="applications/carrot2-webapp/lib/*.jar" />
+    <include name="applications/carrot2-webapp/lib/*.LICENSE" />
+    <include name="lib/com.planetj.compression/*.jar" />
+    <include name="lib/com.planetj.compression/*.LICENSE" />
+    <include name="lib/org.apache.log4j/*.LICENSE" />
+    <include name="lib/org.apache.log4j/*.jar" />
+    <include name="lib/org.slf4j/slf4j-log4j12-*.jar" />
+  </patternset>
+
+  <!-- 
+       Build the web application WAR file.
+    -->
+  <target name="carrot2.webapp.build" depends="basedir.check, carrot2.webapp.prepare, carrot2.webapp.war, carrot2.webapp.cleanup" />
+
+  <!--
+       Assembles the web applications WAR file.
+    -->
+  <target name="carrot2.webapp.war" depends="basedir.check, lib.flattened">
+    <copy todir="${webapp.context.dir}/WEB-INF/lib">
+      <fileset dir="${carrot2.master.basedir}">
+        <patternset refid="lib.webapp" />
+      </fileset>
+      <mapper type="flatten"/>
+    </copy>
+
+    <war destfile="${webapp.dir}/${war.name.base}.war"
+         webxml="${carrot2.webapp.basedir}/web/WEB-INF/web.xml">
+
+      <fileset dir="${webapp.context.dir}" />
+      <fileset dir="${carrot2.webapp.basedir}/web">
+        <include name="index.html" />
+      </fileset>
+
+      <lib dir="${lib.flattened}">
+      	<exclude name="**/slf4j-nop-*.jar" />
+      	<exclude name="**/carrot2-mini*.jar" />
+      	<exclude name="**/carrot2-core-sources*.jar" />
+        <exclude name="**/commons-collections*" />
+        <exclude name="**/commons-io*" />
+      </lib>
+    </war>
+  </target>
+
+  <!--
+       Builds the webapp distribution. Currently, it just moves the WAR file
+       to the output directory, not sure it if makes sense to wrap it with an extra ZIP file.
+    -->
+  <target name="carrot2.webapp.dist" depends="basedir.check, carrot2.webapp.webtest.war">
+    <move file="${webapp.dir}/${war.name.base}.war" 
+    	tofile="${webapp.dir}/../${war.name.base}-${carrot2.version}.war" />
+    <delete dir="${webapp.dir}" failonerror="false" />
+  </target>
+
+  <!--
+       Performs a quick smoketest of the webapp WAR.
+    -->
+  <target name="carrot2.webapp.webtest.war" depends="basedir.check, carrot2.webapp.build, carrot2.common.webtest.war.prepare" 
+    if="webtest.war.resources.available">
+    <webtest-war cargo.tmp.dir="tmp/cargo"
+                 webtest.port="8382"
+                 war.path="${webapp.dir}/${war.name.base}.war"
+                 war.base.name="${war.name.base}"
+                 webtest.tests.dir="${carrot2.webapp.basedir}/webtest"
+                 webtest.report.dir="${webtest.report.dir}" />
+  </target>
+
+  <target name="carrot2.webapp.webtest.localhost" depends="basedir.check, carrot2.common.webtest.deployed.check"> 
+    <webtest-deployed webtest.tests.dir="${carrot2.webapp.basedir}/webtest"
+                      webtest.report.dir="${webtest.report.dir}" 
+                      webtest.basepath="/" />
+  </target>
+    
+  <!--
+       Prepares resources the web applications WAR file. "Build scripts "extending" this
+       script may want to add their own preparation steps (e.g. copy extra skins)
+       before they let this script assemble the complete WAR file.
+    -->
+  <target name="carrot2.webapp.prepare"
+          depends="basedir.check, carrot2.webapp.templates.war, carrot2.webapp.classes, carrot2.webapp.attributes.war, carrot2.webapp.suites, carrot2.webapp.resources, carrot2.webapp.skins, carrot2.webapp.sprites.war" />
+
+  <!--
+       Compiles the main web application classes and copies log4j configuration.
+    -->
+  <target name="carrot2.webapp.classes" depends="basedir.check, jar">
+    <mkdir dir="${webapp.context.dir}/WEB-INF/classes" />
+
+    <javac srcdir="${carrot2.webapp.basedir}/src" 
+    	  destdir="${webapp.context.dir}/WEB-INF/classes">
+      <classpath refid="lib.classpath" />
+      <classpath path="${jar.dir}/carrot2-core-${carrot2.version}.jar" />
+    </javac>
+
+    <copy todir="${webapp.context.dir}/WEB-INF/classes">
+        <fileset dir="${carrot2.webapp.basedir}/src">
+            <exclude name="**/*.java" />
+            <exclude name="*.properties" />
+            <exclude name="config.*" />
+        </fileset>
+    </copy>
+
+    <!-- Log4j specific config -->
+    <copy tofile="${webapp.context.dir}/WEB-INF/classes/log4j.xml"
+          file="${carrot2.master.basedir}/core/carrot2-util-log4j/src/log4j-webapp.xml" />
+
+    <copy todir="${webapp.context.dir}/WEB-INF/classes">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-util-log4j/src">
+        <include name="appender-*" />
+        <include name="filters-*" />
+      </fileset>
+    </copy>
+  </target>
+
+  <!--
+       Copies the default component suites. Can be disabled by "extending" build scripts.
+    -->
+  <target name="carrot2.webapp.suites" unless="carrot2.webapp.no-default-suites" depends="basedir.check">
+  	<mkdir dir="${webapp.context.dir}/WEB-INF/suites" />
+    <copy todir="${webapp.context.dir}/WEB-INF/suites">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-component-suites/suites">
+        <include name="algorithm-*.xml" />
+        <include name="source-*.xml" />
+        <include name="component-query-highlighter-attributes.xml" />
+        <include name="suite-webapp.xml" />
+      </fileset>
+    </copy>
+  </target>
+
+  <!--
+       Copies the default linguistic resources. Can be disabled by "extending" build scripts.
+    -->
+  <target name="carrot2.webapp.resources" unless="carrot2.webapp.no-default-resources" depends="basedir.check">
+    <mkdir dir="${webapp.context.dir}/WEB-INF/resources" />
+    <copy todir="${webapp.context.dir}/WEB-INF/resources">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-util-text/src-resources">
+        <include name="stopwords.*" />
+    	<include name="stoplabels.*" />
+      </fileset>
+    </copy>
+  </target>
+
+  <!--
+       Copies "source" skin files to a work directory.
+    -->
+  <target name="carrot2.webapp.skins" depends="basedir.check">
+    <mkdir dir="${webapp.skins.dir}" />
+    <copy todir="${webapp.skins.dir}">
+      <fileset dir="${carrot2.webapp.basedir}/web/skins" />
+    </copy>
+  </target>
+
+  <!--
+       Builds sprite images in the skins work directory.
+    -->
+  <target name="carrot2.webapp.sprites.war" if="smartsprites.home" depends="basedir.check, carrot2.webapp.skins">
+    <carrot2.webapp.sprite-skins webapp.skins.dir="${webapp.skins.dir}" />
+  </target>
+
+  <!--
+       Builds sprite images in the skin source directory.
+    -->
+  <target name="carrot2.webapp.sprites.eclipse" if="smartsprites.home" depends="basedir.check">
+    <carrot2.webapp.sprite-skins webapp.skins.dir="${carrot2.webapp.basedir}/web/skins" />
+  </target>
+
+  <!--
+       Processes all the files required to run the web application from Eclipse.
+    -->
+  <target name="carrot2.webapp.eclipse.setup" 
+          depends="basedir.check, carrot2.webapp.templates.eclipse, carrot2.webapp.sprites.eclipse, carrot2.webapp.attributes.eclipse" />
+
+  <!--
+       Substitutes variables in config.xml, jawr.properties and web.xml files.
+    -->
+  <macrodef name="carrot2.webapp.templates">
+    <attribute name="context.dir" />
+  	<attribute name="jawr.dir" default="@{context.dir}/WEB-INF/classes" />
+    <attribute name="template.caching" default="true" />
+    <sequential>
+      <carrot2.webapp.templates.config config.xml.template.path="${config.xml.template.path}"
+                                       target.dir="@{context.dir}/WEB-INF" />
+      
+      <carrot2.webapp.templates.jawr jawr.properties.template.path="${jawr.properties.template.path}"
+                                     target.dir="@{jawr.dir}" />
+
+      <copy file="${carrot2.webapp.basedir}/web/WEB-INF/web.template.xml"
+            tofile="${carrot2.webapp.basedir}/web/WEB-INF/web.xml"
+            overwrite="true">
+        <filterset refid="version.filterset" />
+        <filterset>
+          <filter token="TEMPLATE_CACHING" value="@{template.caching}" />
+        </filterset>
+      </copy>
+
+      <tstamp><format property="build.date" pattern="yyyy-MM-dd HH:mm" /></tstamp>
+        
+      <copy file="${carrot2.webapp.basedir}/web/skins/common/variables.template.xsl"
+            tofile="${carrot2.webapp.basedir}/web/skins/common/variables.xsl"
+            overwrite="true">
+        <filterset>
+          <filter token="VERSION_NUMBER" value="${carrot2.version}" />
+          <filter token="BUILD_NUMBER" value="${build.number}" />
+          <filter token="BUILD_DATE" value="${build.date}" />
+        </filterset>
+      </copy>
+    </sequential>
+  </macrodef>
+
+  <!--
+       Substitutes variables in config.xml, jawr.properties and web.xml files and saves
+       the results to the classes working dir.
+    -->
+  <target name="carrot2.webapp.templates.war" depends="basedir.check">
+    <carrot2.webapp.templates context.dir="${webapp.context.dir}" />
+  </target>
+
+  <!--
+       Substitutes variables in config.xml, jawr.properties and web.xml files and saves
+       the results to the source dirs.
+    -->
+  <target name="carrot2.webapp.templates.eclipse" depends="basedir.check">
+    <carrot2.webapp.templates 
+    	context.dir="${carrot2.webapp.basedir}/web"
+    	   jawr.dir="${carrot2.webapp.basedir}/src"
+        template.caching="false" />
+  </target>
+
+  <!--
+       Generates metadata files for webapp-specific document sources.
+    -->
+  <target name="carrot2.webapp.attributes.war" depends="basedir.check, compile">
+  </target>
+
+  <!--
+       Generates metadata files for webapp-specific document sources.
+    -->
+  <target name="carrot2.webapp.attributes.eclipse" depends="basedir.check, compile">
+  </target>
+
+  <!--
+       Removes temporary files left after building the web application.
+    -->
+  <target name="carrot2.webapp.cleanup" depends="basedir.check">
+    <delete dir="${webapp.skins.dir}" />
+  	<delete dir="${webapp.context.dir}" />
+  </target>
+
+  <!--
+       Removes the WAR file and all temporary files.
+    -->
+  <target name="carrot2.webapp.clean" depends="basedir.check">
+    <delete dir="${webapp.dir}" />
+  </target>
+
+  
+  <!--
+       Helps to debug XSLT compilation problems. For some reason, the embedded Xalan
+       does not output any information about the reason why the stylesheet doesn't compile.
+    -->
+  <target name="carrot2.webapp.xslt.debug">
+    <delete file="tmp/startup.html" />
+    <xslt style="${carrot2.webapp.basedir}/web/skins/fancy-compact/page.xsl"
+          in="${carrot2.webapp.basedir}/etc/xslt-debug/startup.xml" 
+          out="tmp/startup.html" />
+  </target>
+
+  <target name="basedir.check">
+    <basedir-check main-basedir="${basedir}" internal-basedir="${carrot2.webapp.basedir}" />
+  </target>
+</project>
+<!--
+  Builds main components and applications of Carrot2 3.x.
+  Carrot2 Workbench is built using a dedicated script.
+  -->
+<project name="carrot2.master" default="test">
+
+  <!-- Basedir relative to this build file -->
+  <dirname property="carrot2.master.basedir" file="${ant.file.carrot2.master}"/>
+
+  <tstamp>
+    <format property="build.tstamp" pattern="yyyyMMddHHmmss" />
+  </tstamp>
+
+  <!-- Tmp dir -->
+  <property name="tmp.dir" location="tmp" />
+  
+  <!-- Directory with flattened lib files, to be visible in imported scripts -->
+  <property name="lib.flattened" location="${tmp.dir}/lib" />
+
+  <!-- ant contrib -->
+  <taskdef resource="net/sf/antcontrib/antcontrib.properties">
+    <classpath>
+      <fileset dir="${carrot2.master.basedir}/etc/ant/" includes="ant-contrib-*.jar" />
+    </classpath>
+  </taskdef>
+  
+  <!-- Import local properties and version -->
+  <property name="local.properties" location="${carrot2.master.basedir}/local.properties" />
+  <property file="${local.properties}" />
+  <property file="${carrot2.master.basedir}/carrot2.version" />
+  <property file="${carrot2.master.basedir}/etc/version/carrot2.basenames" />
+
+  <!-- Import other build scripts. -->
+  <import file="${carrot2.master.basedir}/applications/carrot2-webapp/build.xml" />
+  <import file="${carrot2.master.basedir}/applications/carrot2-dcs/build.xml" />
+  <import file="${carrot2.master.basedir}/applications/carrot2-cli/build.xml" />
+  <import file="${carrot2.master.basedir}/doc/build.xml" />
+  <import file="${carrot2.master.basedir}/etc/maven/build.xml" />
+  <import file="${carrot2.master.basedir}/lib/org.carrot2.antlib/build.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/readme.xml" />
+  <import file="${carrot2.master.basedir}/etc/ant/common/rcp-defaults.xml" />
+  <import file="${carrot2.master.basedir}/workbench/build-conf/build.xml" />
+  
+  <!-- Derive version numbers for other components. -->
+  <import file="${carrot2.master.basedir}/etc/ant/common/derive-versions.xml" />
+  <derive-versions prefix="carrot2" />
+
+  <!-- Source code and lib dirs -->
+  <property name="core.dir" location="${carrot2.master.basedir}/core" />
+  <property name="applications.dir" location="${carrot2.master.basedir}/applications" />
+  <property name="workbench.dir" location="${carrot2.master.basedir}/workbench" />
+  <property name="lib.dir" location="${carrot2.master.basedir}/lib" />
+  <property name="etc.dir" location="${carrot2.master.basedir}/etc" />
+  <property name="dist.dir" location="${tmp.dir}/distribution" />
+
+  <!-- Output dirs -->
+  <property name="build.dir" location="${tmp.dir}/classes" />
+  <property name="build.dir.tests" location="${tmp.dir}/classes-test" />
+  <property name="build.dir.clover" location="${tmp.dir}/classes-clover" />
+  <property name="build.dir.findbugs" location="${tmp.dir}/classes-findbugs" />
+
+  <property name="jar.dir" location="${tmp.dir}/jar" />
+  <property name="api.dir" location="${tmp.dir}/api" />
+
+  <property name="javadoc.dir" location="${tmp.dir}/javadoc" />
+  <property name="tests.report.dir" location="${tmp.dir}/test-report" />
+  <property name="coverage.report.dir" location="${tmp.dir}/coverage-report" />
+  <property name="duplication.report.dir" location="${tmp.dir}/duplication-report" />
+  <property name="findbugs.report.dir" location="${tmp.dir}/findbugs-report" />
+  <property name="compatibility.report.dir" location="${tmp.dir}/compatibility-report" />
+
+  <!-- Java API distribution -->
+  <property name="api.dist.base" value="${carrot2.java-api.base}" />
+  
+  <!-- Extra tools the build can use if available -->
+  <condition property="clover.runwith" value="true">
+    <and>
+      <istrue value="${clover.enabled}" />
+      <available file="${clover.home}" type="dir" />
+    </and>
+  </condition>
+  <property name="clover.jar" location="${clover.home}/lib/clover.jar" />
+  <property name="pmd.jar" location="${pmd.home}/lib/" />
+  <property name="smartsprites.home" location="${carrot2.master.basedir}/etc/smartsprites" />
+
+  <property name="workbench.build.dir" location="tmp/workbench" />
+
+  <!-- Compilation presets. -->
+  <presetdef name="javac">
+      <javac deprecation="false" debug="true"
+          target="1.6" source="1.6"
+          encoding="UTF-8" includeantruntime="true" optimize="true"/>
+  </presetdef>
+
+  <!-- Source files to compile for tests. -->
+  <path id="src.test.folders">
+    <dirset dir="${core.dir}" includes="**/src-test" />
+    <dirset dir="${applications.dir}" includes="**/src">
+      <exclude name="carrot2-dcs/examples/java/**" />
+    </dirset>
+    <dirset dir="${applications.dir}" includes="**/src-test" />
+  </path>
+
+  <!-- Core source files to compile for production -->
+  <path id="src.core.folders">
+    <dirset dir="${core.dir}" includes="**/src" />
+  </path>
+
+  <!-- We'll be using Carrot2 internal Xalan for XSLTs -->
+  <path id="classpath.xalan">
+    <fileset dir="${carrot2.master.basedir}/lib/org.apache.xml" includes="*.jar" />
+  </path>
+
+  <presetdef name="xslt.xinclude">
+    <xslt>
+        <classpath refid="classpath.xalan" />
+        <factory name="org.apache.xalan.processor.TransformerFactoryImpl" />      
+        <sysproperty key="org.apache.xerces.xni.parser.XMLParserConfiguration"
+                 value="org.apache.xerces.parsers.XIncludeParserConfiguration" />
+    </xslt>
+  </presetdef>  
+
+  <!-- 
+      Source files for coverage calculation. The auto-generated code is excluded from the 
+      list. Also, if external API tests are disabled, the document source classes are
+      also excluded from coverage calculation.
+    -->
+  <fileset id="src.coverage" dir="${carrot2.master.basedir}">
+    <include name="core/**/*.java" />
+    <include name="applications/**/*.java" />
+    <exclude name="**/carrot2-examples/**/*.java" if="tests.externalservices" />
+    <exclude name="**/carrot2-source-etools/**/*.java" if="tests.externalservices" />
+    <exclude name="**/carrot2-source-google/**/*.java" if="tests.externalservices" />
+    <exclude name="**/carrot2-source-microsoft/**/*.java" if="tests.externalservices" />
+    <exclude name="**/carrot2-source-opensearch/**/*.java" if="tests.externalservices" />
+    <exclude name="**/carrot2-source-microsoft/src/com/microsoft/msnsearch/**/*.java" />
+    <exclude name="**/carrot2-core/src/org/carrot2/core/CachingController.java" />
+    <exclude name="**/carrot2-core/src/org/carrot2/core/SimpleController.java" />
+  </fileset>
+
+  <patternset id="lib.test">
+    <include name="core/**/*.jar" />
+    <include name="lib/**/*.jar" />
+    <exclude name="lib/org.slf4j/slf4j-nop*" />
+    <include name="applications/carrot2-dcs/**/*.jar" />
+    <include name="applications/carrot2-webapp/lib/*.jar" />
+    <include name="applications/carrot2-benchmarks/lib/*.jar" />
+  </patternset>
+
+  <!-- Excludes both JAR and LICENSE files -->
+  <patternset id="lib.core.excludes">
+    <exclude name="lib/**/easymock*" />
+    <exclude name="lib/**/fest-*" />
+    <exclude name="lib/**/servlet-api-*.jar" />
+    <exclude name="lib/**/jsr305*" />
+    <exclude name="lib/org.junit4*/**" />
+    <exclude name="lib/com.carrotsearch.randomizedtesting/**" />
+    <exclude name="lib/org.carrot2*/attributes-processor*.jar" />
+    <exclude name="lib/org.gargoylesoftware.htmlunit/**" />
+    <exclude name="lib/com.thoughtworks.qdox/**" />
+    <exclude name="lib/org.apache.velocity/**" />
+    <exclude name="lib/org.apache.oro/**" />
+    <exclude name="lib/com.planetj.compression/**" />
+    <exclude name="lib/org.eclipse.jetty/**" />
+    <exclude name="lib/org.kohsuke.args4j/**" />
+    <exclude name="lib/org.apache.xml/**" />
+    <exclude name="lib/com.google.guava/ri*" />
+    <exclude name="lib/org.slf4j/slf4j-log4j12*" />
+    <exclude name="lib/org.apache.log4j/*" />
+  </patternset>
+
+  <patternset id="lib.core">
+    <include name="lib/**/*.jar" />
+    <include name="core/carrot2-util-matrix/lib/*.jar" />
+    <patternset refid="lib.core.excludes" />
+  </patternset>
+
+  <patternset id="lib.core.mini">
+    <include name="lib/**/mahout-*.jar" />
+    <include name="lib/**/mahout.LICENSE" />
+    <include name="lib/**/colt.LICENSE" />
+    <include name="lib/**/commons-lang*" />
+    <include name="lib/**/guava*" />
+    <include name="lib/**/jackson*" />
+    <include name="lib/**/lucene-snowball*" />
+    <include name="lib/**/lucene.LICENSE" />
+    <include name="lib/**/hppc-*.jar" />
+    <include name="lib/**/hppc*.LICENSE" />
+
+    <include name="lib/**/slf4j-api*.jar" />
+    <include name="lib/**/slf4j-nop*.jar" />
+    <include name="lib/**/slf4j.LICENSE" />
+
+    <include name="lib/**/attributes-binder-*.jar" />
+  </patternset>
+
+  <patternset id="licenses.core">
+    <include name="lib/**/*.LICENSE" />
+    <patternset refid="lib.core.excludes" />
+    <include name="core/carrot2-util-matrix/lib/*.LICENSE" />
+  </patternset>
+
+  <!-- All JARs required by the core code -->
+  <fileset dir="${carrot2.master.basedir}" id="lib.core.files">
+    <patternset refid="lib.core" />
+  </fileset>
+
+  <fileset dir="${carrot2.master.basedir}" id="lib.test.files">
+    <patternset refid="lib.test" />
+  </fileset>
+
+  <path id="lib.classpath">
+    <fileset refid="lib.test.files" />
+  </path>
+
+  <!-- Extra classpath entries for unit tests -->
+  <path id="test.classpath">
+    <path refid="lib.classpath" />
+    <path location="${core.dir}/carrot2-component-suites/suites" />
+    <path location="${core.dir}/carrot2-util-log4j/src" />
+    <!-- Prepend classpath with clover-ified classes, if available. -->
+    <path location="${build.dir.clover}" />
+    <path location="${build.dir.tests}" />
+    <path location="${build.dir}" />
+    <path location="${clover.jar}" />
+  </path>
+
+  <!-- Path to the Carrot2 core JAR -->
+  <path id="core.jar.classpath">
+    <fileset dir="${jar.dir}">
+      <include name="carrot2-core-${carrot2.version}.jar" />
+    </fileset>
+  </path>
+  
+  <path id="javadoc.classpath">
+    <path refid="lib.classpath" />
+
+    <!-- Include our own compiled sources so that we can exclude some classes from javadoc
+         and still compile without warnings. -->
+    <path refid="core.jar.classpath" />
+    
+    <!-- Include ANT's JAR for ANT tasks. -->
+    <path location="${ant.home}/lib/ant.jar" />
+  </path>
+
+  <antversion property="ant.version" />
+  <fail message="Use ANT 1.8.2 or later. Your ANT is: ${ant.version}">
+    <condition><not><antversion atleast="1.8.2" /></not></condition>
+  </fail>
+
+  <!-- 
+    The property "ant.java.version" is not always correct, depending on used ANT version.
+    E.g. Java 8 is only detected in ANT 1.8.3+.
+   -->
+  <condition property="build.java.runtime" value="1.8">
+    <hasmethod classname="java.util.Collections" method="emptySortedSet"/>
+  </condition>
+  <condition property="build.java.runtime" value="1.7">
+    <hasmethod classname="java.lang.Throwable" method="getSuppressed"/>
+  </condition>
+  <!-- Assume it's 1.6+ -->
+  <property name="build.java.runtime" value="1.6" />
+
+
+  <!-- 
+       Output cleanup.
+    -->
+  <target name="clean" depends="coverage.clean" description="Cleans all build results">
+    <delete dir="${tmp.dir}" failonerror="false" />
+  </target>
+
+  <!-- 
+       Core.
+    -->
+  <target name="compile">
+    <mkdir dir="${build.dir}" />
+    <!-- Compile the rest. -->
+    <javac destdir="${build.dir}">
+      <src refid="src.core.folders" />
+      <classpath refid="lib.classpath" />
+    </javac>
+  </target>
+
+  <!-- Tests. -->
+  <target name="compile.test">
+    <mkdir dir="${build.dir.tests}" />
+
+    <javac destdir="${build.dir.tests}">
+      <src refid="src.test.folders" />
+      <classpath location="${build.dir}" />
+      <classpath refid="lib.classpath" />
+    </javac>
+  </target>
+
+  <!-- FindBugs. -->
+  <target name="compile.findbugs">
+    <mkdir dir="${build.dir.findbugs}" />
+
+    <javac destdir="${build.dir.findbugs}">
+      <src refid="src.core.folders" />  
+      <classpath refid="lib.classpath" />
+    </javac>
+
+    <javac destdir="${build.dir.findbugs}">
+      <src refid="src.test.folders" />
+      <classpath location="${build.dir.findbugs}" />
+      <classpath refid="lib.classpath" />
+    </javac>
+  </target>
+
+  <target name="jdiff" depends="jar" description="Create API report for jdiff">
+    <mkdir dir="${compatibility.report.dir}" />
+
+    <javadoc destdir="${compatibility.report.dir}"
+             encoding="utf-8"
+             access="protected"
+             failonerror="true"
+             useexternalfile="true">
+
+      <classpath refid="javadoc.classpath" />
+
+      <sourcefiles>
+        <fileset dir="core">
+          <include name="**/src/**/*.java" />
+          <exclude name="**/org/carrot2/util/xsltfilter/**" />
+          <exclude name="**/*Descriptor$*/**" />
+          <exclude name="**/*Descriptor*/**" />
+          <exclude name="**/org/carrot2/util/attribute/AttributeBinder**" />
+          <exclude name="**/org/carrot2/util/httpclient/**" />
+          <exclude name="**/org/carrot2/util/log4j/**" />
+          <exclude name="**/org/carrot2/util/simplexml/**" />
+          <exclude name="**/org/carrot2/util/factory/**" />
+          <include name="**/src/**/doc-files" />
+        </fileset>
+        <fileset dir="${build.dir}">
+          <include name="**/*.java" />
+        </fileset>
+      </sourcefiles>
+
+      <doclet name="jdiff.JDiff"
+             path="${carrot2.master.basedir}/etc/jdiff/jdiff.jar">
+        <param name="-apiname" value="carrot2-${carrot2.version}"/>
+        <param name="-apidir"  value="${compatibility.report.dir}"/>
+      </doclet>
+      
+      <arg value="-quiet" />
+    </javadoc>
+  </target>
+
+  <target name="jdiff-compare" depends="jdiff" description="Compare API against previous version">
+    <fail unless="version.previous">API compare syntax: jdiff-compare -Dversion.previous=x.y.z</fail>
+
+    <mkdir dir="${compatibility.report.dir}/report" />
+    <path id="jdiff.path">
+      <pathelement location="${carrot2.master.basedir}/etc/jdiff/jdiff.jar" />
+      <fileset dir="${carrot2.master.basedir}/lib/org.apache.xml">
+        <include name="*.jar" />
+      </fileset>
+    </path>
+
+    <javadoc destdir="${compatibility.report.dir}/report"
+             access="protected"
+             failonerror="true"
+             useexternalfile="true"
+             docletpathref="jdiff.path">
+
+      <classpath refid="javadoc.classpath" />
+
+      <doclet name="jdiff.JDiff">
+        <param name="-oldapi"     value="carrot2-${version.previous}"/>
+        <param name="-oldapidir"  value="${carrot2.master.basedir}/etc/jdiff" />
+        <param name="-javadocold" value="http://download.carrot2.org/stable/${version.previous}/javadoc/" />
+
+        <param name="-newapi"     value="carrot2-${carrot2.version}"/>
+        <param name="-newapidir"  value="${compatibility.report.dir}"/>
+        <param name="-javadocnew" value="http://download.carrot2.org/stable/${carrot2.version}/javadoc/" />
+      </doclet>
+
+      <sourcefiles>
+        <!-- Anything to make javadoc run. -->
+        <fileset dir="${build.dir}">
+          <include name="**/*.java" />
+        </fileset>
+      </sourcefiles>
+
+      <arg value="-quiet" />
+    </javadoc>
+  </target>
+
+  <!--
+       Core resources.
+    -->
+  <target name="resources">
+    <mkdir dir="${build.dir}" />
+
+    <copy todir="${build.dir}" includeemptydirs="false">
+      <fileset dir="${core.dir}">
+        <include name="**/src/**" />
+        <include name="**/src-resources/**" />
+        <exclude name="**/*.java" />
+        <exclude name="**/*.clover" />
+        <exclude name="**/carrot2-util-log4j/**" />
+      </fileset>
+      <regexpmapper from="^.*src(-resources)?(.*)$$" to="\2" />
+    </copy>
+  </target>
+
+  <!--
+       Test resources.
+    -->
+  <target name="resources.test"
+          depends="resources, carrot2.dcs.resources.test">
+    <mkdir dir="${build.dir.tests}" />
+
+    <copy todir="${build.dir.tests}" includeemptydirs="false">
+      <fileset dir="${core.dir}">
+        <include name="**/src-test/**" />
+        <exclude name="**/*.java" />
+        <exclude name="**/*.clover" />
+        <exclude name="**/carrot2-util-log4j/**" />
+      </fileset>
+      <fileset dir="${applications.dir}">
+        <include name="**/src-test/**" />
+      </fileset>
+      <regexpmapper from="^.*src(-test)?(.*)$$" to="\2" />
+    </copy>
+  </target>
+
+  <!-- 
+       Unit tests.
+    -->
+  <target name="test"
+          depends="compile, resources, compile.test, compile.coverage, resources.test"
+          description="Runs all unit tests.">
+    <delete dir="${tests.report.dir}" failonerror="false" />
+    <mkdir dir="${tests.report.dir}" />
+
+    <property name="jira.report.dir" location="${tmp.dir}/test-report-jira" />
+    <delete dir="${jira.report.dir}" failonerror="false" />
+    <mkdir dir="${jira.report.dir}" />
+
+    <condition property="carrot2.xml.feed.url.base.internal"
+               value="${carrot2.xml.feed.url.base}"
+               else="">
+      <isset property="carrot2.xml.feed.url.base" />
+    </condition>
+
+    <!-- junit4 -->
+    <taskdef resource="com/carrotsearch/junit4/antlib.xml" loaderref="junit4.loader">
+        <classpath>
+            <fileset dir="${carrot2.master.basedir}">
+                <include name="lib/org.junit4-ext/junit*.jar" />
+                <include name="lib/com.carrotsearch.randomizedtesting/*.jar" />
+            </fileset>
+        </classpath>
+    </taskdef>
+
+    <!-- defaults. -->
+    <property name="tests.nightly" value="false" />
+
+    <!-- Values: number of cpus to use, 'max' to use all available cores or 'auto' for sensible 
+         defaults depending on the number of cores. -->
+    <property name="tests.cpus" value="auto" />
+
+    <junit4 haltonfailure="false"
+            failureproperty="tests.failed"
+            dir="${tmp.dir}"
+            tempdir="${tmp.dir}"
+            parallelism="${tests.cpus}"
+            shuffleOnSlave="true"
+            leaveTemporary="false"
+    >
+        <listeners>
+            <report-text
+                showThrowable="true" 
+                showStackTraces="true" 
+                showOutput="onerror"
+
+                showStatusOk="false"
+                showStatusError="true"
+                showStatusFailure="true"
+                showStatusIgnored="true"
+
+                showSuiteSummary="true"
+
+                useSimpleNames="false"
+                maxClassNameColumns="110"
+            />
+
+            <!-- Store execution times-->
+            <report-execution-times file="${tmp.dir}/execution-hints.log" historyLength="5" /> 
+
+            <report-ant-xml dir="${jira.report.dir}">
+                <tokenfilter>
+                    <replaceregex pattern='\s+\{[^\}]*\}' 
+                          replace='' flags="gs" />
+                </tokenfilter>
+            </report-ant-xml>
+
+            <report-json file="${tests.report.dir}/index.html" />
+        </listeners>
+
+        <balancers>
+          <execution-times>
+            <file file="${carrot2.master.basedir}/etc/tests/carrot2-hints.log" />
+            <file file="${tmp.dir}/execution-hints.log" />
+        	</execution-times>
+        </balancers> 
+
+        <jvmarg value="-ea" />
+        
+        <classpath refid="test.classpath" />
+
+        <sysproperty key="tests.externalservices" value="${tests.externalservices}" />
+        <sysproperty key="tests.nightly"          value="${tests.nightly}" />
+
+        <sysproperty key="carrot2.xml.feed.url.base" value="${carrot2.xml.feed.url.base.internal}" />
+        <sysproperty key="dcs.test.web.dir.prefix" value="${applications.dir}/carrot2-dcs" />
+        <sysproperty key="log4j.configuration" value="log4j-tests.xml" />
+
+        <!-- Pass any command-line properties that may alter tests' behavior. -->
+        <syspropertyset>
+          <propertyref name="bing3.key" />
+          <propertyref name="tests.filter" />
+        </syspropertyset>
+
+        <fileset dir="${build.dir.tests}">
+          <include name="**/*Test.class" />
+        </fileset>
+    </junit4>
+
+    <fail message="Tests failed. See ${tests.report.dir} for report." if="tests.failed" />
+  </target>
+  
+  <!-- 
+       Code duplication detection.
+    -->
+  <path id="pmd.classpath">
+    <fileset dir="${pmd.home}/lib" includes="*.jar" />
+  </path>
+
+  <target name="pmd.tasks" if="pmd.home">
+    <taskdef name="cpd" classname="net.sourceforge.pmd.cpd.CPDTask" classpathref="pmd.classpath" />
+  </target>
+
+  <target name="duplication"
+          depends="pmd.tasks"
+          if="pmd.home"
+          description="Generates code duplication report">
+    <mkdir dir="${duplication.report.dir}" />
+    <cpd minimumTokenCount="100"
+         outputFile="${duplication.report.dir}/duplication.xml"
+         format="xml"
+         encoding="UTF-8">
+      <fileset dir="${core.dir}">
+        <include name="**/*.java" />
+        <exclude name="carrot2-source-microsoft/src/com/microsoft/msnsearch/**" />
+        <exclude name="**/.apt_generated/**" />
+      </fileset>
+      <fileset dir="${applications.dir}">
+        <include name="**/*.java" />
+        <exclude name="**/.apt_generated/**" />
+      </fileset>
+      <fileset dir="${workbench.dir}">
+        <include name="**/*.java" />
+      </fileset>
+    </cpd>
+    <xslt.xinclude in="${duplication.report.dir}/duplication.xml"
+          style="${etc.dir}/cpd/cpd2html.xsl"
+          out="${duplication.report.dir}/index.html" />
+  </target>
+
+  <!-- 
+       FindBugs static analysis.
+    -->
+  <target name="findbugs"
+          depends="compile.findbugs"
+          if="findbugs.home"
+          description="Generates FindBugs report">
+
+    <taskdef name="findbugs"
+             classname="edu.umd.cs.findbugs.anttask.FindBugsTask"
+             classpath="${findbugs.home}/lib/findbugs-ant.jar" />
+    <mkdir dir="${findbugs.report.dir}" />
+
+    <!-- Delete some classes we don't want to have analyzed -->
+    <delete>
+      <fileset dir="${build.dir.findbugs}">
+        <include name="com/microsoft/msnsearch/**/*.class" />
+        <include name="**/ExtendedWhitespaceTokenizerImpl.class" />
+      </fileset>
+    </delete>
+
+    <fileset id="lib.contents" dir="${carrot2.master.basedir}" includes="lib/**/*.jar" />
+    <property name="lib.jars" refid="lib.contents" />
+
+    <findbugs home="${findbugs.home}"
+              jvmargs="-Xmx512m"
+              excludeFilter="${etc.dir}/findbugs/excludes.xml"
+              effort="max"
+              output="xml:withMessages"
+              outputFile="${findbugs.report.dir}/findbugs.xml">
+      <auxClasspath path="${lib.jars}" />
+      <class location="${build.dir.findbugs}" />
+    </findbugs>
+
+    <xslt.xinclude in="${findbugs.report.dir}/findbugs.xml"
+          style="${etc.dir}/findbugs/findbugs2html.xsl"
+          out="${findbugs.report.dir}/index.html" />
+  </target>
+
+  <!-- 
+       Code coverage calculation.
+    -->
+  <target name="clover.tasks" if="clover.runwith">
+    <taskdef resource="cloverlib.xml" classpath="${clover.jar}" />
+  </target>
+
+  <target name="coverage.clean" depends="clover.tasks" if="clover.runwith">
+    <clover-clean />
+  </target>
+
+  <target name="coverage" if="clover.runwith" depends="clover.tasks">
+    <clover-report>
+      <current outfile="${coverage.report.dir}" title="Carrot2 ${carrot2.version}">
+        <format type="html" />
+      </current>
+    </clover-report>
+    <clover-report>
+      <current outfile="${coverage.report.dir}/coverage.xml" title="Carrot2 ${carrot2.version} Unit Test Coverage Report">
+        <format type="xml" />
+      </current>
+    </clover-report>
+  </target>
+
+  <target name="compile.coverage" depends="clover.tasks" if="clover.runwith">
+    <clover-setup enabled="true" instrumentationLevel="method">
+        <fileset refid="src.coverage" />
+    </clover-setup>
+
+    <mkdir dir="${build.dir.clover}" />
+
+    <javac destdir="${build.dir.clover}">
+      <src refid="src.core.folders" />  
+      <classpath refid="lib.classpath" />
+    </javac>
+
+    <javac destdir="${build.dir.clover}">
+      <src refid="src.test.folders" />
+      <classpath location="${build.dir.clover}" />
+      <classpath refid="lib.classpath" />
+    </javac>
+
+    <clover-setup enabled="false" />
+  </target>
+
+  <!-- 
+       JavaDoc generation.
+    -->
+  <property name="overview.dir" location="${tmp.dir}/javadoc-overview" />
+
+  <target name="javadoc"
+          depends="jar, javadoc.overview" 
+          description="Generates JavaDocs for all core classes">
+    <delete dir="${javadoc.dir}" failonerror="false" />
+    <property name="tmp.src" location="${tmp.dir}/src" />
+
+    <fail message="Use java 7 or later to render javadocs (they look super-ugly with java 6).">
+      <condition>
+        <not>
+          <hasmethod classname="java.lang.Throwable" method="getSuppressed"  />
+        </not>
+      </condition>
+    </fail>
+
+    <mkdir dir="${javadoc.dir}" />
+
+    <!-- for now disable doclint on JDK 8: -->
+    <condition property="javadoc.failonerror" value="false" else="true">
+      <equals arg1="${build.java.runtime}" arg2="1.8"/>
+    </condition>
+
+    <javadoc destdir="${javadoc.dir}"
+             access="protected"
+             noindex="true"
+             nohelp="true"
+             notree="true"
+             version="true"
+             use="false"
+             encoding="UTF-8"
+             docencoding="UTF-8"
+             includenosourcepackages="true"
+             windowtitle="Carrot2 v${carrot2.version} API Documentation (JavaDoc)"
+             doctitle="Carrot&lt;sup&gt;2&lt;/sup&gt; v${carrot2.version} API Documentation"
+             header="&lt;div class='logo'&gt;Carrot&lt;sup&gt;2&lt;/sup&gt; v${carrot2.version} &lt;br&gt;API Documentation&lt;/div&gt;"
+             footer="&lt;div class='logo'&gt;Please refer to project documentation at &lt;br&gt;&lt;a target='_top' href=http://project.carrot2.org&gt;http://project.carrot2.org&lt;/a&gt;&lt;/div&gt;"
+             bottom="&lt;center&gt;Copyright (c) Dawid Weiss, Stanislaw Osinski &lt;/center&gt;&lt;script type=&quot;text/javascript&quot;&gt; var gaJsHost = ((&quot;https:&quot; == document.location.protocol) ? &quot;https://ssl.&quot; : &quot;http://www.&quot;); document.write(unescape(&quot;%3Cscript src='&quot; + gaJsHost + &quot;google-analytics.com/ga.js' type='text/javascript'%3E%3C/script%3E&quot;)); &lt;/script&gt; &lt;script type=&quot;text/javascript&quot;&gt; var pageTracker = _gat._getTracker(&quot;UA-317750-1&quot;); pageTracker._trackPageview(); &lt;/script&gt;"
+             overview="${overview.dir}/overview.html"
+             failonerror="${javadoc.failonerror}"
+             stylesheetfile="${etc.dir}/javadoc/stylesheet.css"
+             useexternalfile="true">
+
+      <classpath refid="javadoc.classpath" />
+
+      <sourcefiles>
+        <fileset dir="core">
+          <include name="**/src/**/*.java" />
+          <include name="**/src/**/doc-files" />
+          <exclude name="**/org/carrot2/core/test/**" />
+          <exclude name="carrot2-util-text/src/**" />
+        </fileset>
+        <fileset dir="${build.dir}">
+          <include name="**/*.java" />
+        </fileset>
+      </sourcefiles>
+
+      <!-- Unfortunately this needs to be given explicitly for doc-files to work... -->
+      <packageset dir="core/carrot2-util-text/src" defaultexcludes="yes">
+        <include name="org/**"/>
+      </packageset>
+
+      <!-- Oracle only allows browsers (user-agent firewall restriction), so link to the docs, but keep the package-list offline. -->
+      <link offline="true" href="http://docs.oracle.com/javase/7/docs/api/" packagelistLoc="${basedir}/etc/javadoc/jdk7" />
+
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Core" packages="org.carrot2.core*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Demos and Examples" packages="org.carrot2.examples*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Data Sources" packages="org.carrot2.source*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Clustering Algorithms" packages="org.carrot2.clustering*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Results post-processing" packages="org.carrot2.output*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Text preprocessing utilities" packages="org.carrot2.text*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Matrix utilities" packages="org.carrot2.matrix*" />
+      <group title="Carrot&lt;sup&gt;2&lt;/sup&gt; Utility classes" packages="org.carrot2.util*" />
+      
+      <tag name="label" enabled="true" scope="types,fields" description="Attribute label:" />
+      <tag name="level" enabled="true" scope="fields" description="Attribute level:" />
+      <tag name="group" enabled="true" scope="fields" description="Attribute group:" />
+
+      <arg value="-quiet" />
+    </javadoc>
+
+    <copy todir="${javadoc.dir}">
+      <fileset dir="${etc.dir}/javadoc/">
+        <include name="*.gif" />
+        <include name="*.png" />
+        <include name="sh/*" />
+      </fileset>
+    </copy>
+
+    <jar destfile="${jar.dir}/carrot2-core-javadoc-${carrot2.version}.jar">
+      <fileset dir="${javadoc.dir}" />
+    </jar>
+  </target>
+
+  <target name="javadoc.overview" depends="version,carrot2.common.antlib.tasks">
+    <mkdir dir="${overview.dir}" />
+    
+    <taskdef name="extractor" classname="com.carrotsearch.ant.snippets.SnippetExtractorTask">
+      <classpath>
+        <path location="${ant.home}/lib/ant.jar" /> 
+        <fileset dir="${etc.dir}/extractor">
+          <include name="**/*.jar" />
+        </fileset>
+      </classpath>
+    </taskdef>
+
+    <extractor outputdir="${overview.dir}/snippets">
+      <fileset dir="${applications.dir}/carrot2-examples/examples">
+        <include name="**/*.java" />
+      </fileset>
+    </extractor>
+
+    <copy file="${etc.dir}/javadoc/overview.xsl" todir="${overview.dir}" />
+    <echoxml file="${overview.dir}/dummy.xml">
+      <dummy />
+    </echoxml>
+    <xslt.xinclude style="${overview.dir}/overview.xsl" 
+          in="${overview.dir}/dummy.xml" 
+          out="${overview.dir}/overview.html" 
+          force="true">
+          <param name="git.verhash" expression="${git.verhash}" />
+    </xslt.xinclude>
+  </target>
+
+  <target name="version" description="Prints version number.">
+    <exec executable="git" dir="${carrot2.master.basedir}"
+          outputproperty="git.verhash"
+          failonerror="false"
+          failifexecutionfails="false"
+          vmlauncher="false">
+          <arg line="log -1 --pretty=format:%H" />
+    </exec>
+    <!-- Fallback to empty? -->
+    <property name="git.verhash" value="" />
+  
+    <print-versions  prefix="carrot2" />
+    <echo>Git version: ${git.verhash}</echo>
+  </target>
+  
+  <!-- 
+       Build core JAR.
+    -->
+  <target name="jar" description="Builds Carrot2 core JAR" depends="compile, resources">
+    <mkdir dir="${jar.dir}" />
+    <jar destfile="${jar.dir}/carrot2-core-${carrot2.version}.jar">
+      <fileset dir="${build.dir}">
+        <exclude name="ambient/**" />
+        <exclude name="odp239/**" />
+        <exclude name="org.carrot2.util.attribute*.xml" />
+        <exclude name="**/*.html" />
+        <exclude name="**/doc-files/**" />
+        <exclude name="**/*.java" />
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="jar.src">
+    <copy todir="${jar.dir}/sources" overwrite="true">
+        <fileset dir="${core.dir}" includes="**/src/**/*.java" />
+        <chainedmapper>
+            <filtermapper><replacestring from="\" to="/"/></filtermapper>
+            <mapper type="regexp" from="^(.+)/src/(.+)" to="\2"/>
+        </chainedmapper> 
+    </copy>
+
+    <jar destfile="${jar.dir}/carrot2-core-sources-${carrot2.version}.jar">
+      <fileset dir="${jar.dir}/sources" />
+      <fileset dir="${build.dir}">
+        <include name="**/*.java" />
+      </fileset>
+    </jar>
+
+    <jar destfile="${jar.dir}/carrot2-mini-sources-${carrot2.version}.jar">
+      <fileset dir="${jar.dir}/sources">
+        <selector id="mini.sources">
+          <and>
+            <filename name="**/*.java" />
+            <or>
+              <none>
+                <filename name="org/carrot2/source/**"/>
+                <filename name="com/**" />
+                <filename name="org/carrot2/output/**" />
+              </none>
+              <filename name="org/carrot2/source/xml/**"/>
+            </or>
+          </and>
+        </selector>
+      </fileset>
+      <fileset dir="${build.dir}">
+        <selector refid="mini.sources" />
+      </fileset>
+    </jar>
+  </target>
+
+  <!--
+        Carrot2 mini JAR, just core and algorithms. No extended support for Chinese and Arabic.
+    -->
+  <target name="jar.mini" depends="jar.mini.build" />
+
+  <target name="jar.mini.build" depends="jar">
+    <jar destfile="${jar.dir}/carrot2-mini-${carrot2.version}.jar">
+      <!-- selectors don't seem to work with zipfileset -->
+      <zipfileset src="${jar.dir}/carrot2-core-${carrot2.version}.jar">
+          <exclude name="org/carrot2/source/**" />
+          <exclude name="com/**" />
+          <exclude name="org/carrot2/output/**" />
+      </zipfileset>
+      <zipfileset src="${jar.dir}/carrot2-core-${carrot2.version}.jar">
+          <include name="org/carrot2/source/xml/**" />
+      </zipfileset>
+    </jar>
+    <delete dir="${jar.mini.dir}" />
+  </target>
+
+  <!-- Check if the basic clustering example runs with the mini distribution -->
+  <target name="jar.mini.test" depends="jar.mini.build">
+    <property name="jar.mini.test.classes.dir" location="${tmp.dir}/jar-mini-classes" />
+    <mkdir dir="${jar.mini.test.classes.dir}" />
+    <javac srcdir="${carrot2.master.basedir}/applications/carrot2-examples/examples"
+           destdir="${jar.mini.test.classes.dir}"
+           compiler="modern">
+      <include name="**/ClusteringDocumentList.java" />
+      <classpath>
+        <path location="${jar.dir}/carrot2-mini-${carrot2.version}.jar" />
+        <fileset dir="${carrot2.master.basedir}">
+          <patternset refid="lib.core.mini" />
+          <exclude name="**/*.LICENSE" />
+          <!-- 
+               We add SimpleXML only to stop compiler from complaining about missing
+               annotation definitions. SimpleXML is not required to run basic clustering. 
+            -->
+          <include name="**/simple-xml*.jar" />
+        </fileset>
+      </classpath>
+    </javac>
+    
+    <java classname="org.carrot2.examples.clustering.ClusteringDocumentList"
+          outputproperty="dev.null" failonerror="true">
+      <classpath>
+        <pathelement path="${jar.mini.test.classes.dir}" />
+        <pathelement location="${jar.dir}/carrot2-mini-${carrot2.version}.jar" />
+        <fileset dir="${carrot2.master.basedir}">
+          <patternset refid="lib.core.mini" />
+          <exclude name="**/*.LICENSE" />
+        </fileset>
+      </classpath>
+    </java>
+    <delete dir="${jar.mini.test.classes.dir}" />
+  </target>
+  
+  <target name="clean.jar">
+    <delete dir="${jar.dir}" failonerror="false" />
+  </target>
+
+  <!--
+      Builds examples.
+  -->
+  <target name="examples" depends="core" description="Builds examples" />
+
+  <!--
+       Builds API distribution: core JAR, dependencies, example source code.
+    -->
+  <target name="core" depends="jar, jar.src, lib-no-jar.flattened" description="Builds Carrot2 Java API JAR with dependencies">
+    <delete dir="${api.dir}" failonerror="false" />
+    <mkdir dir="${api.dir}" />
+    <mkdir dir="${api.dir}/lib" />
+    <mkdir dir="${api.dir}/examples" />
+    <mkdir dir="${api.dir}/resources" />
+    
+    <patternset id="carrot2.required">
+      <include name="**/commons-lang*" />
+      <include name="**/guava*" />
+      <include name="**/hppc*" />
+      <include name="**/jackson*" />
+      <include name="**/log4j*" />
+      <include name="**/lucene-analyzers*" />
+      <include name="**/simple-xml*" />
+      <include name="**/slf4j*" />
+      <exclude name="**/slf4j-nop*" />
+      <include name="**/mahout*" />
+      <include name="**/colt.LICENSE" />
+      <include name="**/attributes-binder*" />
+    </patternset>
+      
+    <patternset id="carrot2.optional">
+      <include name="**/morfologik-*" />
+      <include name="**/commons-codec*" />
+      <include name="org.apache.http/http*" />
+      <include name="**/jcl-over-slf4j*" />
+      <include name="**/jdom*" />
+      <include name="**/lucene*" />
+      <exclude name="**/lucene-analyzers*" />
+      <include name="**/rome*" />
+      <include name="**/attributes-processor*" />
+    </patternset>
+
+    <copy todir="${api.dir}/lib/required">
+      <fileset dir="${lib.dir}">
+        <patternset refid="carrot2.required" />
+      </fileset>
+      <fileset dir="${jar.dir}">
+        <include name="carrot2-core-${carrot2.version}.jar" />
+      </fileset>
+      <mapper type="flatten" />
+    </copy>
+    
+    <copy todir="${api.dir}/lib/optional">
+      <fileset dir="${lib.dir}">
+        <patternset refid="carrot2.optional" />
+      </fileset>
+      <mapper type="flatten" />
+    </copy>
+
+    <copy todir="${api.dir}" filtering="true" encoding="UTF-8">
+      <fileset dir="${carrot2.master.basedir}">
+        <include name="carrot2.LICENSE" />
+        <include name="carrot2.CONTRIBUTORS" />
+      </fileset>
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-component-suites">
+        <include name="suites/suite-examples.xml" />
+        <include name="suites/source-bing*.xml" />
+        <include name="suites/algorithm-lingo*.xml" />
+        <include name="suites/algorithm-stc*.xml" />
+	<include name="suites/algorithm-kmeans*.xml" />
+      </fileset>
+      <fileset dir="${carrot2.master.basedir}/applications/carrot2-examples/">
+	<include name="pom.xml" />
+      </fileset>
+      <filterchain>
+        <replacestring from="@carrot2.version.maven@" to="${carrot2.version.maven}" />
+      </filterchain>
+    </copy>
+
+    <copy todir="${api.dir}/resources">
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-util-text/src-resources" />
+    </copy>
+
+    <copy todir="${api.dir}/examples">
+      <fileset dir="${carrot2.master.basedir}/applications/carrot2-examples/examples" />
+      <fileset dir="${carrot2.master.basedir}/core/carrot2-source-ambient/src">
+        <include name="ambient/**" />
+        <include name="odp239/**" />
+      </fileset>
+    </copy>
+
+    <copy todir="${api.dir}" file="${carrot2.master.basedir}/applications/carrot2-examples/build.xml" />
+    <carrot2.readme readme.src="${carrot2.master.basedir}/applications/carrot2-examples/etc/readme.txt"
+                    readme.dest="${api.dir}/readme.txt" />
+  </target>
+
+  <target name="carrot2.core.dist" depends="core.test, javadoc">
+    <zip destfile="${api.dir}/../${api.dist.base}-${carrot2.version}.zip">
+      <zipfileset dir="${api.dir}" prefix="${api.dist.base}-${carrot2.version}">
+        <exclude name="tmp/**" />
+        <exclude name="index/**" />
+      </zipfileset>
+      <zipfileset dir="${javadoc.dir}" prefix="${api.dist.base}-${carrot2.version}/javadoc" />
+    </zip>
+  </target>
+
+  <target name="core.test" depends="core">
+    <ant antfile="build.xml" dir="${api.dir}" inheritall="false" /> 
+  </target>
+
+  <!--
+       Distribution build.
+    -->
+  <target name="dist" depends="
+    clean,
+    version,
+    test,
+    carrot2.core.dist, 
+    carrot2.cli.dist,
+    carrot2.webapp.dist, 
+    carrot2.dcs.dist,
+    workbench.dist,
+    maven, 
+    reports,
+    javadoc,
+    doc,
+    assemble.dist" description="Builds Carrot2 distribution (requires external tools)." />
+
+  <target name="assemble.dist" depends="version">
+    <echo>Assemble distribution.</echo>
+    <delete dir="${dist.dir}" failonerror="false" />
+    <mkdir dir="${dist.dir}/${carrot2.version}" />
+
+    <copy todir="${dist.dir}/${carrot2.version}">
+      <fileset dir="${tmp.dir}">
+        <include name="javadoc/**" />
+        <include name="manual/**" />
+        <include name="jar/*.jar" />
+        <include name="carrot2-cli-${carrot2.version}.zip" />
+        <include name="carrot2-dcs-${carrot2.version}.zip" />
+        <include name="carrot2-java-api-${carrot2.version}.zip" />
+        <include name="carrot2-manual-${carrot2.version}.zip" />
+        <include name="carrot2-webapp-${carrot2.version}.war" />
+        <include name="carrot2-workbench-*.zip" />
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="reports" depends="test, coverage, duplication, findbugs" description="Builds all Carrot2 test and code quality reports" />
+  <target name="webapp" depends="carrot2.webapp.build" description="Builds Carrot2 web application" />
+  <target name="dcs" depends="carrot2.dcs.build" description="Builds Carrot2 Document Clustering Server" />
+  <target name="cli" depends="carrot2.cli.build" description="Builds Carrot2 Command Line Interface" />
+
+  <!--
+      Maven artefacts.
+    -->
+  <target name="maven" depends="antlib, jar, jar.src, javadoc, jar.mini, core.test, carrot2.maven.install" description="Install Maven artifacts">
+    <!-- Try to compile the examples using maven. -->
+    <exec executable="mvn" failonerror="true" vmlauncher="false" dir="${api.dir}">
+	<arg line="clean integration-test -Prun" />
+    </exec>    
+  </target>
+
+  <!--
+      Deploy Maven artefacts to SonaType (requires proper sonatype server config in ~/.m2/settings.xml!).
+    -->
+  <target name="maven.deploy" depends="maven, carrot2.maven.deploy" description="Stages Maven release (SonaType)">
+  </target>
+
+  <!--
+      Deploy Maven artefacts to SonaType (requires proper sonatype server config in ~/.m2/settings.xml!).
+    -->
+  <target name="maven.snapshot" depends="maven, carrot2.maven.snapshot" description="Pushes Maven snapshot (SonaType)">
+  </target>
+
+  <!-- 
+      Builds the manual.
+    -->
+  <target name="doc" depends="carrot2.doc.build, carrot2.doc.dist" description="Builds Carrot2 Manual">
+  </target>
+
+  <!-- 
+       Flattened lib directory.
+    -->
+  <target name="lib-no-jar.flattened" depends="clean.lib">
+    <mkdir dir="${lib.flattened}" />
+    <copy todir="${lib.flattened}">
+      <fileset refid="lib.core.files" />
+      <fileset dir="${carrot2.master.basedir}">
+        <patternset refid="licenses.core" />
+      </fileset>
+      <mapper type="flatten"/>
+    </copy>
+  </target>
+  
+  <target name="lib.flattened" depends="lib-no-jar.flattened, jar">
+    <copy todir="${lib.flattened}">
+      <fileset dir="${jar.dir}">
+        <include name="carrot2-core-${carrot2.version}.jar" />
+      </fileset>
+      <fileset dir="${carrot2.master.basedir}">
+        <include name="carrot2.LICENSE" />
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="clean.lib">
+    <delete dir="${lib.flattened}" failonerror="false" />
+  </target>
+
+  <!--
+      Compile and define custom ANT tasks.
+   -->
+  <target name="antlib" depends="carrot2.common.antlib.tasks" />
+
+  <!--
+      Workbench compilation section.
+  -->
+  <target name="workbench.plugins.gather" depends="carrot2.common.antlib.tasks, pde.build.prepare">
+    <patternset id="temporary.files">
+      <exclude name="**/tmp/**" />
+      <exclude name="**/.clover/**" />
+      <exclude name="**/build-conf/**" />
+    </patternset>
+
+    <!-- Copy source plugins and features to the build folder. -->
+    <copy todir="${workbench.build.dir}/plugins">
+      <fileset dir="${carrot2.master.basedir}">
+        <include name="core/**" />
+        <include name="lib/**" />
+        <include name="workbench/**" />
+        <patternset refid="temporary.files" />
+      </fileset>
+      <regexpmapper from="[^/]+/(.*)" to="\1" handledirsep="yes" />
+    </copy>
+
+    <copy todir="${workbench.build.dir}/plugins" overwrite="true" filtering="true" encoding="UTF-8">
+      <fileset dir="${carrot2.master.basedir}">
+        <include name="core/**/MANIFEST.MF" />
+        <include name="lib/**/MANIFEST.MF" />
+        <include name="workbench/**/MANIFEST.MF" />
+        <include name="workbench/**/welcome/**/*.html" />
+        <patternset refid="temporary.files" />
+      </fileset>
+
+      <regexpmapper from="[^/]+/(.*)" to="\1" handledirsep="yes" />
+
+      <filterchain id="workbench.version.filterchain">
+        <replacestring from="0.0.0.QUALIFIER"   to="${carrot2.version.workbench}"/>
+        <replacestring from="@carrot2.version@" to="${carrot2.version}" />
+      </filterchain>
+    </copy>
+
+    <!-- Prepare verbose build info. -->
+    <carrot2.readme readme.src="${carrot2.master.basedir}/workbench/org.carrot2.workbench.feature/readme.txt"
+                    readme.dest="${workbench.build.dir}/static/readme.txt" />
+
+    <pathconvert property="pde.pluginPath">
+        <path>
+            <pathelement location="${workbench.build.dir}/plugins/" />
+        </path>
+    </pathconvert>
+  </target>
+
+  <target name="workbench" depends="workbench.rcp.defaults, workbench.plugins.gather" description="Compile Workbench (folder).">
+    <pde.build
+        build.dir="${workbench.build.dir}/build" 
+        extra.args="
+            -Dproduct=/org.carrot2.workbench.feature/Workbench.product
+
+            -DjavacSource=1.6
+            -DjavacTarget=1.6
+
+            -Dconfigs=${rcp.os},${rcp.ws},${rcp.arch}
+            -DarchivesFormat=${rcp.os},${rcp.ws},${rcp.arch}-folder
+
+            -DarchivePrefix=${carrot2.workbench.base}-${carrot2.version}
+            -DbuildId=${carrot2.workbench.base}
+            -DbuildType=I
+
+            -DpluginPath='${pde.pluginPath}'
+
+            -Dcarrot2.version=${carrot2.version}
+            -Dcarrot2.workbench.base=${carrot2.workbench.base}
+            -Dworkbench.static=${workbench.build.dir}/static
+            -Dworkbench.build.dir=${workbench.build.dir}
+        " />
+  </target>
+
+  <target name="workbench.dist" depends="workbench.plugins.gather" description="Compile Workbench (ZIPs).">
+    <property name="workbench.dist.dir" location="${tmp.dir}" />
+    <property file="${carrot2.master.basedir}/etc/buildinfo/workbench-platforms.properties" />
+
+    <echo>${configs}</echo>
+    
+    <pde.build
+        build.dir="${workbench.build.dir}/build"  
+        extra.args="
+            -Dproduct=/org.carrot2.workbench.feature/Workbench.product
+
+            -DjavacSource=1.6
+            -DjavacTarget=1.6
+
+            -DarchivePrefix=${carrot2.workbench.base}-${carrot2.version}
+            -DbuildId=${carrot2.workbench.base}
+            -DbuildType=S
+
+            -Dconfigs='${configs}'
+            -DarchivesFormat='${archivesFormat}'
+
+            -Dtarget.platform=${target.platform}
+            -Declipse.home=${eclipse.home}
+
+            -DpluginPath='${pde.pluginPath}'
+
+            -Dcarrot2.version=${carrot2.version}
+            -Dcarrot2.workbench.base=${carrot2.workbench.base}
+            -Dworkbench.static=${workbench.build.dir}/static
+            -Dworkbench.build.dir=${workbench.build.dir}
+        " />
+
+    <mkdir dir="${workbench.dist.dir}" />
+    <copy todir="${workbench.dist.dir}" overwrite="true">
+      <fileset dir="${workbench.build.dir}/build">
+        <include name="S.*/*.zip" />
+      </fileset>
+
+      <chainedmapper>
+        <mapper type="flatten" />
+        <mapper type="glob" from="*.zip" to="*-${carrot2.version}.zip"/>
+      </chainedmapper>
+    </copy>
+  </target>
+
+  <target name="workbench.rcp.defaults">
+    <rcp-defaults />
+  </target>
+
+  <!--
+      Source code management: license headers list and replace.
+    -->
+  <target name="license.tasks" depends="antlib">
+    <property name="verbose" value="false" />
+
+    <fileset dir="." id="licensed.sources">
+      <include name="applications/**/*.java" />
+      <include name="workbench/**/*.java" />
+      <include name="core/**/*.java" />
+      <include name="lib/org.carrot2.antlib/**/*.java" />
+      <exclude name="**/tmp/**" />
+    </fileset>    
+  </target>
+
+  <target name="licenses.update" depends="license.tasks">
+    <loadfile encoding="UTF-8" property="carrot2.license" srcfile="etc/sources/header.txt" />
+    <loadfile encoding="UTF-8" property="carrot2.generated.code" srcfile="etc/sources/header-generated.txt" />
+
+    <licenseReplace encoding="UTF-8" saveExtension="">
+        <fileset refid="licensed.sources" />
+
+        <!-- Order matters: first come, first served. -->
+        <header contains="http://www.carrot2.org/carrot2.LICENSE"  replacement="${carrot2.license}" />
+
+        <!-- Replace generated headers with a simple statement -->
+        <header contains="${carrot2.generated.code}"               replacement="${carrot2.generated.code}" />
+        <header contains="following code was generated by JFlex"   replacement="${carrot2.generated.code}" />
+        <header contains="Generated By:JavaCC"                     replacement="${carrot2.generated.code}" />
+        <header contains="This file was auto-generated from WSDL"  replacement="${carrot2.generated.code}" />
+
+        <!-- Replace empty headers with C2 license -->
+        <header isempty="true"                                     replacement="${carrot2.license}" />
+    </licenseReplace>
+
+    <antcall target="licenses.list" />
+  </target>    
+
+  <target name="licenses.list" depends="license.tasks">
+    <licenseList header="true" footer="true" encoding="UTF-8" verbose="${verbose}">
+      <fileset refid="licensed.sources" />
+    </licenseList>
+  </target>  
+  
+  <!--
+       Generate development files for Eclipse.
+   -->
+  <target name="eclipse" depends="carrot2.webapp.eclipse.setup" description="Generate Eclipse files for development." />
+
+  <!--
+       Pre-commit check for developers
+  -->
+  <target name="test.integration" depends="clean, test, jar.mini.test" description="Integration tests." />
+
+  <!--
+       Pre-release source code updates.
+    -->
+  <target name="prerelease" depends="licenses.update" />
+
+</project>
+
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<project name="carrot2-util-text" default="help">
+	<property file="local.properties" />
+
+	<target name="help">
+		<echo>Run: ant -p</echo>
+	</target>
+
+	<target name="jflex" description="Recompile JFlex parsers.">
+        <java classname="jflex.Main" fork="true">
+            <classpath>
+              <fileset dir="lib" includes="*.jar" />
+            </classpath>
+
+            <arg value="-nobak" />
+            <arg file="src/org/carrot2/text/analysis/ExtendedWhitespaceTokenizerImpl.jflex" />
+        </java>
+	</target>
+</project>
+<!--
+  Internal build script for Carrot2 documentation. 
+  Please use the 'doc' target from the main build script to build the documentation.
+  -->
+<project name="carrot2.doc" default="fail">
+  <!-- Base dir determined from the build file location -->
+  <dirname property="carrot2.doc.basedir"
+           file="${ant.file.carrot2.doc}" />
+
+  <!-- Import common macros -->
+  <import file="${carrot2.doc.basedir}/etc/ant/doc.xml" />
+
+  <!-- Output directory for the documentation -->
+  <property name="doc.output.dir" location="${carrot2.master.basedir}/tmp/manual" />
+
+  <!-- Manual dist file name base -->
+  <property name="doc.dist.base" value="${carrot2.manual.base}" />
+
+  <!--
+       Builds Carrot2 Manual
+    -->
+  <target name="carrot2.doc.build" depends="jar, carrot2.doc.common.docbook.check">
+    <carrot2.doc.build doc.base.dir="${carrot2.doc.basedir}"
+                       doc.main.docbook.filename="carrot2-manual.xml" 
+                       doc.suite.path="suite-doc.xml"
+                       doc.output.dir="${doc.output.dir}"
+                       doc.build.dir="${doc.output.dir}/build">
+
+      <attribute.dumper.classpath.entries>
+        <path refid="core.jar.classpath" />
+        <path refid="lib.classpath" />
+        <path path="${carrot2.master.basedir}/core/carrot2-component-suites/suites" />
+        <path path="${carrot2.master.basedir}/core/carrot2-source-ambient/src" />
+      	<path path="${carrot2.master.basedir}/core/carrot2-util-log4j/src" />
+      </attribute.dumper.classpath.entries>
+
+      <xslt.param.entries>
+        <param name="dist.url" expression="${dist.url}" />
+        <param name="carrot2.javadoc.url" expression="${dist.url}/javadoc" />
+        <param name="product.java-api.base" expression="${carrot2.java-api.base}" />
+        <param name="product.csharp-api.base" expression="${carrot2.csharp-api.base}" />
+        <param name="product.dcs.base" expression="${carrot2.dcs.base}" />
+        <param name="product.cli.base" expression="${carrot2.cli.base}" />
+        <param name="product.webapp.base" expression="${carrot2.webapp.base}" />
+        <param name="product.manual.base" expression="${carrot2.manual.base}" />
+        <param name="product.workbench.base" expression="${carrot2.workbench.base}" />
+        
+        <param name="product.demo.url" expression="http://search.carrot2.org" />
+        <param name="product.version" expression="${carrot2.version}" />
+      </xslt.param.entries>
+    </carrot2.doc.build>
+  </target>
+
+  <!--
+       Builds the manual ZIP archive.
+    -->
+  <target name="carrot2.doc.dist" depends="carrot2.doc.build">
+    <zip destfile="${doc.output.dir}/../${doc.dist.base}-${carrot2.version}.zip">
+      <zipfileset dir="${doc.output.dir}" prefix="${doc.dist.base}-${carrot2.version}" />
+    </zip>
+  </target>
+  
+  <target name="fail">
+    <fail>Please use the 'doc' target from the main build script to build the documentation.</fail>
+  </target>
+</project>
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="carrot2.maven" default="default" xmlns:artifact="urn:maven-artifact-ant">
+
+    <target name="check.properties">
+        <dirname property="carrot2.maven.basedir"  file="${ant.file.carrot2.maven}" />
+
+        <fail unless="carrot2.master.basedir">Required property missing: carrot2.master.basedir</fail>
+        <fail unless="carrot2.version.maven">Required property missing: carrot2.version.maven</fail>
+   	
+        <property name="poms.dir" location="${carrot2.master.basedir}/tmp/maven" />
+    </target>
+
+    <target name="check.maven">
+        <property environment="env" />
+        <condition property="mvn.available">
+            <or>
+                <available file="mvn.bat" filepath="${env.Path}" />
+                <available file="mvn"     filepath="${env.PATH}" />
+            </or>
+        </condition>
+
+        <fail unless="mvn.available">mvn (Maven) not available in path.</fail>
+    </target>
+
+    <target name="filter.poms" depends="check.properties">
+        <delete dir="${poms.dir}" />
+        <mkdir dir="${poms.dir}" />
+
+        <copy todir="${poms.dir}" encoding="UTF-8" overwrite="true">
+            <fileset dir="${carrot2.maven.basedir}/poms" />
+
+            <filterset begintoken="@" endtoken="@">
+            	<filter token="carrot2.version" value="${carrot2.version}" />
+                <filter token="carrot2.version.maven" value="${carrot2.version.maven}" />
+		<filter token="carrot2.master.basedir" value="${carrot2.master.basedir}" />
+            </filterset>
+        </copy>
+    </target>
+
+    <target name="install" depends="check.maven, filter.poms">
+    	<exec executable="mvn" failonerror="true" vmlauncher="false" dir="${poms.dir}">
+    	    <arg line="clean install" />
+    	</exec>
+    </target>
+
+    <target name="deploy" depends="check.maven, filter.poms">
+        <exec executable="mvn" failonerror="true" vmlauncher="false" dir="${poms.dir}">
+            <arg line="-Psonatype -Dgpg.passphrase= clean deploy" />
+        </exec>
+    </target>
+
+    <target name="snapshot" depends="check.maven, filter.poms">
+        <exec executable="mvn" failonerror="true" vmlauncher="false" dir="${poms.dir}">
+            <arg line="clean deploy" />
+        </exec>
+    </target>
+
+    <target name="default">
+        <echo>This build file is part of the master build file. Do not run separately.</echo>
+    </target>   
+</project>
+
+<!--
+  Macros for PDE-build.
+  -->
+<project name="carrot2.pde.build" default="">
+    <fail unless="carrot2.master.basedir" />
+    <import file="${carrot2.master.basedir}/lib/org.carrot2.antlib/build.xml" />
+
+    <macrodef name="pde.build">
+      <attribute name="buildfile" default="${eclipse.home}/plugins/${pde.build.plugin}/scripts/productBuild/productBuild.xml" />
+      <attribute name="builder"   default="${carrot2.master.basedir}/workbench/build-conf/" />
+      <attribute name="build.dir" />
+      <attribute name="extra.args" default="" />
+      <sequential>
+        <fail unless="eclipse.home" />
+        <fail unless="equinox.launcher.plugin.jar">Call pde.build.prepare first.</fail>
+
+        <java jar="${eclipse.home}/plugins/${equinox.launcher.plugin.jar}" fork="true" failonerror="true">
+          <arg line="-application org.eclipse.ant.core.antRunner" />
+          <arg line="-buildfile @{buildfile}" />
+          <arg line="-Dbuilder=@{builder}" />
+          <arg line="-DbuildDirectory=@{build.dir}" />
+          <arg line="-Dtarget.platform=${target.platform}" />
+          <arg line="-Dcarrot2.master.basedir=${carrot2.master.basedir}" />
+          <arg line="@{extra.args}" />
+        </java>
+      </sequential>
+    </macrodef>
+
+    <target name="pde.build.prepare" depends="tasks">
+        <fail unless="target.platform" message="Define property 'target.platform', see local.properties.example." />
+
+        <property file="${carrot2.master.basedir}/workbench/build-conf/build.properties" />
+        <property name="eclipse.home" location="${target.platform}/eclipse" />
+
+        <findVersion property="equinox.launcher.plugin.jar"
+                     eclipsehome="${eclipse.home}"
+                     pluginid="org.eclipse.equinox.launcher"
+                     pluginform="jar" />
+    
+        <findVersion property="pde.build.plugin"
+                     eclipsehome="${eclipse.home}"
+                     pluginid="org.eclipse.pde.build"
+                     pluginform="dir" />
+
+        <echo>PDE Build: ${pde.build.plugin}, Equinox: ${equinox.launcher.plugin.jar}</echo>
+    </target>
+</project>

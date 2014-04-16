@@ -1,0 +1,743 @@
+apply plugin: 'java'
+
+archivesBaseName = 'crate-admin-ui'
+
+// we do not want to have elasticsearch here, since we provide it in :es
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+dependencies {
+    compile project(':es')
+}
+apply plugin:'distribution'
+apply plugin: 'java'
+
+archivesBaseName = 'crate-app'
+
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+task release(dependsOn: 'distTar') << {
+    logger.info("released version: " + getVersion.version);
+
+}
+
+task getVersion ( dependsOn: 'classes') << {
+    def stdout = new ByteArrayOutputStream()
+    javaexec {
+        classpath = sourceSets.main.runtimeClasspath
+        main = 'io.crate.Version'
+        standardOutput = stdout
+    }
+    ext.gitTag = "git describe".execute().in.text.trim()
+    ext.version = stdout.toString().trim().split(" ")[1].replace(',','').trim()
+
+    if (gradle.taskGraph.hasTask(release)) {
+        assert gitTag == version, "Version mismatch gitTag: " + gitTag + " does not match crate version: " + version
+    } else {
+        ext.version = version + "-" + "git rev-parse --short HEAD".execute().in.text.trim()
+    }
+
+    logger.quiet("gitTag: " + gitTag)
+    logger.quiet("version: " + version)
+
+
+}
+
+task dist {
+    dependsOn ':docs:itest', distTar, distZip
+}
+
+distTar {
+    dependsOn ":docs:sphinx", getVersion
+    compression = Compression.GZIP
+    baseName = 'crate'
+    extension = 'tar.gz'
+    doFirst {
+        version = getVersion.version
+    }
+}
+
+distZip {
+    dependsOn ":docs:sphinx", getVersion
+    baseName = 'crate'
+    doFirst {
+        version = getVersion.version
+    }
+}
+
+ext {
+    downloadDir = new File(buildDir, 'downloads')
+    plugin_head_version = '2cd68c235f8b0fdf667090e8d2653d80e4183473'
+    plugin_bigdesk_version = '2.2.2c'
+    plugin_segmentspy_version = '0.2.0'
+    plugin_crateadmin_version = '0.5.2'
+    crash_version = '0.8.3'
+}
+
+evaluationDependsOn(':es')
+
+dependencies {
+    compile project(':core')
+    compile project(':es')
+    compile project(':sql')
+    compile project(':admin-ui')
+    compile project(':inout')
+    compile project(':blob')
+    compile project(':udc')
+
+    testCompile ('com.carrotsearch.randomizedtesting:randomizedtesting-runner:2.0.15') {
+        exclude group: 'junit', module: 'junit'
+    }
+    testCompile 'junit:junit:4.11'
+}
+
+installDist.dependsOn(jar, ":docs:sphinx")
+
+def docsDir = project(":docs").projectDir
+def rootDir = project.parent.projectDir
+
+distributions {
+    main {
+        baseName = 'crate'
+        contents {
+            into("") {
+                from "$rootDir"
+                include 'LICENSE.txt'
+                include 'NOTICE'
+                include 'README.rst'
+                include 'CHANGES.txt'
+            }
+            into("docs") {
+                from "${docsDir}/out/text"
+                include '**/*.txt'
+                exclude '.doctrees'
+            }
+            into("lib") {
+                from project.configurations.runtime
+                // sigar gets included from the checked in runtime dependency in :es:
+                exclude 'sigar-*.jar'
+            }
+            into("lib") {
+                from jar
+            }
+            into("plugins/docs/_site") {
+                from "${docsDir}/out/html"
+            }
+            into('plugins') {
+                from 'plugins'
+            }
+            into('bin') {
+                from ("${downloadDir}/crash_standalone") {
+                    fileMode = 0755
+                }
+            }
+        }
+    }
+}
+
+
+def download (String url, String name){
+    downloadDir.mkdirs()
+    def dest = new File(downloadDir, name)
+    ant.get(
+            src: url,
+            verbose: true,
+            usetimestamp: true,
+            skipexisting: true,
+            dest: dest
+    )
+    return dest;
+}
+
+def extractTopfolder(File src, String trg){
+    copy {
+        includeEmptyDirs = false
+        FileTree ft
+        if(src.name.endsWith('.zip')) {
+            ft = zipTree(src)
+        }
+        if(src.name.endsWith('.tar.gz')) {
+            ft = tarTree(src)
+        }
+        from(ft) {
+            eachFile { details ->
+                details.path =
+                    details.path.substring(details.relativePath.segments[0].length())
+            }
+        }
+        into trg
+    }
+}
+
+task downloadPlugins << {
+    def dest = download(
+            "https://github.com/mobz/elasticsearch-head/archive/${plugin_head_version}.zip",
+            "head_${plugin_head_version}.zip")
+    extractTopfolder(dest, 'plugins/head/_site')
+    dest = download(
+            "https://github.com/crate/bigdesk/archive/v${plugin_bigdesk_version}.zip",
+            "bigdesk_${plugin_bigdesk_version}.zip"
+            )
+    extractTopfolder(dest, 'plugins/bigdesk/_site')
+    dest = download(
+            "https://github.com/polyfractal/elasticsearch-segmentspy/archive/v${plugin_segmentspy_version}.zip",
+            "segmentspy_${plugin_segmentspy_version}.zip"
+    )
+    extractTopfolder(dest, 'plugins/segmentspy')
+    dest = download(
+            "https://cdn.crate.io/downloads/releases/crate-admin-${plugin_crateadmin_version}.tar.gz",
+            "crate-admin-${plugin_crateadmin_version}.tar.gz"
+    )
+    extractTopfolder(dest, 'plugins/crate-admin/_site')
+}
+
+task downloadCrash << {
+    def dest = download(
+         "https://cdn.crate.io/downloads/releases/crash_standalone_${crash_version}",
+         "crash_standalone"
+    )
+}
+
+processResources.dependsOn(downloadPlugins, downloadCrash)
+
+task(runDebug, dependsOn: 'classes', type: JavaExec) {
+    main = 'io.crate.bootstrap.CrateF'
+    debug = true
+    classpath = sourceSets.main.runtimeClasspath
+    maxHeapSize = '512m'
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+        }
+    }
+}
+apply plugin: 'java'
+
+archivesBaseName = 'crate-blob'
+
+// we do not want to have elasticsearch here, since we provide it in :es
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+evaluationDependsOn(':testing')
+
+dependencies {
+    compile project(':es')
+    compile project(':core')
+    testCompile project(':testing')
+}
+
+test {
+    // show standard out and standard error of the test JVM(s) on the console
+    testLogging.showStandardStreams = true
+
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+            include '**/*.rst'
+        }
+    }
+}
+allprojects {
+    apply plugin: 'idea'
+    group = 'crate'
+    repositories {
+        mavenCentral()
+    }
+}
+
+idea {
+    project {
+        languageLevel = 'JDK_1_7'
+
+        ipr {
+            withXml { provider ->
+                def node = provider.asNode()
+                def copyrightManager = node.component.find { it.'@name' == 'CopyrightManager' }
+                copyrightManager.@default = "CrateASL2"
+                def aslCopyright = copyrightManager.copyright.find { it.option.find { it.@name == "myName" }?.@value == "CrateASL2" }
+                if (aslCopyright == null) {
+                    copyrightManager.append(new XmlParser().parse(file("copyright.xml")))
+                }
+            }
+        }
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+}
+apply plugin: 'java'
+apply plugin: 'distribution'
+
+archivesBaseName = 'crate-client'
+
+dependencies {
+    compile project(path: ':sql')
+    testCompile project(':testing')
+}
+
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+    all*.exclude group: 'org.apache.lucene'
+}
+
+
+
+jar {
+    baseName 'crate-client'
+}
+
+
+apply plugin: 'java'
+
+archivesBaseName = 'crate-core'
+
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+dependencies {
+    compile project(':es')
+    testCompile project(':testing')
+}
+
+test {
+    // show standard out and standard error of the test JVM(s) on the console
+    testLogging.showStandardStreams = true
+
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+        }
+    }
+}
+
+task writeBuildInfo << {
+    def stdout = new ByteArrayOutputStream()
+    exec {
+        commandLine 'git', 'log', '-n', '1', '--pretty=format:%H'
+        standardOutput stdout
+    }
+    def hash = stdout.toString().trim()
+
+    def file = new File(project.projectDir.path + "/src/main/resources/crate-build.properties");
+    if(!file.isFile()) {
+        def parentDir = new File(file.parent);
+        if (!parentDir.isDirectory()) {
+            parentDir.mkdirs();
+        }
+        file.createNewFile();
+    }
+
+    ant.propertyfile(file:file.path, comment:'Build Properties') {
+        ant.entry(key:'hash',value:hash)
+        ant.entry(key:'timestamp', value:System.currentTimeMillis())
+    }
+}
+
+compileJava.dependsOn writeBuildInfo
+
+def textOut = file("$projectDir/out/text")
+def crateDist = file("$projectDir/tmp/crate/")
+
+
+task bootstrap (type:Exec) {
+    inputs.file "$projectDir/bootstrap.py"
+    outputs.file "$projectDir/bin/buildout"
+
+    commandLine 'python2.7', "$projectDir/bootstrap.py"
+}
+
+task unpackDistTar (dependsOn: project(':app').distTar) << {
+    copy {
+        includeEmptyDirs = false
+        from(tarTree(project(':app').distTar.archivePath)) {
+            eachFile { details ->
+                details.path =
+                    details.path.substring(details.relativePath.segments[0].length())
+            }
+        }
+        into crateDist
+    }
+}
+
+task buildout (type:Exec, dependsOn: bootstrap) {
+    commandLine "$projectDir/bin/buildout", '-N'
+}
+
+task sphinx (type: Exec, dependsOn: buildout) {
+    commandLine "$projectDir/bin/sphinx"
+}
+
+task itest (type:Exec, dependsOn: unpackDistTar){
+
+    executable = "$projectDir/bin/test"
+}
+
+task clean << {
+    delete textOut
+    delete crateDist
+}
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+configurations { lucenetest }
+
+//generated in upstream directory with:
+// mvn dependency:tree|grep -o ' .- .*:compile'|cut -d ' ' -f 3|sort|gsed "s/\(.*\):jar:\(.*\):compile/compile '\1:\2'/g"
+// TODO: excludes e.g. xerces
+dependencies {
+
+    compile 'com.carrotsearch:hppc:0.5.3'
+    compile 'com.fasterxml.jackson.core:jackson-core:2.3.0'
+    compile 'com.fasterxml.jackson.dataformat:jackson-dataformat-smile:2.3.0'
+    compile 'com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.3.0'
+    compile 'com.google.guava:guava:16.0'
+    compile 'com.ning:compress-lzf:0.9.6'
+    compile 'com.spatial4j:spatial4j:0.3'
+    compile 'com.vividsolutions:jts:1.12'
+    compile 'io.netty:netty:3.9.0.Final'
+    compile 'joda-time:joda-time:2.3'
+    compile 'log4j:log4j:1.2.17'
+    compile 'net.java.dev.jna:jna:3.3.0'
+    compile 'org.apache.lucene:lucene-analyzers-common:4.6.1'
+    compile 'org.apache.lucene:lucene-codecs:4.6.1'
+    compile 'org.apache.lucene:lucene-core:4.6.1'
+    compile 'org.apache.lucene:lucene-grouping:4.6.1'
+    compile 'org.apache.lucene:lucene-highlighter:4.6.1'
+    compile 'org.apache.lucene:lucene-join:4.6.1'
+    compile 'org.apache.lucene:lucene-memory:4.6.1'
+    compile 'org.apache.lucene:lucene-misc:4.6.1'
+    compile 'org.apache.lucene:lucene-queries:4.6.1'
+    compile 'org.apache.lucene:lucene-queryparser:4.6.1'
+    compile 'org.apache.lucene:lucene-sandbox:4.6.1'
+    compile 'org.apache.lucene:lucene-spatial:4.6.1'
+    compile 'org.apache.lucene:lucene-suggest:4.6.1'
+    // keep sigar out, see below
+    // compile 'org.fusesource:sigar:1.6.4'
+    compile 'org.joda:joda-convert:1.2'
+    compile 'org.mvel:mvel2:2.1.5.Final'
+    compile 'org.slf4j:slf4j-api:1.6.2'
+
+    // we add the sigar libs as system dep since it is checked in
+    compile fileTree(dir: 'upstream/lib/sigar/', include: '*.jar')
+
+    // by hand
+    testCompile 'org.apache.httpcomponents:httpclient:4.3.1'
+    testCompile 'org.hamcrest:hamcrest-all:1.3'
+    lucenetest 'junit:junit:4.11'
+    testCompile 'junit:junit:4.11'
+    // somehow this must be duplicated to work
+    testCompile ('org.apache.lucene:lucene-test-framework:4.6.1') {
+        exclude group: 'junit', module: 'junit'
+    }
+    lucenetest ('org.apache.lucene:lucene-test-framework:4.6.1') {
+        exclude group: 'junit', module: 'junit'
+    }
+
+    testCompile ('com.carrotsearch.randomizedtesting:randomizedtesting-runner:2.0.15') {
+        exclude group: 'junit', module: 'junit'
+    }
+}
+
+sourceSets.test.compileClasspath = configurations.lucenetest + sourceSets.test.compileClasspath
+sourceSets.test.runtimeClasspath = configurations.lucenetest + sourceSets.test.runtimeClasspath
+
+test.enabled = false
+
+sourceSets {
+    main {
+        java {
+            srcDir 'upstream/src/main/java'
+        }
+        resources {
+            srcDir 'upstream/src/main/resources'
+            include '**/*.*'
+        }
+        resources {
+            srcDir 'upstream/src/main/java'
+            include '**/*.json'
+            include '**/*.yml'
+        }
+    }
+    test {
+        java {
+            srcDir 'upstream/src/test/java'
+        }
+        resources {
+            srcDir 'upstream/src/test/resources'
+            include '**/*.*'
+        }
+        resources {
+            srcDir 'upstream/src/test/java'
+            include '**/*.json'
+            include '**/*.yml'
+            include '**/*.txt'
+        }
+    }
+}
+apply plugin: 'java'
+
+archivesBaseName = 'crate-inout'
+
+// we do not want to have elasticsearch here, since we provide it in :es
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+dependencies {
+    compile project(':es')
+    compile project(':core')
+    testCompile project(':testing')
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+            include '**/*.rst'
+            include '**/*.json'
+            include '**/*.json.gz'
+            include '**/*.mapping'
+            include '**/*.settings'
+        }
+    }
+}
+apply plugin: 'java'
+
+archivesBaseName = 'crate-sql-parser'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.google.code.findbugs:annotations:2.0.1'
+    compile 'com.fasterxml.jackson.core:jackson-core:2.1.4'
+    compile 'com.fasterxml.jackson.core:jackson-databind:2.1.4'
+    compile 'joda-time:joda-time:2.1'
+    compile 'io.airlift:slice:0.2'
+    compile 'com.google.guava:guava:15.0'
+    compile 'org.antlr:antlr-runtime:3.4'
+
+    testCompile ('org.testng:testng:6.8') {
+        exclude group: 'junit', module: 'junit'
+    }
+    testCompile 'junit:junit:4.11'
+}
+
+configurations {
+    antlr3
+}
+
+dependencies {
+    antlr3 'org.antlr:antlr:3.4'
+}
+
+task generateWithANTLR3(type:Exec) { 
+    commandLine = ['java', '-cp',  configurations.antlr3.getAsPath(), 'org.antlr.Tool', '-o', '.', 'src/main/java/io/crate/sql/parser/Statement.g', 'src/main/java/io/crate/sql/parser/StatementBuilder.g']
+}
+
+compileJava {
+    dependsOn generateWithANTLR3
+    source 'src/main/java/'
+}
+
+test {
+    // show standard out and standard error of the test JVM(s) on the console
+    testLogging.showStandardStreams = true
+
+    useTestNG()
+}
+
+apply plugin: 'java'
+
+archivesBaseName = 'crate-sql'
+
+// we do not want to have elasticsearch here, since we provide it in :es
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+//evaluationDependsOn(':app')
+
+
+dependencies {
+    compile project(':es')
+    compile project(':core')
+    compile project(':inout')
+    compile project(':blob')
+    compile project(':sql-parser')
+    compile 'com.amazonaws:aws-java-sdk:1.7.5'
+    testCompile 'org.skyscreamer:jsonassert:1.2.0'
+    testCompile 'com.h2database:h2:1.3.173'
+    testCompile project(':testing')
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+test {
+    testLogging {
+        // show standard out and standard error of the test JVM(s) on the console
+        showStandardStreams = true
+        // Show that tests are run in the command-line output
+        events 'started', 'passed'
+    }
+    // force run, see: http://gradle.1045684.n5.nabble.com/how-does-gradle-decide-when-to-run-tests-td3314172.html
+    outputs.upToDateWhen { false }
+
+    exclude('io/crate/module/sql/benchmark/**')
+
+    // allow to set the number of test forks from the CLI
+    if (project.hasProperty('testForks')) {
+        maxParallelForks = project.testForks as int
+    }
+}
+
+
+task bench(type: Test) {
+    description = 'Run the Crate JUnit Benchmarks'
+    group = 'crate'
+    def benchmark_dir = '/tmp/crate-junit-benchmarks/'
+
+    // Properties for JUnit Benchmarks
+    systemProperty 'jub.consumers', 'CONSOLE,H2,XML'
+    systemProperty 'jub.db.file', benchmark_dir + 'results'
+    systemProperty 'jub.xml.file', benchmark_dir + 'results.xml'
+    systemProperty 'jub.charts.dir', benchmark_dir
+
+    include('io/crate/module/sql/benchmark/**')
+
+    testLogging {
+        // show standard out and standard error of the test JVM(s) on the console
+        showStandardStreams = true
+
+        // Show that tests are run in the command-line output
+        events 'started', 'passed'
+    }
+    // force run, see: http://gradle.1045684.n5.nabble.com/how-does-gradle-decide-when-to-run-tests-td3314172.html
+    outputs.upToDateWhen { false }
+
+    doLast {
+        println "Benchmark Results in " + benchmark_dir
+    }
+}
+
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+            include '**/*.rst'
+            include '**/*.json'
+            include '**/*.sql'
+            include '**/*.html'
+            include '**/*.jsonp'
+        }
+    }
+}
+apply plugin: 'java'
+
+archivesBaseName = 'crate-testing'
+
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+evaluationDependsOn(':es')
+
+dependencies {
+    compile project(':es')
+    compile 'org.python:jython-standalone:2.7-b1'
+    compile ("org.mockito:mockito-core:1.9.5") {
+        exclude group: 'org.hamcrest', module: 'hamcrest-core'
+    }
+    compile 'org.hamcrest:hamcrest-core:1.3'
+    compile 'org.codehaus.jackson:jackson-mapper-asl:1.9.0'
+    compile 'com.carrotsearch:junit-benchmarks:0.7.2'
+    compile project(':es').sourceSets.test.runtimeClasspath
+}
+
+
+sourceSets {
+    main {
+        resources {
+            srcDir 'src/main/java'
+            include '**/*.py'
+        }
+    }
+    test {
+        resources {
+            srcDir 'src/test/java'
+            include '**/*.txt'
+            include '**/*.rst'
+            include '**/*.json'
+        }
+        resources {
+            srcDir 'src/test/resources'
+            include '**/*.txt'
+            include '**/*.rst'
+            include '**/*.json'
+        }
+    }
+}
+apply plugin: 'java'
+
+archivesBaseName = 'crate-udc'
+
+// we do not want to have elasticsearch here, since we provide it in :es
+configurations {
+    all*.exclude group: 'org.elasticsearch'
+}
+
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile project(':es')
+    compile project(':core')
+    testCompile project(':testing')
+}
+
+test {
+    testLogging {
+        // show standard out and standard error of the test JVM(s) on the console
+        showStandardStreams = true
+        // Show that tests are run in the command-line output
+        events 'started', 'passed'
+    }
+    // force run, see: http://gradle.1045684.n5.nabble.com/how-does-gradle-decide-when-to-run-tests-td3314172.html
+    outputs.upToDateWhen { false }
+
+}
+
+sourceSets {
+    test {
+        resources {
+            srcDir 'src/test/java'
+        }
+    }
+}

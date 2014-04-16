@@ -1,0 +1,2468 @@
+<project name="SalesforceMobileSDK" default="usage" basedir=".">
+
+  <target name="doc" description="Javadoc generation target">
+    <javadoc destdir="./doc"
+      author="true"
+      version="true"
+      doctitle="SalesforceSDK 2.1 API"
+      verbose="on"
+      use="true"
+      sourcepath="./native/SalesforceSDK/src;./hybrid/SmartStore/src">
+    </javadoc>
+  </target>
+
+  <!-- Default target: describes useful targets -->
+  <target name="usage" description="Key targets of this build.xml">
+    <echo>
+      ant javadoc
+      Generates Javadoc for the SalesforceSDK and SmartStore pojects in the 'doc' folder.
+
+      ant create_native -Dapp.name={appName} -Dtarget.dir={targetDir} -Dpackage.name={packageName} [-Duse.smartstore=true]
+      Creates a native application, for instance:
+      ant create_native -Dapp.name=MyFirstNative -Dtarget.dir=./firstnative -Dpackage.name=com.acme.firstnative 
+
+      ant create_hybrid_local -Dapp.name={appName} -Dtarget.dir={targetDir} -Dpackage.name={packageName} [-Duse.smartstore=true]
+      Creates a local hybrid application, for instance:
+      ant create_hybrid_local -Dapp.name=MyFirstHybridLocal -Dtarget.dir=./firsthybridlocal -Dpackage.name=com.acme.firsthybridlocal 
+
+      ant create_hybrid_remote -Dapp.name={appName} -Dtarget.dir={targetDir} -Dpackage.name={packageName} -Dstart.page={startPage} [-Duse.smartstore=true]
+      Creates a remote hybrid application, for instance:
+      ant create_hybrid_remote -Dapp.name=MyFirstHybridRemote -Dtarget.dir=./firsthybridremote -Dpackage.name=com.acme.firsthybridremote -Dstart.page=/apex/TestPageA
+
+      Arguments:
+      * appName: the name for the new application 
+      * targetDir: the directory where the code should reside 
+      * packageName: the java package for the new application e.g. com.acme.mobileapp
+      * startPage: the start page for the remote application e.g. /apex/MyFirstApp
+      * only pass -Duse.smartstore=true if you want SmartStore support
+    </echo>
+  </target>
+
+  <!-- Location of SalesforceMobileSDK -->
+  <property name="sdk.dir" location=""/>
+
+  <!-- Location of SalesforceMobileSDK relative to the target app-->
+  <property name="sdk.dir.from.target" location="" relative="true" basedir="${target.dir}"/>
+    
+  <!-- Relative location of native and hybrid apps' bootconfig files. -->
+  <property name="hybrid.bootconfig.path" value="assets/www/bootconfig.json" />
+  <property name="native.bootconfig.path" value="res/values/bootconfig.xml" />
+
+  <!-- Target to compute package directory path and other properties -->
+  <target name="-pre">
+    <!-- Following returns basedir with dots replaced by file separators -->
+    <pathconvert property="basedirunpackaged">
+      <path path="." />
+      <mapper type="unpackage" from="*" to="*" />
+    </pathconvert>
+    <!-- Following returns basedir + package.name with dot replaced by file separators -->
+    <pathconvert property="temp.package.dir">
+      <path path="${package.name}" />
+      <mapper type="unpackage" from="*" to="*" />      
+    </pathconvert>
+    <!-- Following returns package directory from the package name e.g. com/acme/mobileapp for com.acme.mobileapp -->
+    <pathconvert property="package.dir">
+      <path path="${temp.package.dir}" />
+      <globmapper from="${basedirunpackaged}/*" to="*" handledirsep="true" />
+    </pathconvert>
+
+    <!-- Application's subclass will be called ${app.name}App" -->
+    <property name="app.classname" value="${app.name}App" />
+  </target>
+
+  <!-- Target to create a native application -->
+  <target name="create_native" description="Create native application" 
+          depends="-pre_native,-create,-use_smartstore,-next_steps_info,-oauth_info_native" />
+
+  <target name="-pre_native" depends="-pre">
+    <property name="template.dir" value="${sdk.dir}/native/TemplateApp" />
+    <property name="template.app.name" value="Template" />
+    <property name="template.app.classname" value="TemplateApp" />
+    <property name="template.package.name" value="com.salesforce.samples.templateapp" />
+    <property name="template.package.dir" value="com/salesforce/samples/templateapp" />
+    <property name="bootconfig.path" value="${native.bootconfig.path}" />
+  </target>
+
+  <!-- Target to create a hybrid remote application -->
+  <target name="create_hybrid_remote" description="Create remote hybrid application" 
+          depends="-pre_hybrid_remote,-create,-use_smartstore,-post_hybrid_remote,-next_steps_info,-oauth_info_hybrid">
+  </target>
+
+  <target name="-pre_hybrid_remote" depends="-pre">
+    <property name="template.dir" value="${sdk.dir}/hybrid/SampleApps/VFConnector" />
+    <property name="template.app.name" value="VFConnector" />
+    <property name="template.app.classname" value="VFConnectorApp" />
+    <property name="template.package.name" value="com.salesforce.samples.vfconnector" />
+    <property name="template.package.dir" value="com/salesforce/samples/vfconnector" />
+    <property name="bootconfig.path" value="${hybrid.bootconfig.path}" />
+  </target>
+
+  <target name="-post_hybrid_remote">
+    <echo message="Changing remote page reference in ${hybrid.bootconfig.path}" />
+    <replaceregexp match="/apex/BasicVFPage" flags="g" replace="${start.page}"
+                   file="${target.dir}/${hybrid.bootconfig.path}" />
+  </target>
+
+  <!-- Target to create a hybrid local application -->
+  <target name="create_hybrid_local" description="Create local hybrid application" 
+          depends="-pre_hybrid_local,-create,-use_smartstore,-next_steps_info,-oauth_info_hybrid" />
+
+  <target name="-pre_hybrid_local" depends="-pre">
+    <property name="template.dir" value="${sdk.dir}/hybrid/SampleApps/ContactExplorer" />
+    <property name="template.app.name" value="ContactExplorer" />
+    <property name="template.app.classname" value="ContactExplorerApp" />
+    <property name="template.package.name" value="com.salesforce.samples.contactexplorer" />
+    <property name="template.package.dir" value="com/salesforce/samples/contactexplorer" />
+    <property name="bootconfig.path" value="${hybrid.bootconfig.path}" />
+  </target>
+
+  <!-- Internal target, called by create_* targets -->
+  <target name="-create">
+    <fileset id="target.files" dir="${target.dir}">
+      <include name="AndroidManifest.xml" />
+      <include name=".project" />
+      <include name="build.xml" />
+      <include name="res/values/strings.xml" />
+      <include name="${bootconfig.path}" />
+      <include name="src/${template.package.dir}/*.java" />
+    </fileset>
+
+    <mkdir dir="${target.dir}" />
+
+    <copy todir="${target.dir}">
+      <fileset dir="${template.dir}" />
+    </copy>
+
+    <echo message="Adjusting SalesforceSDK library project reference" />
+    <replaceregexp match="=.*SalesforceSDK" flags="g" replace="=${sdk.dir.from.target}/native/SalesforceSDK">
+      <fileset file="${target.dir}/project.properties" />
+    </replaceregexp>
+
+    <echo message="Renaming application class to ${app.classname}" />
+    <replaceregexp match="${template.app.classname}" flags="g" replace="${app.classname}">
+      <fileset refid="target.files" />
+    </replaceregexp>
+    <move file="${target.dir}/src/${template.package.dir}/${template.app.classname}.java" 
+          tofile="${target.dir}/src/${template.package.dir}/${app.classname}.java" />
+
+    <echo message="Renaming application to ${app.name}" />
+    <replaceregexp match="${template.app.name}" flags="g" replace="${app.name}">
+      <fileset refid="target.files" />
+    </replaceregexp>
+
+    <echo message="Changing java package reference to ${package.name}" />
+    <replaceregexp match="${template.package.name}" flags="g" replace="${package.name}">
+      <fileset refid="target.files" />
+    </replaceregexp>
+
+    <mkdir dir="${target.dir}/src/${package.dir}"/>
+
+    <move todir="${target.dir}/src">
+      <fileset file="${target.dir}/src/${template.package.dir}/*.java" />
+    </move>
+
+    <delete dir="${target.dir}/src/com" />
+
+    <move todir="${target.dir}/src/${package.dir}">
+      <fileset file="${target.dir}/src/*.java" />
+    </move>
+  </target>
+
+  <target name="-use_smartstore" if="use.smartstore">
+    <echo message="Adding smartstore support" />
+    <copy file="${sdk.dir}/external/sqlcipher/assets/icudt46l.zip" todir="${target.dir}/assets" />
+
+    <echo message="Adding SmartStore library reference in project.properties" />
+    <concat destfile="${target.dir}/project.properties" append="true">android.library.reference.2=${sdk.dir.from.target}/hybrid/SmartStore</concat>
+
+    <echo message="Extending SalesforceSDKManagerWithSmartStore instead of SalesforceSDKManager" />
+    <replaceregexp match="SalesforceSDKManager" flags="g" replace="SalesforceSDKManagerWithSmartStore">
+      <fileset file="${target.dir}/src/${package.dir}/${app.classname}.java" />
+    </replaceregexp>
+    <replaceregexp match="com.salesforce.androidsdk.app.SalesforceSDKManagerWithSmartStore" flags="g" replace="com.salesforce.androidsdk.smartstore.app.SalesforceSDKManagerWithSmartStore">
+      <fileset file="${target.dir}/src/${package.dir}/${app.classname}.java" />
+    </replaceregexp>
+  </target>
+
+  <!-- Internal targets, next steps info -->
+  <target name="-next_steps_info">
+    <condition property="library.projects" 
+               value="the native/SalesforceSDK and the hybrid/SmartStore library projects"
+               else="the native/SalesforceSDK library project">
+      <isset property="use.smartstore" />
+    </condition>
+    <echo>
+      Your application project is ready in ${target.dir}
+
+      To build the new application, do the following:
+        cd ${target.dir}
+        $ANDROID_SDK_DIR/android update project -p .
+        ant clean debug
+
+      To run the application, start an emulator or plugin your device and run:
+        ant installd
+
+      To use your new application in Eclipse, do the following:
+        import ${library.projects} and the ${target.dir} project in your workspace
+        build all
+        run your application by choosing "Run as Android application"
+    </echo>
+  </target>
+
+  <target name="-oauth_info_native">
+    <echo>
+      Before you ship, make sure to plug in your oauth client id, callback url and oauth scopes in:
+        ${target.dir}/${native.bootconfig.path}
+    </echo>
+  </target>
+
+  <target name="-oauth_info_hybrid">
+    <echo>
+      Before you ship, make sure to plug in your oauth client id and callback url in:
+        ${target.dir}/${hybrid.bootconfig.path}
+    </echo>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="AccountEditor" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ContactExplorer" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="HybridFileExplorer" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SmartStoreExplorer" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="VFConnector" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ContactExplorerTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- if sdk.dir was not set from one of the property file, then
+         get it from the ANDROID_HOME env var.
+         This must be done before we load project.properties since
+         the proguard config can use sdk.dir -->
+    <property environment="env" />
+    <condition property="sdk.dir" value="${env.ANDROID_HOME}">
+        <isset property="env.ANDROID_HOME" />
+    </condition>
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through the ANDROID_HOME environment variable."
+            unless="sdk.dir"
+    />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true" />
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SmartStoreExplorerTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- if sdk.dir was not set from one of the property file, then
+         get it from the ANDROID_HOME env var.
+         This must be done before we load project.properties since
+         the proguard config can use sdk.dir -->
+    <property environment="env" />
+    <condition property="sdk.dir" value="${env.ANDROID_HOME}">
+        <isset property="env.ANDROID_HOME" />
+    </condition>
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through the ANDROID_HOME environment variable."
+            unless="sdk.dir"
+    />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true" />
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="VFConnectorTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- if sdk.dir was not set from one of the property file, then
+         get it from the ANDROID_HOME env var.
+         This must be done before we load project.properties since
+         the proguard config can use sdk.dir -->
+    <property environment="env" />
+    <condition property="sdk.dir" value="${env.ANDROID_HOME}">
+        <isset property="env.ANDROID_HOME" />
+    </condition>
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through the ANDROID_HOME environment variable."
+            unless="sdk.dir"
+    />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true" />
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SmartStore" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ForcePluginsTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Otherwise ant installt fails -->
+    <property name="dont.do.deps" value="false" />
+
+    <!-- Otherwise it won't build -->
+    <property name="project.is.testapp" value="true" />
+    <property name="project.is.test" value="false" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SmartStoreTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+
+
+    <!-- Otherwise ant installt fails -->
+    <property name="dont.do.deps" value="false" />
+    <property name="project.is.testapp" value="true" />
+    <property name="project.is.test" value="false" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+    
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SalesforceSDK" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Path to dist directory (where we place the SDK jar) -->
+    <property name="jar.dir" value="../../dist"/>
+
+    <!-- Copy salesforcesdk.jar to dist directory -->
+    <target name="jar">
+        <mkdir dir="${jar.dir}"/>
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@android:versionName"
+                    output="sdk.version"/>
+
+        <jar destfile="${jar.dir}/SalesforceSDK-${sdk.version}.jar">
+          <fileset dir="${out.classes.absolute.dir}" excludes="**/R.class **/R$*.class"/>
+          <fileset dir="${source.absolute.dir}" includes="**/*.java" excludes="**/R.java" />
+        </jar>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="FileExplorer" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="NativeSqlAggregatorApp" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="RestExplorer" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="RestExplorerTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="TemplateApp" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="SalesforceSDKTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+
+
+    <!-- Otherwise ant installt fails -->
+    <property name="dont.do.deps" value="false" />
+    <property name="project.is.testapp" value="true" />
+    <property name="project.is.test" value="false" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+    
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="TemplateAppTest" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <loadproperties srcFile="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+            unless="sdk.dir"
+    />
+
+
+<!-- extension targets. Uncomment the ones where you want to do custom work
+     in between standard targets -->
+<!--
+    <target name="-pre-build">
+    </target>
+    <target name="-pre-compile">
+    </target>
+
+    /* This is typically used for code obfuscation.
+       Compiled code location: ${out.classes.absolute.dir}
+       If this is not done in place, override ${out.dex.input.absolute.dir} */
+    <target name="-post-compile">
+    </target>
+-->
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: custom -->
+
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!-- Overridding androidsdk's test target
+         to extract manifest.package and test.runner from AndroidManifest.xml -->
+    <target name="test" depends="-test-project-check"
+                description="Runs tests from the package defined in test.package property">
+
+        <xpath input="AndroidManifest.xml" expression="/manifest/@package" output="manifest.package" />
+        <xpath input="AndroidManifest.xml" expression="/manifest/instrumentation/@android:name" output="test.runner" />
+        <property name="tested.project.absolute.dir" location="${tested.project.dir}" />
+        <property name="reports.dir" value="${basedir}/junit-reports"/>
+
+        <!-- Application package of the tested project extracted from its manifest file -->
+        <xpath input="${tested.project.absolute.dir}/AndroidManifest.xml"
+                expression="/manifest/@package" output="tested.manifest.package" />
+
+        <property name="files.dir" value="/data/data/${tested.manifest.package}/files"/>
+
+        <property name="emma.dump.file"
+                value="/data/data/${tested.manifest.package}/coverage.ec" />
+
+        <if condition="${emma.enabled}">
+            <then>
+                <echo>WARNING: Code Coverage is currently only supported on the emulator and rooted devices.</echo>
+                <run-tests-helper emma.enabled="true">
+                    <extra-instrument-args>
+                        <arg value="-e" />
+                           <arg value="coverageFile" />
+                           <arg value="${emma.dump.file}" />
+                    </extra-instrument-args>
+                </run-tests-helper>
+                <echo>Downloading coverage file into project directory...</echo>
+                <exec executable="${adb}" failonerror="true">
+                    <arg line="${adb.device.arg}" />
+                    <arg value="pull" />
+                    <arg value="${emma.dump.file}" />
+                    <arg value="coverage.ec" />
+                </exec>
+                <echo>Extracting coverage report...</echo>
+                <emma>
+                    <report sourcepath="${tested.project.absolute.dir}/${source.dir}"
+                                      verbosity="${verbosity}">
+                        <!-- TODO: report.dir or something like should be introduced if necessary -->
+                        <infileset dir=".">
+                            <include name="coverage.ec" />
+                            <include name="coverage.em" />
+                        </infileset>
+                        <!-- TODO: reports in other, indicated by user formats -->
+                        <html outfile="coverage.html" />
+                   </report>
+                </emma>
+                <echo>Cleaning up temporary files...</echo>
+                <delete file="coverage.ec" />
+                <delete file="coverage.em" />
+                <echo>Saving the report file in ${basedir}/coverage/coverage.html</echo>
+            </then>
+            <else>
+                <run-tests-helper />
+            </else>
+        </if>
+
+        <echo>Downloading XML test reports...</echo>
+        <mkdir dir="${reports.dir}"/>
+        <exec executable="${adb}" failonerror="true">
+            <arg line="${adb.device.arg}"/>
+            <arg value="pull" />
+            <arg value="${files.dir}" />
+            <arg value="${reports.dir}" />
+        </exec>
+        <echo>Saving junit reports in ${basedir}/junit-reports</echo>
+    </target>
+
+</project>

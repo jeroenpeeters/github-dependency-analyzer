@@ -1,0 +1,378 @@
+/*
+ * ERMA Gradle build file.
+ *
+ * To execute build:
+ * $ ./gradlew
+ *
+ * If executing via a pre-installed version of gradle or your IDE, make sure to export GRADLE_OPTS
+ * as defined in this project's gradlew script.
+ */
+buildscript {
+  repositories {  
+    maven { url 'http://repos.ssdt.nwoca.org/artifactory/repo' }  
+  }
+  dependencies { 
+    classpath 'me.davesmith:jaranalyzerplugin:0.1.0-SNAPSHOT' 
+  }
+}
+
+apply plugin: 'jaranalyzer'  // in a build script
+
+import org.gradle.plugins.signing.Sign
+
+allprojects {
+  apply plugin: 'java'
+  apply plugin: 'eclipse'
+  apply plugin: 'idea'
+  apply plugin: 'checkstyle'
+
+  checkstyle {
+    //toolVersion = "5.7"
+    toolVersion = "5.8-SNAPSHOT"
+    configFile = new File(rootDir, "/config/checkstyle/checkstyle.xml")
+  }
+  
+  task eclipse(dependsOn: [eclipseClasspath], overwrite: true) << {
+    // Don't overwrite the project file
+  }
+}
+
+task publishJavadoc(dependsOn: [javadoc]) << {
+  def sep = File.separator
+  String docFolder = project.buildDir.getCanonicalPath() + sep + 'docs' + sep
+  assert new File(docFolder).deleteDir()
+  for (project in subprojects) {
+    def shortProjectName = project.name.split('/')[-1]
+    File projectDocFolder = new File(docFolder + shortProjectName)
+    projectDocFolder.mkdirs()
+    copy {
+      from project.javadoc.destinationDir
+      into projectDocFolder
+    }
+  }
+  File checkoutFolder = new File(project.buildDir.getCanonicalPath() + sep + 'docspublish')
+  File checkoutProjectFolder = new File(checkoutFolder.getCanonicalPath() + sep + 'erma')
+  File checkoutDocsFolder = new File(checkoutProjectFolder.getCanonicalPath() + sep + 'docs')
+  assert checkoutFolder.deleteDir()
+  checkoutFolder.mkdirs()
+  def command = 'git clone git@github.com:erma/erma.git -b gh-pages'
+  logger.info(command)
+  def process = command.execute([], checkoutFolder)
+  process.waitFor()
+  assert process.exitValue() == 0
+  assert checkoutDocsFolder.deleteDir()
+  checkoutDocsFolder.mkdirs()
+  copy {
+    from new File(docFolder)
+    into checkoutDocsFolder
+  }
+  command = 'git add .'
+  logger.info(command)
+  process = command.execute([], checkoutProjectFolder)
+  process.waitFor()
+  assert process.exitValue() == 0
+  def commandList = ['git', 'commit', '-m', 'Updated documentation']
+  logger.info('***** NOTE: The Git commit will fail if there aren\'t any changes *****')
+  logger.info(commandList.join(' '))
+  process = commandList.execute([], checkoutProjectFolder)
+  process.waitFor()
+  assert process.exitValue() == 0
+  command = 'git push'
+  logger.info(command)
+  process = command.execute([], checkoutProjectFolder)
+  process.waitFor()
+  assert process.exitValue() == 0
+}
+
+subprojects { subproject ->
+  apply plugin: 'signing'
+  apply plugin: 'maven'
+  apply plugin: 'project-reports'
+  apply plugin: 'sonar-runner'
+  
+  signing {
+    sign configurations.archives
+    required false
+  }
+
+  sourceCompatibility = 1.5
+  targetCompatibility = 1.5
+
+  defaultTasks 'assemble'
+  
+  sourceSets {
+    main {
+      java { srcDir 'src/java' }
+    }
+    test {
+      java { srcDir 'test/src/java' }
+      resources { srcDir 'test/src/java' }
+    }
+  }
+  
+  repositories {
+    mavenCentral()
+    mavenLocal()
+  }
+ 
+  def pomConfig = {
+    name project.projectName
+    description project.description
+    packaging 'jar'
+    url 'https://github.com/erma/erma'
+    inceptionYear '2008'
+    licenses {
+      license {
+        name 'The Apache Software License, Version 2.0'
+        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+        distribution 'repo'
+      }
+    }
+    scm {
+      connection 'scm:git:git@github.com:erma/erma.git'
+      developerConnection 'scm:git:git@github.com:erma/erma.git'
+      url 'git@github.com:erma/erma.git'
+    }
+    developers {
+      developer {
+        id 'ConnorWGarvey'
+        name 'Connor Garvey'
+        email 'connorwgarvey@gmail.com'
+        url 'http://www.connorgarvey.com'
+        organization 'Orbitz Worldwide, LLC'
+        organizationUrl 'http://www.orbitz.com'
+        roles {
+          role 'developer'
+        }
+        timezone '-6'
+      }
+    }
+    parent {
+      groupId 'org.sonatype.oss'
+      artifactId 'oss-parent'
+      version '7'
+    }
+  }
+  
+  configure(install.repositories.mavenInstaller) {
+    pom.project pomConfig
+  }
+  
+  uploadArchives {
+    if (project.hasProperty('sonatypeUserName') && project.hasProperty('sonatypePassword')) {
+      dependsOn << [ signArchives ]
+      repositories.mavenDeployer {
+        beforeDeployment { deployment ->
+          signPom(deployment)
+          for (signTask in project.tasks.withType(Sign)) {
+            for (signature in signTask.signatures) {
+              deployment.addArtifact(signature)
+            }
+          }
+        }
+        name = 'Maven Central Deployer'
+        configuration = configurations.archives
+        repository(url: 'https://oss.sonatype.org/service/local/staging/deploy/maven2') {
+          authentication(userName: sonatypeUserName, password: sonatypePassword)
+        }
+        snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+          authentication(userName: sonatypeUserName, password: sonatypePassword)
+        }
+        pom.project pomConfig
+      }
+    }
+  }
+  
+  // erma/abc sub-project generates jar with basename "abc"
+  def shortProjectName = project.name.split('/')[-1]
+  jar.baseName = shortProjectName
+  
+  task sourceJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+    baseName = shortProjectName
+  }
+  
+  task javadocJar(type: Jar, dependsOn:javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+    baseName = shortProjectName
+  }
+  
+  task dist(dependsOn: [build]) << {
+    File distFolder = new File(rootProject.buildDir.getCanonicalPath() + File.separator + 'dist')
+    distFolder.mkdirs()
+    for (archiveTask in project.tasks.withType(Jar)) {
+      copy {
+        from archiveTask.archivePath
+        into distFolder
+      }
+    }
+    for (signTask in project.tasks.withType(Sign)) {
+      copy {
+        from signTask.signatureFiles
+        into distFolder
+      }
+    }
+  }
+  
+  artifacts {
+    archives jar, sourceJar, javadocJar
+  }
+
+  sonarRunner {
+      sonarProperties {
+         property "sonar.host.url", "http://sonar.orbitz.net/"
+         property "sonar.jdbc.url", "jdbc:mysql://sonar.orbitz.net:3306/sonar?useUnicode=true&characterEncoding=utf8"
+         property "sonar.jdbc.driverClassName", "com.mysql.jdbc.Driver"
+         property "sonar.username", "sonar"
+         property "sonar.password", "sonar"
+      }
+  }
+}
+/*
+ * ERMA Gradle build file.
+ *
+ * To execute build:
+ * $ ./gradlew
+ *
+ * If executing via a pre-installed version of gradle or your IDE, make sure to export GRADLE_OPTS
+ * as defined in this project's gradlew script.
+ */
+
+dependencies {
+    /* dependencies for erma-api jar */
+    compile(
+        [group: 'log4j', name: 'log4j', version: '1.2.9'],
+        [group: 'commons-lang', name: 'commons-lang', version: '2.2'],
+        [group: 'com.google.guava', name: 'guava', version: 'r09'],
+    )
+    /* dependencies for unit tests */
+    testCompile(
+        project(':erma-test'),
+        [group: 'net.sourceforge.cobertura', name: 'cobertura', version: '1.9.3'],
+        [group: 'junit', name: 'junit', version: '4.8.1'],
+        [group: 'commons-beanutils', name: 'commons-beanutils', version: '1.7.0'],
+        [group: 'org.mockito', name: 'mockito-all', version: '1.8.1']
+    )
+}
+
+/*
+ * ERMA Gradle build file.
+ *
+ * To execute build:
+ * $ ./gradlew
+ *
+ * If executing via a pre-installed version of gradle or your IDE, make sure to export GRADLE_OPTS
+ * as defined in this project's gradlew script.
+ */
+
+dependencies {
+    /* dependencies for erma-lib jar */
+    compile(
+        project(':erma-api'),
+        project(':erma-lib'), //I would like to remove this
+        [group: 'org.springframework', name: 'spring', version: '2.0.6'],
+        /*
+        [group: 'log4j', name: 'log4j', version: '1.2.9'],
+        [group: 'commons-lang', name: 'commons-lang', version: '2.2'],
+        [group: 'commons-beanutils', name: 'commons-beanutils', version: '1.7.0'],
+        [group: 'commons-jexl', name: 'commons-jexl', version: '1.0'],
+        [group: 'com.thoughtworks.xstream', name: 'xstream', version: '1.2.2'],
+        [group: 'com.google.guava', name: 'guava', version: 'r08']
+        */
+    )
+    /* dependencies for unit tests */
+    testCompile(
+        [group: 'junit', name: 'junit', version: '4.8.1'],
+        /*
+        project(':erma-test'),
+        [group: 'net.sourceforge.cobertura', name: 'cobertura', version: '1.9.3'],
+        [group: 'org.mockito', name: 'mockito-all', version: '1.8.5']
+        */
+    )
+}
+
+/*
+ * ERMA Gradle build file.
+ *
+ * To execute build:
+ * $ ./gradlew
+ *
+ * If executing via a pre-installed version of gradle or your IDE, make sure to export GRADLE_OPTS
+ * as defined in this project's gradlew script.
+ */
+
+// todo : why doesn't this work when set in the gradle.properties for this subproject?
+version = '1.5'
+
+dependencies {
+    compile project(':erma-api')
+    compile project(':erma-lib')
+    compile(
+        [group: 'log4j', name: 'log4j', version: '1.2.9'],
+        [group: 'org.mongodb', name: 'mongo-java-driver', version: '2.0'],
+        [group: 'commons-collections', name: 'commons-collections', version: '3.2.1'],
+        [group: 'commons-lang', name: 'commons-lang', version: '2.2'],
+        [group: 'org.springframework', name: 'spring', version: '2.0.6']
+    )
+    /* dependencies for unit tests */
+    testCompile(
+        [group: 'junit', name: 'junit', version: '4.8.1'],
+        [group: 'net.sourceforge.cobertura', name: 'cobertura', version: '1.9.3'],
+        [group: 'org.powermock', name: 'powermock-core', version: '1.4.8'],
+        [group: 'org.powermock', name: 'powermock-api-support', version: '1.4.8'],
+        [group: 'org.powermock', name: 'powermock-api-mockito', version: '1.4.8'],
+        [group: 'org.powermock', name: 'powermock-module-junit4', version: '1.4.8'],
+        [group: 'org.powermock', name: 'powermock-module-junit4-common', version: '1.4.8'],
+        [group: 'org.mockito', name: 'mockito-all', version: '1.8.5']
+    )
+}
+/*
+ * ERMA Gradle build file.
+ *
+ * To execute build:
+ * $ ./gradlew
+ *
+ * If executing via a pre-installed version of gradle or your IDE, make sure to export GRADLE_OPTS
+ * as defined in this project's gradlew script.
+ */
+
+dependencies {
+    /* dependencies for erma-lib jar */
+    compile(
+        project(':erma-api'),
+        [group: 'log4j', name: 'log4j', version: '1.2.9'],
+        [group: 'commons-lang', name: 'commons-lang', version: '2.2'],
+        [group: 'org.springframework', name: 'spring', version: '2.0.6'],
+        [group: 'commons-beanutils', name: 'commons-beanutils', version: '1.7.0'],
+        [group: 'commons-jexl', name: 'commons-jexl', version: '1.0'],
+        [group: 'com.thoughtworks.xstream', name: 'xstream', version: '1.2.2'],
+        [group: 'com.google.guava', name: 'guava', version: 'r08']
+    )
+    /* dependencies for unit tests */
+    testCompile(
+        project(':erma-test'),
+        [group: 'net.sourceforge.cobertura', name: 'cobertura', version: '1.9.3'],
+        [group: 'junit', name: 'junit', version: '4.8.1'],
+        [group: 'org.mockito', name: 'mockito-all', version: '1.8.5']
+    )
+}
+
+dependencies {
+    compile(
+        project(':erma-api'),
+        [group: 'junit', name: 'junit', version: '4.8.1'],
+        //[group: 'log4j', name: 'log4j', version: '1.2.9'],
+        //[group: 'commons-lang', name: 'commons-lang', version: '2.2'],
+        //[group: 'com.google.guava', name: 'guava', version: 'r09'],
+    )
+    
+    testCompile(
+        //project(':erma-test'),
+        //[group: 'net.sourceforge.cobertura', name: 'cobertura', version: '1.9.3'],
+        //[group: 'commons-beanutils', name: 'commons-beanutils', version: '1.7.0'],
+        //[group: 'org.mockito', name: 'mockito-all', version: '1.8.1']
+    )
+}
+

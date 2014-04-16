@@ -1,0 +1,2335 @@
+<project name="Log4j_Basic_Demo" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.Final/" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="Log4jDemo.war" />
+ 
+        <path id="jboss.classpath">
+             <fileset dir="${jboss.module.dir}">
+                 <include name="**/*.jar"/>
+             </fileset>
+        </path>
+ 
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/lib"/>
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+           <mkdir dir="${tmp.dir}/WEB-INF/META-INF"/>
+           <mkdir dir="${tmp.dir}/META-INF"/>
+        </target>
+ 
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>   
+
+           <!-- Make sure to place the "log4j.xml" file inside ${WAR_NAME}/WEB-INF/classes  directory--> 
+           <copy file="${src.dir}/log4j.xml" todir="${tmp.dir}/WEB-INF/classes"/>
+
+           <!-- Make sure to place the "log4j-1.2.16.jar" file inside ${WAR_NAME}/WEB-INF/lib  directory--> 
+           <copy file="${src.dir}/log4j-1.2.16.jar" todir="${tmp.dir}/WEB-INF/lib"/>
+
+           <!-- Using this file we are going to satisfy the log4j dependency without directly placing the log4j.jar inside "WEB-INF/lib"
+           <copy file="${src.dir}/jboss-deployment-structure.xml" todir="${tmp.dir}/WEB-INF"/> -->
+
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true"/> 
+
+
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+ 
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="JBoss_Service" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.CR1b" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="java.home.dir" value="/NotBackedUp/MyJdks/jdk1.6.0_05" />
+<property name="basedir" value="." />
+<property name="war.dir" value="CXFClientLoggingDemoWAR" />
+<property name="war.name" value="CXFClientLoggingDemo.war" />
+<property name="src.dir" value="src" />
+<property name="client.src.dir" value="${basedir}/clientSrc" />
+<property name="output.dir" value="build" />
+<property name="client.dir" value="${basedir}/clientStuff" />
+<property name="client.jar.name" value="DemoCXFClient.jar" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+   </path>
+
+   <path id="client.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+     <fileset dir="${client.dir}">
+        <include name="*.jar"/>
+     </fileset>  
+   </path>
+
+   <taskdef name="wsprovide" classname="org.jboss.ws.tools.ant.WSProvideTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+   <taskdef name="wsconsume" classname="org.jboss.ws.tools.ant.WSConsumeTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <mkdir dir="${output.dir}/${war.dir}"/>
+           <mkdir dir="${output.dir}/${war.dir}/META-INF"/>
+           <mkdir dir="${output.dir}/${war.dir}/WEB-INF"/>
+           <mkdir dir="${output.dir}/${war.dir}/WEB-INF/classes"/>
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}/META-INF"/>
+        </target>
+	 
+    <target name="build" depends="init">
+       <javac srcdir="${src.dir}" destdir="${output.dir}/${war.dir}/WEB-INF/classes"  includes="*.java" excludes="Test_CXF_Client.java" classpathref="jboss.classpath"/>
+        <copy todir="${output.dir}/${war.dir}/WEB-INF">
+	  <fileset dir="${basedir}/src">
+	      <include name="web.xml"/>
+	  </fileset>
+	</copy>   
+       <wsprovide
+        	fork="false"
+        	keep="true"
+        	destdir="${output.dir}"
+        	resourcedestdir="${output.dir}/${war.dir}/WEB-INF/wsdl"
+        	sourcedestdir="${output.dir}"
+        	genwsdl="true" 
+        	verbose="true"
+        	sei="ws.DemoCXF">
+            	<classpath>
+                	  <pathelement path="${output.dir}/${war.dir}/WEB-INF/classes"/>
+            	</classpath>
+      </wsprovide>
+
+      <jar jarfile="${output.dir}/${war.name}" basedir="${output.dir}/${war.dir}" compress="true" /> 
+      <delete dir="${war.dir}" />
+    </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying   *********************" />  
+            <echo message="********** ${war.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy file="${output.dir}/${war.name}" todir="${jboss.home}/standalone/deployments/"/>
+
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+  
+        <target name="post-deploy" >
+            <echo message="*******************  NOTE  *********************" />
+            <echo message="***** You should be able to access your WSDL using Browser now *****" />
+            <echo message="                http://localhost:8080/CXFClientLoggingDemo?wsdl          " />
+        </target>  
+
+        <target name="client" depends="post-deploy">
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}"/>             
+             <wsconsume
+                      fork="true"
+                      keep="true"
+                      destdir="${client.dir}"
+                      sourcedestdir="${client.dir}"
+                      package="client"
+                      wsdlLocation="service.wsdl"
+                      wsdl="http://localhost:8080/CXFClientLoggingDemo?wsdl">
+            </wsconsume>
+
+
+            <!-- We need to make sure that log4j.properties is present inside client's classpath-->
+            <copy file="${src.dir}/log4j.properties" todir="${client.dir}" />
+
+            <javac srcdir="${src.dir}" destdir="${client.dir}"  includes="Test_CXF_Client.java" classpathref="client.classpath">
+	        <classpath>
+	            <pathelement location="${client.dir}"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+            </javac>
+
+            <jar jarfile="${client.dir}/${client.jar.name}" basedir="${client.dir}" compress="true" /> 
+
+
+            <!-- Cleaning Client Stuff Directory --> 
+            <delete dir="${client.dir}/client"/> 
+            <delete file="${client.dir}/log4j.properties"/> 
+       </target>
+
+        <target name="run" depends="client">
+            <java classname="client.Test_CXF_Client" fork="true" >
+	        <classpath>
+	            <pathelement location="${client.dir}/DemoCXFClient.jar"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+                <jvmarg value="-Dorg.apache.cxf.Logger=org.apache.cxf.common.logging.Log4jLogger" />
+                <arg value="http://localhost:8080/CXFClientLoggingDemo"/>
+            </java>
+        </target>  
+
+</project>
+
+
+<project name="ClusteredEJB_Demo" default="all">
+<property name="jboss.home" value="/home/jaysensharma/jbossas-7.1.3" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ejb.jar" value="remoteEJB.jar" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.home}/bin/client">
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="deploy" />
+
+        <target name="build_ear">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" classpathref="jboss.classpath"/>
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/remote"/>
+           </delete>
+        </target>
+
+
+        <target name="deploy" depends="build_ear">
+            <sleep milliseconds="5"/>
+            <echo message="*******************  Deploying the EJB JAR file ${ejb.jar} *********************" />  
+            <echo message="********** ${output.dir}/${ejb.jar} to ${jboss.home}/standalone_1/deployments **********" />  
+            <echo message="********** ${output.dir}/${ejb.jar} to ${jboss.home}/standalone_2/deployments **********" />  
+
+            <copy todir="${jboss.home}/standalone_1/deployments/">
+                <fileset dir="${tmp.dir}/">
+                  <include name="${ejb.jar}"/> 
+                </fileset>
+            </copy>
+            <copy todir="${jboss.home}/standalone_2/deployments/">
+                <fileset dir="${tmp.dir}/">
+                  <include name="${ejb.jar}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <!--copy file="${src.dir}/jboss-ejb-client.properties" toDir="${tmp.dir}"/--> 
+
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CallerRemote.java,TestRemoteClientA.java" classpathref="jboss.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+
+           <java classname="client.TestRemoteClientA" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="JBoss_Complex_Service" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.CR1b" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+
+<property name="basedir" value="." />
+<property name="war.dir" value="CXFComplexTypeDemoWAR" />
+<property name="war.name" value="CXFComplexTypeDemo.war" />
+<property name="src.dir" value="src" />
+<property name="client.src.dir" value="${basedir}/clientSrc" />
+<property name="output.dir" value="build" />
+<property name="client.dir" value="${basedir}/clientStuff" />
+<property name="client.jar.name" value="DemoCXFClient.jar" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+   </path>
+
+   <path id="client.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+     <fileset dir="${client.dir}">
+        <include name="*.jar"/>
+     </fileset>  
+   </path>
+
+   <taskdef name="wsprovide" classname="org.jboss.ws.tools.ant.WSProvideTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+   <taskdef name="wsconsume" classname="org.jboss.ws.tools.ant.WSConsumeTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <mkdir dir="${output.dir}/${war.dir}"/>
+           <mkdir dir="${output.dir}/${war.dir}/META-INF"/>
+           <mkdir dir="${output.dir}/${war.dir}/WEB-INF"/>
+           <mkdir dir="${output.dir}/${war.dir}/WEB-INF/classes"/>
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}/META-INF"/>
+        </target>
+	 
+    <target name="build" depends="init">
+       <javac srcdir="${src.dir}" destdir="${output.dir}/${war.dir}/WEB-INF/classes"  includes="*.java" excludes="Test_CXF_Client.java" classpathref="jboss.classpath"/>
+        <copy todir="${output.dir}/${war.dir}/WEB-INF">
+	  <fileset dir="${basedir}/src">
+	      <include name="web.xml"/>
+	  </fileset>
+	</copy>   
+       <wsprovide
+        	fork="false"
+        	keep="true"
+        	destdir="${output.dir}"
+        	resourcedestdir="${output.dir}/${war.dir}/WEB-INF/wsdl"
+        	sourcedestdir="${output.dir}"
+        	genwsdl="true" 
+        	verbose="true"
+        	sei="ws.DemoCXF">
+            	<classpath>
+                	  <pathelement path="${output.dir}/${war.dir}/WEB-INF/classes"/>
+            	</classpath>
+      </wsprovide>
+
+      <jar jarfile="${output.dir}/${war.name}" basedir="${output.dir}/${war.dir}" compress="true" /> 
+      
+    </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying   *********************" />  
+            <echo message="********** ${war.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy file="${output.dir}/${war.name}" todir="${jboss.home}/standalone/deployments/"/>
+
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+  
+        <target name="post-deploy" >
+            <echo message="*******************  NOTE  *********************" />
+            <echo message="***** You should be able to access your WSDL using Browser now *****" />
+            <echo message="                http://localhost:8080/CXFComplexTypeDemo?wsdl          " />
+        </target>  
+
+        <target name="client" depends="post-deploy">
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}"/>             
+             <wsconsume
+                      fork="true"
+                      keep="true"
+                      destdir="${client.dir}"
+                      sourcedestdir="${client.dir}"
+                      package="client"
+                      wsdlLocation="service.wsdl"
+                      wsdl="http://localhost:8080/CXFComplexTypeDemo?wsdl">
+            </wsconsume>
+
+            <!-- We need to make sure that log4j.properties is present inside client's classpath-->
+            <copy file="${src.dir}/log4j.properties" todir="${client.dir}" />
+
+            <javac srcdir="${src.dir}" destdir="${client.dir}"  includes="Test_CXF_Client.java" classpathref="client.classpath">
+	        <classpath>
+	            <pathelement location="${client.dir}"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+            </javac>
+
+            <jar jarfile="${client.dir}/${client.jar.name}" basedir="${client.dir}" compress="true" /> 
+
+            <!-- Cleaning Client Stuff Directory  --> 
+            <delete dir="${client.dir}/client"/>
+            <delete file="${client.dir}/log4j.properties"/> 
+       </target>
+
+        <target name="run" depends="client">
+            <java classname="client.Test_CXF_Client" fork="true" >
+	        <classpath>
+	            <pathelement location="${client.dir}/DemoCXFClient.jar"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+                <arg value="http://localhost:8080/CXFComplexTypeDemo"/>
+            </java>
+        </target>  
+
+</project>
+
+
+<project name="EJB3_SecurityDomain_Service" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ear.name" value="TestRemoteEJBEAR.ear" />
+<property name="ejb.jar" value="remoteEJB.jar" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="deploy" />
+
+        <target name="build_ear">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/META-INF" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" excludes="TestRemoteClientA.java" classpathref="jboss.classpath"/>
+           <copy file="${src.dir}/jboss-ejb3.xml" todir="${tmp.dir}/META-INF"/>
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete file="${tmp.dir}/ejb-users.properties"/>
+           <delete file="${tmp.dir}/ejb-roles.properties"/>
+           <delete file="${tmp.dir}/META-INF/jboss-ejb3.xml"/>
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/remote"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/">
+                  <include name="application.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.name}" tofile="${output.dir}/${ear.name}"/>
+           <delete file="${tmp.dir}/${ear.name}"/>
+        </target>
+
+
+        <target name="deploy" depends="build_ear">
+            <echo message="*******************  Deploying the EAR file ${ear.name} *********************" />  
+            <echo message="********** ${output.dir}/${ear.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ear.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <copy file="${src.dir}/jboss-ejb-client.properties" toDir="${tmp.dir}"/> 
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CallerRemote.java,TestRemoteClientA.java" classpathref="jboss.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="client.TestRemoteClientA" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+               <sysproperty key="java.util.logging.manager" value="java.util.logging.LogManager"/>
+               <sysproperty key="java.util.logging.config.file" value="${src.dir}/logging.properties"/>
+               <sysproperty key="java.util.logging.ConsoleHandler.level" value="SEVERE" />
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="DataSource_Demo" default="deploy">
+<property name="jboss.home" value="/home/jaysensharma/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="DataSourceDemo.war" />
+ 
+        <path id="jboss.classpath">
+             <fileset dir="${jboss.module.dir}">
+                 <include name="**/*.jar"/>
+             </fileset>
+        </path>
+ 
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+        </target>
+ 
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/web.xml" tofile="${tmp.dir}/WEB-INF/web.xml"/>   
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>   
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true"/> 
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+ 
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="Log4j_Basic_Demo_EAR_Level" default="deploy">
+<property name="jboss.home" value="/home/jaysensharma/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="Log4jDemo.war" />
+<property name="ear.name" value="Log4jBasedApp.ear" />
+ 
+        <path id="jboss.classpath">
+             <fileset dir="${jboss.module.dir}">
+                 <include name="**/*.jar"/>
+             </fileset>
+        </path>
+ 
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+           <mkdir dir="${tmp.dir}/WEB-INF/META-INF"/>
+           <mkdir dir="${tmp.dir}/META-INF"/>
+        </target>
+ 
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>  
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true"/> 
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+ 
+        <target name="build_EAR" depends="build">
+           <mkdir dir="${tmp.dir}/lib"/>
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy file="${src.dir}/log4jXML.jar" todir="${tmp.dir}/lib"/>
+           <copy file="${src.dir}/log4j-1.2.16.jar" todir="${tmp.dir}/lib"/> 
+           <copy file="${output.dir}/${war.name}" todir="${tmp.dir}"/>
+           <copy file="${src.dir}/jboss-deployment-structure.xml" todir="${tmp.dir}/META-INF"/>
+           <jar jarfile="${tmp.dir}/${ear.name}" basedir="${tmp.dir}" compress="true"/> 
+           <copy file="${tmp.dir}/${ear.name}" tofile="${output.dir}/${ear.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+
+        <target name="deploy" depends="build_EAR">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${ear.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ear.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="Servlet3FileUploadProject" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.CR1b" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="Servlet3FileUploadDemo.war" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+              <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+        </target>
+	 
+        <target name="build" depends="init">
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+           <copy file="${src.dir}/index.jsp" todir="${tmp.dir}"/>
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath"/> 
+
+           <copy todir="${tmp.dir}/WEB-INF">
+                <fileset dir="${src.dir}/">
+                      <include name="web.xml"/> 
+                </fileset>
+           </copy>          
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true" />
+      
+           <!-- Clean up -->
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete> 
+        </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />  
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+</project>
+
+
+<project name="Secured EJB Remote" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.CR1b" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ejb.jar" value="schedulerEJB.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <target name="all" depends="deploy" />
+
+        <target name="build_ejb_jar">
+           <delete dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${output.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" classpathref="jboss.classpath"/> 
+          
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+           <copy file="${tmp.dir}/${ejb.jar}" tofile="${output.dir}/${ejb.jar}"/>
+
+           <delete dir="${tmp.dir}"/>
+        </target>
+
+
+        <target name="deploy" depends="build_ejb_jar">
+            <echo message="*******************  Deploying the EAR file ${ear.name} *********************" />  
+            <echo message="********** ${output.dir}/${ejb.jar} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ejb.jar}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+            <echo message="******************* Check JBoss AS7 Console  *********************" /> 
+        </target>
+   
+</project>
+
+
+<project name="EJB3_SSLBased_SecurityDomain_Service" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ear.name" value="TestRemoteEJBEAR.ear" />
+<property name="ejb.jar" value="remoteEJB.jar" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+          <!-- <fileset dir="${jboss.home}/bin/client">  -->
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="/NotBackedUp/MyJdks/jdk1.6.0_21/jre/lib">
+               <include name="rt.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="deploy" />
+
+        <target name="build_ear">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/META-INF" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" excludes="TestRemoteClientA.java" classpathref="jboss.classpath"/>
+           <copy file="${src.dir}/jboss-ejb3.xml" todir="${tmp.dir}/META-INF"/>
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete file="${tmp.dir}/ejb-users.properties"/>
+           <delete file="${tmp.dir}/ejb-roles.properties"/>
+           <delete file="${tmp.dir}/META-INF/jboss-ejb3.xml"/>
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/remote"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/">
+                  <include name="application.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.name}" tofile="${output.dir}/${ear.name}"/>
+           <delete file="${tmp.dir}/${ear.name}"/>
+        </target>
+
+
+        <target name="deploy" depends="build_ear">
+            <echo message="*******************  Deploying the EAR file ${ear.name} *********************" />  
+            <echo message="********** ${output.dir}/${ear.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ear.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <copy file="${src.dir}/jboss-ejb-client.properties" toDir="${tmp.dir}"/> 
+
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CallerRemote.java,TestRemoteClientA.java" classpathref="jboss.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+
+           <java classname="client.TestRemoteClientA" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+
+               <sysproperty key="java.util.logging.manager" value="java.util.logging.LogManager"/>
+               <sysproperty key="java.util.logging.config.file" value="logging.properties"/>
+               <sysproperty key="java.util.logging.ConsoleHandler.level" value="TRACE" />
+
+               <sysproperty key="javax.net.ssl.trustStore" value="certificates/jbossClient.keystore"/>
+               <sysproperty key="javax.net.ssl.trustStorePassword" value="clientPassword"/>
+               <sysproperty key="javax.net.debug" value="all"/>
+
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="JBoss_Service" default="post-deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="jar.name" value="EJB_CXF_BasicAuthDemo.jar" />
+<property name="src.dir" value="src" />
+<property name="client.src.dir" value="${basedir}/clientSrc" />
+<property name="output.dir" value="build" />
+<property name="client.dir" value="${basedir}/clientStuff" />
+<property name="client.jar.name" value="EJB_CXF_BasicAuth_Client.jar" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+   </path>
+
+   <path id="client.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+     <fileset dir="${client.dir}">
+        <include name="*.jar"/>
+     </fileset>  
+   </path>
+
+   <taskdef name="wsprovide" classname="org.jboss.ws.tools.ant.WSProvideTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+   <taskdef name="wsconsume" classname="org.jboss.ws.tools.ant.WSConsumeTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <mkdir dir="${output.dir}/${jar.name}"/>
+           <mkdir dir="${output.dir}/${jar.name}/META-INF/wsdl"/>
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}"/>
+        </target>
+
+    <target name="build" depends="init">
+       <javac srcdir="${src.dir}" destdir="${output.dir}/${jar.name}"  includes="*.java" excludes="Client.java" classpathref="jboss.classpath"/>
+       <wsprovide
+        	fork="false"
+        	keep="true"
+        	destdir="${output.dir}"
+        	resourcedestdir="${output.dir}/${jar.name}/META-INF/wsdl"
+        	sourcedestdir="${output.dir}"
+        	genwsdl="true" 
+        	verbose="true"
+        	sei="ws.SecureCXF_EJB">
+            	<classpath>
+                	  <pathelement path="${output.dir}/${jar.name}"/>
+            	</classpath>
+      </wsprovide>
+        <copy todir="${output.dir}/${jar.name}">
+	  <fileset dir="${basedir}/src">
+	      <include name="*.properties"/>
+	  </fileset>
+	</copy>  
+    </target>
+
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying   *********************" />  
+            <echo message="********** ${jar.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${jar.name}/**"/> 
+                </fileset>
+            </copy>
+            <echo message="The EMPTY '${jar.name}.dodeploy' tells JBoss AS7 to deploy the application"/>
+            <echo message="This file is needed if we want to deploy an exploded application in JBossAS7"/>
+            <copy todir="${jboss.home}/standalone/deployments/">
+	        <fileset dir="${basedir}/src">
+	          <include name="${jar.name}.dodeploy"/>
+	        </fileset>
+	    </copy>   
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+  
+        <target name="post-deploy" depends="deploy">
+            <echo message="*******************  NOTE  *********************" />
+            <echo message="***** You should be able to access your WSDL using Browser now *****" />
+            <echo message="http://localhost:8080/EJB_CXF_BasicAuthDemo/SecureCXF_EJB?wsdl" />
+            <echo message="            " />
+            <echo message="            " />
+        </target>
+
+
+        <target name="client">
+             <delete dir="${client.dir}" />
+             <wsconsume
+                      fork="true"
+                      keep="true"
+                      destdir="${client.dir}"
+                      sourcedestdir="${client.dir}"
+                      package="client"
+                      wsdlLocation="service.wsdl"
+                      wsdl="http://localhost:8080/EJB_CXF_BasicAuthDemo/SecureCXF_EJB?wsdl">
+            </wsconsume>
+            <jar jarfile="${client.dir}/${client.jar.name}" basedir="${client.dir}" compress="true" />  
+       </target>
+
+        <target name="run" depends="client">
+            <javac srcdir="${src.dir}" destdir="${client.dir}"  includes="Client.java" classpathref="client.classpath"/>
+            <java classname="client.Client"  >
+	        <classpath>
+	            <pathelement location="${client.dir}"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+                <arg value="http://localhost:8080/EJB_CXF_BasicAuthDemo/SecureCXF_EJB"/>
+            </java>
+        </target>  
+
+</project>
+
+
+<project name="SingletonStartupService" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ear.one.name" value="ejbOneEAR.ear" />
+<property name="ejb.one.jar" value="remoteEjbOne.jar" />
+<property name="ear.two.name" value="ejbTwoEAR.ear" />
+<property name="ejb.two.jar" value="remoteEjbTwo.jar" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.home}/bin/client">
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="message" />
+
+        <target name="build_ear_one">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}/ejbOneEAR" destdir="${tmp.dir}"  includes="Caller*.java,TestRemote.java" classpathref="jboss.classpath"/>
+
+           <jar jarfile="${tmp.dir}/${ejb.one.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/ejb"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/ejbOneEAR/">
+                  <include name="application.xml"/> 
+                  <include name="jboss-ejb-client.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.one.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.one.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.one.name}" tofile="${output.dir}/${ear.one.name}"/>
+           <delete file="${tmp.dir}/${ear.one.name}"/>
+        </target>
+
+
+        <target name="build_ear_two" depends="build_ear_one">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}/ejbTwoEAR" destdir="${tmp.dir}"  includes="Test*.java" classpathref="jboss.classpath"/>
+
+           <jar jarfile="${tmp.dir}/${ejb.two.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/ejb"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/ejbTwoEAR/">
+                  <include name="application.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.two.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.two.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.two.name}" tofile="${output.dir}/${ear.two.name}"/>
+           <delete file="${tmp.dir}/${ear.two.name}"/>
+        </target>
+
+
+        <target name="message" depends="build_ear_two">
+            <echo message="*******************  ******************* *********************" />  
+            <echo message="********** ${output.dir}/${ear.one.name} Build Successfully **********" />  
+            <echo message="********** ${output.dir}/${ear.two.name} Build Successfully **********" />  
+            <echo message="Deploy the above EARs on your desired servers using CLI script or using Manaagement Console" />  
+            <echo message="*******************  ******************* *********************" />  
+        </target>
+
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <copy file="${src.dir}/client/jboss-ejb-client.properties" toDir="${tmp.dir}"/> 
+
+           <javac srcdir="${src.dir}/client" destdir="${tmp.dir}"  includes="CallerRemote.java,Client.java" classpathref="jboss.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+
+           <java classname="client.Client" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="ApplicationLevelJMSDemo" default="deploy">
+<property name="jboss.home" value="/home/userone/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="ApplicationLevelJMSDemo.war" />
+
+        <path id="jboss.classpath">
+             <fileset dir="${jboss.module.dir}">
+                 <include name="**/*.jar"/>
+             </fileset>
+             <fileset dir="${jboss.home}/bin/client">
+                 <include name="jboss-client.jar"/>
+             </fileset>
+        </path>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+        </target>
+
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes" excludes="StandaloneQueueSend.java"
+                  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>
+           <copy file="${src.dir}/web.xml" tofile="${tmp.dir}/WEB-INF/web.xml"/>      
+           <copy file="${src.dir}/test-jms.xml" tofile="${tmp.dir}/WEB-INF/test-jms.xml"/>      
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true"/> 
+
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="StandaloneQueueSend.java" classpathref="jboss.classpath"/>
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <java classname="StandaloneQueueSend" fork="true">
+               <classpath>
+                  <pathelement location="${tmp.dir}"/>
+                  <path refid="jboss.classpath"/>
+               </classpath>
+               <arg value="remote://localhost:4447"/>
+           </java>
+           <delete dir="${tmp.dir}" />
+        </target>  
+</project>
+<project name="JPA_BASIC_Demo" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="JPA_BASIC_Demo.war" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>
+   </path>
+ 
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes/META-INF"/>
+        </target>
+ 
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>
+           <copy file="${src.dir}/jboss-deployment-structure.xml" tofile="${tmp.dir}/WEB-INF/jboss-deployment-structure.xml"/>
+
+           <!-- Make Sure that the persistence.xml file is placed inside "${war.name}/WEB-INF/classes/META-INF" directory -->
+           <copy file="${src.dir}/persistence.xml" tofile="${tmp.dir}/WEB-INF/classes/META-INF/persistence.xml"/>
+
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true" />
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+ 
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="JPA_BASIC_Demo" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="JPA_BASIC_Demo.war" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>
+   </path>
+ 
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes/META-INF"/>
+        </target>
+ 
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>
+           <copy file="${src.dir}/jboss-deployment-structure.xml" tofile="${tmp.dir}/WEB-INF/jboss-deployment-structure.xml"/>
+
+           <!-- Make Sure that the persistence.xml file is placed inside "${war.name}/WEB-INF/classes/META-INF" directory -->
+           <copy file="${src.dir}/persistence.xml" tofile="${tmp.dir}/WEB-INF/classes/META-INF/persistence.xml"/>
+
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true" />
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+ 
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="JBossAS712NativeManagementClient" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="jbossCLIapiClient.jar" />
+
+        <!-- Following 5 Jars are needed for Client. Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/staxmapper/main">
+               <include name="staxmapper*.jar"/>
+           </fileset>
+
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="Main.java" classpathref="jboss.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="Main" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="JBossAS712NativeManagementClient" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="jbossCLIapiClient.jar" />
+
+        <!-- Following 5 Jars are needed for Client. Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/staxmapper/main">
+               <include name="staxmapper*.jar"/>
+           </fileset>
+
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="Main.java" classpathref="jboss.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="Main" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="JBossCLI_and_DMR_APIs_Together" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="jbossCLIapiClient.jar" />
+
+        <!-- Following 5 Jars are needed for Client. Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>
+
+
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/staxmapper/main">
+               <include name="staxmapper*.jar"/>
+           </fileset>
+
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="Main.java" classpathref="jboss.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="Main" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.client.classpath"/>
+               </classpath>
+               <arg line="localhost  9999   ${src.dir}/myapp.war"/>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="CreateSecurityDomain" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="createSecurityDomainDMRClient.jar" />
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/apache/log4j/main">
+               <include name="log4j*.jar"/>
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CreateSecurityDomain.java" classpathref="jboss.new.client.classpath"/>   
+           <copy file="${src.dir}/log4j.properties" todir="${tmp.dir}" />              
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="CreateSecurityDomain" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+               <jvmarg value="-Dlog4j.configuration=log4j.properties" />
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="CreateAndAlterSecurityDomain" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="create_alteer_SecurityDomainClient.jar" />
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>  
+        </path>
+	 
+	 
+        <target name="all" depends="create" />
+
+        <target name="create">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CreateAndAlterSecurityDomain.java" classpathref="jboss.new.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="CreateAndAlterSecurityDomain" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+</project>
+
+
+<project name="DeploymentAppUsing_DMR" default="deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="appDeployment_DMR_Client.jar" />
+
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>  
+        </path>
+	 
+        <target name="deploy">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="DeployApplicationUsingDMR.java" classpathref="jboss.new.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="DeployApplicationUsingDMR" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+               <arg value="${src.dir}" />
+               <arg value="myapp.war" />
+           </java>
+        </target>       
+
+
+        <target name="undeploy">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="UnDeployApplicationUsingDMR.java" classpathref="jboss.new.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="UnDeployApplicationUsingDMR" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+               <arg value="myapp.war" />
+           </java>
+        </target>     
+    
+</project>
+
+
+<project name="DeploymentInfo" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/cli/main">
+               <include name="jboss-as-cli*.jar"/>
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="DeploymentStatus.java" classpathref="jboss.new.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="DeploymentStatus" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="DMR_CLient" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="DMRClient.java" />
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/apache/log4j/main">
+               <include name="log4j*.jar"/>
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="JBossClient.java" classpathref="jboss.new.client.classpath"/>   
+           <copy file="${src.dir}/log4j.properties" todir="${tmp.dir}" />       
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="JBossClient" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+               <jvmarg value="-Dlog4j.configuration=log4j.properties" />
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="MXBeanDemo" default="deploy">
+<property name="jboss.home" value="home/userone/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="MXBeanDemo.war" />
+
+        <path id="jboss.classpath">
+             <fileset dir="${jboss.module.dir}">
+                 <include name="**/*.jar"/>
+             </fileset>
+        </path>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+        </target>
+
+        <target name="build" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" classpathref="jboss.classpath" />
+           <copy todir="${tmp.dir}/WEB-INF/classes">
+                <fileset dir="${src.dir}" includes="**/*.java"/>
+           </copy>
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>
+           <copy file="${src.dir}/web.xml" tofile="${tmp.dir}/WEB-INF/web.xml"/>      
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true"/> 
+
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete>
+        </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/>
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+</project>
+<project name="SingletonStartupService" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-eap-6.0.1" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="sar.name" value="mxbeanDemo.sar" />
+
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+        <target name="all" depends="deploy" />
+
+        <target name="build_sar">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" classpathref="jboss.classpath"/>
+           <jar jarfile="${tmp.dir}/${sar.name}" basedir="${tmp.dir}" compress="true" />
+           <copy file="${tmp.dir}/${sar.name}" tofile="${output.dir}/${sar.name}"/>
+           <delete dir="${tmp.dir}"/>
+        </target>
+
+        <target name="deploy" depends="build_sar">
+            <echo message="*******************  Deploying the EAR file ${sar.name} *********************" />  
+            <echo message="********** ${output.dir}/${sar.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${sar.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="******************* SAR with @MXBean Deployed Successfully   *********************" />  
+        </target>
+
+</project>
+
+
+<project name="JBossAS712NativeManagementClient" default="all">
+<property name="jboss.home" value="/home/jaysensharma/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="client.jar.name" value="jbossModelAPIClient.jar" />
+
+        <!-- Following 5 Jars are needed for Client. Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.client.classpath">
+           <fileset dir="${jboss.module.dir}/org/jboss/as/controller-client/main">
+               <include name="jboss-as-controller-client*.jar"/>
+           </fileset>  
+           <fileset dir="${jboss.module.dir}/org/jboss/threads/main">
+               <include name="jboss-threads*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.module.dir}/org/jboss/as/protocol/main">
+               <include name="jboss-as-protocol*.jar"/>
+           </fileset>
+
+           <fileset dir="${jboss.module.dir}/org/jboss/dmr/main">
+               <include name="jboss-dmr*.jar"/>
+           </fileset>
+           <fileset dir="${jboss.home}/bin/client" >
+               <include name="jboss-client.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="run" />
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="NativeManagementClient.java,TestStandaloneModel.java,TestDomainModeModel.java" classpathref="jboss.client.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+           <java classname="NativeManagementClient" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="SingletonStartupService" default="all">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.0.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ear.name" value="TestRemoteEJBEAR.ear" />
+<property name="ejb.jar" value="remoteEJB.jar" />
+<property name="client.jar.name" value="remoteEJBClient.jar" />
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+
+        <!-- Client Needs the following Jar to be present in the CLASSPATH including -->
+        <path id="jboss.new.client.classpath">
+           <fileset dir="${jboss.home}/bin/client">
+               <include name="jboss-client-7.1.0.Final.jar" />
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="deploy" />
+
+        <target name="build_ear">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" classpathref="jboss.classpath"/>
+
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/remote"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/">
+                  <include name="application.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.name}" tofile="${output.dir}/${ear.name}"/>
+           <delete file="${tmp.dir}/${ear.name}"/>
+        </target>
+
+
+        <target name="deploy" depends="build_ear">
+            <echo message="*******************  Deploying the EAR file ${ear.name} *********************" />  
+            <echo message="********** ${output.dir}/${ear.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ear.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+
+        <target name="run">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <copy file="${src.dir}/jboss-ejb-client.properties" toDir="${tmp.dir}"/> 
+
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="CallerRemote.java,TestRemoteClientA.java" classpathref="jboss.classpath"/>          
+           <jar jarfile="${output.dir}/${client.jar.name}" basedir="${tmp.dir}" compress="true" />
+           <delete dir="${tmp.dir}"/>
+
+           <java classname="client.TestRemoteClientA" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${client.jar.name}"/>
+                  <path refid="jboss.new.client.classpath"/>
+               </classpath>
+           </java>
+        </target>        
+    
+</project>
+
+
+<project name="JBoss_Service" default="post-deploy">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="war.name" value="Pojo_CXF_Service_BasicAuthDemo.war" />
+<property name="src.dir" value="src" />
+<property name="client.src.dir" value="${basedir}/clientSrc" />
+<property name="output.dir" value="build" />
+<property name="client.dir" value="${basedir}/clientStuff" />
+<property name="client.jar.name" value="Pojo_CXF_Service_BasicAuth_Client.jar" />
+ 
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+   </path>
+
+   <path id="client.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+     <fileset dir="${client.dir}">
+        <include name="${client.jar.name}"/>
+     </fileset>  
+   </path>
+
+   <taskdef name="wsprovide" classname="org.jboss.ws.tools.ant.WSProvideTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+   <taskdef name="wsconsume" classname="org.jboss.ws.tools.ant.WSConsumeTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <mkdir dir="${output.dir}/${war.name}"/>
+           <mkdir dir="${output.dir}/${war.name}/WEB-INF/wsdl"/>
+           <mkdir dir="${output.dir}/${war.name}/WEB-INF/classes"/>
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}"/>
+        </target>
+
+    <target name="build" depends="init">
+       <javac srcdir="${src.dir}" destdir="${output.dir}/${war.name}/WEB-INF/classes"  includes="*.java" excludes="Client.java" classpathref="jboss.classpath"/>
+       <!--copy file="${src.dir}/jboss-web.xml" tofile="${output.dir}/${war.name}/WEB-INF/jboss-web.xml"/-->
+       <copy file="${src.dir}/web.xml" tofile="${output.dir}/${war.name}/WEB-INF/web.xml"/>
+       <wsprovide
+        	fork="false"
+        	keep="true"
+        	destdir="${output.dir}/${war.name}/WEB-INF/classes"
+        	resourcedestdir="${output.dir}/${war.name}/META-INF/wsdl"
+        	sourcedestdir="${output.dir}/${war.name}/WEB-INF/classes"
+        	genwsdl="true" 
+        	verbose="true"
+        	sei="ws.PojoCXFService">
+            	<classpath>
+                	  <pathelement path="${output.dir}/${war.name}/WEB-INF/classes"/>
+            	</classpath>
+      </wsprovide>
+        <copy todir="${output.dir}/${war.name}/WEB-INF/classes">
+	  <fileset dir="${basedir}/src">
+	      <include name="*.properties"/>
+	  </fileset>
+	</copy>  
+    </target>
+
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying   *********************" />  
+            <echo message="********** ${war.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}/**"/> 
+                </fileset>
+            </copy>
+            <echo message="The EMPTY '${war.name}.dodeploy' tells JBoss AS7 to deploy the application"/>
+            <echo message="This file is needed if we want to deploy an exploded application in JBossAS7"/>
+            <copy todir="${jboss.home}/standalone/deployments/">
+	        <fileset dir="${basedir}/src">
+	          <include name="${war.name}.dodeploy"/>
+	        </fileset>
+	    </copy>   
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+  
+        <target name="post-deploy" depends="deploy">
+            <echo message="*******************  NOTE  *********************" />
+            <echo message="***** You should be able to access your WSDL using Browser now *****" />
+            <echo message="            " />
+            <echo message="            " />
+            <echo message="http://localhost:8080/Pojo_CXF_Service_BasicAuthDemo/PojoCXFService?wsdl" />
+            <echo message="            " />
+            <echo message="            " />
+            <echo message="*******************  NOTE  *********************" />
+            <echo message="***** You should be able to access your WSDL using Browser now *****" />
+            <echo message="http://userone:passwordone@localhost:8080/Pojo_CXF_Service_BasicAuthDemo/PojoCXFService?wsdl" />
+            <echo message="            " />
+            <echo message="            " />
+            <echo message="RMEMBER *** Syntax: " />
+            <echo message="http://BasicUsername:BasicPassword@localhost:8080/Pojo_CXF_Service_BasicAuthDemo/PojoCXFService?wsdl" />
+            <echo message="and then save it in your file system with following name:" />
+            <echo message="${src.dir}/META-INF/wsdl/PojoCXFService.wsdl "/>
+            <echo message="And then run the ' ant client' To generate client artifacts" />
+            <echo message="************************************************" />
+        </target>
+
+
+        <target name="client">
+             <delete dir="${client.dir}" />
+             <wsconsume
+                      fork="true"
+                      keep="true"
+                      destdir="${client.dir}"
+                      sourcedestdir="${client.dir}"
+                      package="client"
+                      wsdlLocation="service.wsdl"
+                      wsdl="${src.dir}/META-INF/wsdl/PojoCXFService.wsdl">
+            </wsconsume>
+            <jar jarfile="${client.dir}/${client.jar.name}" basedir="${client.dir}" compress="true" />  
+       </target>
+
+        <target name="run" depends="client">
+            <javac srcdir="${src.dir}" destdir="${client.dir}"  includes="Client.java" classpathref="client.classpath"/>
+            <java classname="client.Client"  >
+	        <classpath>
+	            <pathelement location="${client.dir}"/>
+	            <path refid="client.classpath"/>
+	        </classpath>
+                <arg value="http://localhost:8080/Pojo_CXF_Service_BasicAuthDemo/PojoCXFService"/>
+            </java>
+        </target>  
+
+</project>
+
+
+<project name="CDI_Demo" default="deploy">
+<property name="jboss.home" value="/home/userone/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="war.name" value="RestServiceWithCDI.war" />
+
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>  
+   </path>
+
+        <target name="init">
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+        </target>
+	 
+        <target name="build" depends="init">
+           <mkdir dir="${tmp.dir}/WEB-INF/classes"/>
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}/WEB-INF/classes"  includes="*.java" excludes="RestEasyClient.java" classpathref="jboss.classpath" />
+           <copy file="${src.dir}/index.jsp" tofile="${tmp.dir}/index.jsp"/>
+           <copy file="${src.dir}/web.xml" tofile="${tmp.dir}/web.xml"/>
+           <copy file="${src.dir}/MyRestService.java" todir="${tmp.dir}/WEB-INF/classes"/>
+           <copy file="${src.dir}/TestBean.java" todir="${tmp.dir}/WEB-INF/classes"/>
+
+           <!-- Need to place at lease one empty "beans.xml" file inside WEB-INF -->
+           <copy file="${src.dir}/beans.xml" todir="${tmp.dir}/WEB-INF"/>
+   
+           <jar jarfile="${tmp.dir}/${war.name}" basedir="${tmp.dir}" compress="true" />
+           <copy file="${tmp.dir}/${war.name}" tofile="${output.dir}/${war.name}"/>
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}"/>
+           </delete> 
+        </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying the WAR file ${war.name} *********************" />  
+            <echo message="********** ${output.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${war.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+
+        <target name="client">
+            <echo message="*******************  Client Accessing RestEasy Service *********************" />  
+            <javac srcdir="${src.dir}" destdir="${output.dir}"  includes="*.java" classpathref="jboss.classpath" />  
+            <java classname="client.RestEasyClient">
+                <classpath>
+                    <path refid="jboss.classpath"/>
+                    <pathelement location="${output.dir}"/>
+                </classpath>
+           </java>         
+        </target>
+</project>
+
+<project name="SingletonStartupService" default="all">
+<property name="jboss.home" value="/home/jaysensharma/jboss-as-7.1.2.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="src.dir" value="src" />
+<property name="output.dir" value="build" />
+<property name="ear.name" value="TestSingletonService.ear" />
+<property name="ejb.jar" value="singletonServiceEJB.jar" />
+
+
+        <path id="jboss.classpath">
+           <fileset dir="${jboss.module.dir}">
+               <include name="**/*.jar"/>
+           </fileset>  
+        </path>
+	 
+        <target name="all" depends="deploy" />
+
+        <target name="build_ear">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}"  includes="*.java" classpathref="jboss.classpath"/>
+
+           <jar jarfile="${tmp.dir}/${ejb.jar}" basedir="${tmp.dir}" compress="true" />
+
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/sar"/>
+           </delete> 
+           <mkdir dir="${tmp.dir}/META-INF"/>
+           <copy todir="${tmp.dir}/META-INF">
+                <fileset dir="${src.dir}/">
+                  <include name="application.xml"/> 
+                </fileset>
+           </copy>           
+           <jar jarfile="${tmp.dir}/${ear.name}" basedir="${tmp.dir}" compress="true" />
+           <delete includeEmptyDirs="true">
+              <fileset dir="${tmp.dir}/META-INF"/>
+           </delete> 
+           <delete file="${tmp.dir}/${ejb.jar}"/>
+
+           <copy file="${tmp.dir}/${ear.name}" tofile="${output.dir}/${ear.name}"/>
+           <delete dir="${tmp.dir}"/>
+        </target>
+
+
+        <target name="deploy" depends="build_ear">
+            <echo message="*******************  Deploying the EAR file ${ear.name} *********************" />  
+            <echo message="********** ${output.dir}/${ear.name} to ${jboss.home}/standalone/deployments **********" />  
+            <copy todir="${jboss.home}/standalone/deployments/">
+                <fileset dir="${output.dir}/">
+                  <include name="${ear.name}"/> 
+                </fileset>
+            </copy>
+            <echo message="*******************  Deployed Successfully   *********************" />  
+        </target>
+
+</project>
+
+
+<project name="SpringDemo" default="runProducer">
+<property name="spring.lib" value="/NotBackedUp/ByJay/Spring_3.3.0_Library" />
+<property name="activemq.home" value="/NotBackedUp/ByJay/jboss-a-mq-6.0.0.redhat-024" />
+<property name="basedir" value="." />
+<property name="tmp.dir" value="tmp" />
+<property name="output.dir" value="build" />
+<property name="src.dir" value="src" />
+<property name="producer.jar.name" value="jmsSpringProducer.jar" />
+<property name="consumer.jar.name" value="jmsSpringConsumer.jar" />
+
+        <path id="demo.classpath">
+             <fileset dir="${spring.lib}">
+                 <include name="**/*.jar"/>
+             </fileset>
+             <fileset dir="${activemq.home}/system">
+                 <include name="**/*.jar"/>
+             </fileset>
+        </path>
+
+        <target name="init">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <delete dir="${output.dir}" />
+           <mkdir dir="${output.dir}" />
+        </target>
+
+        <target name="buildProducer" depends="init">
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}" includes="SpringQueueSender.java" classpathref="demo.classpath" />
+           <copy todir="${tmp.dir}">
+                <fileset dir="${src.dir}" includes="SpringQueueSender.java,Employee.java"/>
+                <fileset dir="${src.dir}" includes="producerApplicationContext.xml"/>
+           </copy>
+           <jar jarfile="${tmp.dir}/${producer.jar.name}" basedir="${tmp.dir}" compress="true"/> 
+           <copy file ="${tmp.dir}/${producer.jar.name}" todir="${output.dir}" />
+        </target>
+
+        <target name="buildConsumer">
+           <delete dir="${tmp.dir}" />
+           <mkdir dir="${tmp.dir}" />
+           <javac srcdir="${src.dir}" destdir="${tmp.dir}" includes="SpringQueueReceiver.java,MyMessageListener.java,Example*.java" classpathref="demo.classpath" />
+           <copy todir="${tmp.dir}">
+                <fileset dir="${src.dir}" includes="SpringQueueReceiver.java,Employee.java"/>
+                <fileset dir="${src.dir}" includes="consumerApplicationContext.xml"/>
+           </copy>
+           <jar jarfile="${tmp.dir}/${consumer.jar.name}" basedir="${tmp.dir}" compress="true"/> 
+           <copy file ="${tmp.dir}/${consumer.jar.name}" todir="${output.dir}" />
+        </target>
+
+        <target name="runProducer" depends="buildProducer">
+           <delete dir="${tmp.dir}" />
+           <java classname="demo.SpringQueueSender" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${producer.jar.name}"/>
+                  <path refid="demo.classpath"/>
+               </classpath>
+           </java>
+        </target>  
+
+        <target name="runConsumer" depends="buildConsumer">
+           <delete dir="${tmp.dir}" />
+           <java classname="demo.SpringQueueReceiver" fork="true">
+               <classpath>
+                  <pathelement location="${output.dir}/${consumer.jar.name}"/>
+                  <path refid="demo.classpath"/>
+               </classpath>
+           </java>
+        </target>  
+</project>
+<project name="JBoss_Service" default="run">
+<property name="jboss.home" value="/NotBackedUp/JBoss_All/jboss-as-7.1.1.Final" />
+<property name="jboss.module.dir" value="${jboss.home}/modules" />
+<property name="java.home.dir" value="/NotBackedUp/MyJdks/jdk1.6.0_21" />
+<property name="basedir" value="." />
+<property name="tmp.war.dir.name" value="TEMP_GreetingService.war" />
+<property name="war.name" value="GreetingService.war" />
+<property name="src.dir" value="src" />
+<property name="dest.dir" value="build" />
+<property name="client.dir" value="clientStuff" />
+<property name="client.jar.name" value="Greeting-Client.jar" />
+
+   <path id="jboss.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>
+   </path>
+
+   <path id="client.classpath">
+     <fileset dir="${jboss.module.dir}">
+        <include name="**/*.jar"/>
+     </fileset>
+     <fileset dir="${client.dir}">
+        <include name="*.jar"/>
+     </fileset>
+   </path>
+
+   <taskdef name="wsprovide" classname="org.jboss.ws.tools.ant.WSProvideTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+   <taskdef name="wsconsume" classname="org.jboss.ws.tools.ant.WSConsumeTask">
+       <classpath refid="jboss.classpath"/>
+   </taskdef>
+
+
+        <target name="init">
+           <delete dir="${dest.dir}" />
+           <mkdir dir="${dest.dir}/${tmp.war.dir.name}"/>
+           <mkdir dir="${dest.dir}/${tmp.war.dir.name}/WEB-INF"/>
+           <mkdir dir="${dest.dir}/${tmp.war.dir.name}/WEB-INF/classes"/>
+           <mkdir dir="${dest.dir}" />
+           <delete dir="${client.dir}" />
+           <mkdir dir="${client.dir}"/>
+        </target>
+	 
+    <target name="build" depends="init">
+       <javac srcdir="${src.dir}" destdir="${dest.dir}/${tmp.war.dir.name}/WEB-INF/classes"  includes="*.java" excludes="GreetingServiceClient.java" classpathref="jboss.classpath"/>
+        <copy todir="${dest.dir}/${tmp.war.dir.name}/WEB-INF">
+	  <fileset dir="${src.dir}">
+	      <include name="web.xml"/>
+	  </fileset>
+	</copy>
+       <wsprovide
+        	fork="false"
+        	keep="true"
+        	destdir="${dest.dir}/${tmp.war.dir.name}/WEB-INF/classes"
+        	resourcedestdir="${dest.dir}/${tmp.war.dir.name}/WEB-INF/wsdl"
+        	sourcedestdir="${dest.dir}/${tmp.war.dir.name}/WEB-INF/classes"
+        	genwsdl="true"
+        	verbose="true"
+        	sei="ws.Greeting">
+            	<classpath>
+                	  <pathelement path="${dest.dir}/${tmp.war.dir.name}/WEB-INF/classes"/>
+            	</classpath>
+      </wsprovide>
+      <jar jarfile="${dest.dir}/${war.name}" basedir="${dest.dir}/${tmp.war.dir.name}" compress="true" /> 
+      <delete dir="${dest.dir}/${tmp.war.dir.name}" />
+    </target>
+
+        <target name="deploy" depends="build">
+            <echo message="*******************  Deploying   *********************" />
+            <echo message="********** ${dest.dir}/${dest.dir}/${war.name} to ${jboss.home}/standalone/deployments **********" />
+            <copy file="${dest.dir}/${war.name}" todir="${jboss.home}/standalone/deployments/"/>
+            <echo message="*******************  Deployed Successfully   *********************" />
+        </target>
+
+        <target name="client">
+             <delete dir="${client.dir}" />
+             <wsconsume
+                      fork="true"
+                      keep="true"
+                      destdir="${client.dir}"
+                      sourcedestdir="${client.dir}"
+                      package="client"
+                      wsdl="http://localhost:8080/GreetingService/Greeting?wsdl">
+            </wsconsume>
+            <jar jarfile="${client.dir}/${client.jar.name}" basedir="${client.dir}" compress="true" />
+       </target>
+
+
+        <target name="run" depends="client">
+            <javac srcdir="${src.dir}" destdir="${client.dir}"  includes="GreetingServiceClient.java"/>
+            <java classname="client.GreetingServiceClient" >
+	        <classpath>
+	            <path refid="client.classpath"/>
+                    <path refid="jboss.classpath"/>
+	            <pathelement location="${client.dir}/${client.jar.name}"/>
+	            <pathelement location="${client.dir}"/>
+	        </classpath>
+                <!-- <arg line="http://localhost:8080/GreetingService/Greeting?wsdl" />    -->
+            </java>
+        </target>  
+
+
+</project>

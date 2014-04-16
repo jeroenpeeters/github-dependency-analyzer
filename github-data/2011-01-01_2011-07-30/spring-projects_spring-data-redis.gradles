@@ -1,0 +1,246 @@
+buildscript {
+    repositories {
+        maven { url 'http://repo.spring.io/plugins-release' }
+    }
+    dependencies {
+        classpath 'org.springframework.build.gradle:bundlor-plugin:0.1.2'
+        classpath 'org.springframework.build.gradle:docbook-reference-plugin:0.2.4'
+        classpath 'me.champeau.gradle:gradle-javadoc-hotfix-plugin:0.1'
+    }
+}
+
+description = 'Spring Data Redis'
+group = 'org.springframework.data'
+
+repositories {
+  maven { url "http://repo.spring.io/libs-snapshot" }
+  maven { url "http://repo.spring.io/plugins-release" }
+  mavenCentral()
+}
+
+apply plugin: "java"
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+apply from: "$rootDir/maven.gradle"
+apply plugin: 'docbook-reference'
+apply plugin: 'bundlor'
+apply plugin: 'javadocHotfix'
+
+[compileJava, compileTestJava]*.options*.compilerArgs = ["-Xlint:-serial"]
+[compileJava, compileTestJava]*.options*.compilerArgs = ["-Xlint:-serial", "-Xlint:deprecation"]
+
+configurations.all {
+  resolutionStrategy {
+    force 'org.apache.commons:commons-pool2:2.2'
+  }
+}
+
+// Common dependencies
+dependencies {
+    // Logging
+    compile "org.slf4j:slf4j-api:$slf4jVersion"
+    compile "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+    testRuntime "log4j:log4j:$log4jVersion"
+    testRuntime "org.slf4j:slf4j-log4j12:$slf4jVersion"
+
+    // Spring Framework
+    compile("org.springframework:spring-core:$springVersion") {
+        exclude module: "commons-logging"
+    }
+    compile "org.springframework:spring-context-support:$springVersion"
+    compile "org.springframework:spring-context:$springVersion"
+    compile "org.springframework:spring-tx:$springVersion"
+    compile("org.springframework:spring-oxm:$springVersion", optional)
+
+    // Redis Drivers
+    compile("redis.clients:jedis:$jedisVersion", optional)
+    compile("com.github.spullara.redis:client:$srpVersion", optional)
+    compile("org.jredis:jredis-core-api:$jredisVersion", optional)
+    compile("org.jredis:jredis-core-ri:$jredisVersion", optional)
+    compile("com.lambdaworks:lettuce:$lettuceVersion", optional)
+
+    // Mappers
+    compile("org.codehaus.jackson:jackson-mapper-asl:$jacksonVersion", optional)
+    compile("commons-beanutils:commons-beanutils-core:1.8.3", optional)
+    compile("com.fasterxml.jackson.core:jackson-core:$fasterXmlJacksonVersion", optional)
+    compile("com.fasterxml.jackson.core:jackson-databind:$fasterXmlJacksonDatabindVersion", optional)
+
+    // Pool
+    compile("org.apache.commons:commons-pool2:2.2", optional)
+
+    // Testing
+    testCompile "junit:junit:$junitVersion"
+    testCompile "org.springframework:spring-test:$springVersion"
+    testCompile "org.springframework:spring-jdbc:$springVersion"
+    testCompile "org.mockito:mockito-all:$mockitoVersion"
+    testCompile("javax.annotation:jsr250-api:1.0", optional)
+    testCompile("com.thoughtworks.xstream:xstream:1.4.4", optional)
+    testCompile("javax.transaction:jta:1.1")
+}
+
+sourceCompatibility = 1.6
+targetCompatibility = 1.6
+
+javadoc {
+  ext.srcDir = file("${projectDir}/docs/src/api")
+  destinationDir = file("${buildDir}/api")
+  ext.tmpDir = file("${buildDir}/api-work")
+
+  configure(options) {
+      stylesheetFile = file("${srcDir}/spring-javadoc.css")
+      overview = "${srcDir}/overview.html"
+      docFilesSubDirs = true
+      outputLevel = org.gradle.external.javadoc.JavadocOutputLevel.QUIET
+      breakIterator = true
+      showFromProtected()
+      groups = [
+        'Spring Data Redis Support' : ['org.springframework.data.redis*'],
+      ]
+
+     links = [
+        "http://static.springframework.org/spring/docs/3.1.x/javadoc-api",
+        "http://download.oracle.com/javase/6/docs/api",
+        "http://jackson.codehaus.org/1.8.2/javadoc"
+     ]
+
+     exclude "org/springframework/data/redis/config/**"
+  }
+
+  title = "${rootProject.description} ${version} API"
+}
+
+bundlor {
+   manifestTemplate = file("${projectDir}/template.mf").text
+}
+
+
+jar {
+    manifest.attributes["Created-By"] = "${System.getProperty("java.version")} (${System.getProperty("java.specification.vendor")})"
+    manifest.attributes['Implementation-Title'] = 'spring-data-redis'
+    manifest.attributes['Implementation-Version'] = project.version
+    manifest.attributes['Implementation-URL'] = "http://projects.spring.io/spring-data-redis"
+    manifest.attributes['Implementation-Vendor'] = "Pivotal Software, Inc."
+    manifest.attributes['Implementation-Vendor-Id'] = "org.springframework"
+
+    from("$rootDir/docs/src/info") {
+        include "license.txt"
+        include "notice.txt"
+        include "readme.txt"
+        include "changelog.txt"
+        into "META-INF"
+        expand(copyright: new Date().format('2011-yyyy'), version: project.version)
+    }
+}
+
+task sourcesJar(type: Jar, dependsOn:classes) {
+    classifier = 'sources'
+    from sourceSets.main.allJava
+}
+
+task javadocJar(type: Jar) {
+    classifier = 'javadoc'
+    from javadoc
+}
+
+reference {
+    sourceDir = file('docs/src/reference/docbook')
+}
+
+task docsZip(type: Zip) {
+    group = 'Distribution'
+    classifier = 'docs'
+    description = "Builds -${classifier} archive containing api and reference for deployment"
+
+    from('docs/src/info') {
+        include 'changelog.txt'
+    }
+
+    from (javadoc) {
+        into 'api'
+    }
+
+    from (reference) {
+        into 'reference'
+    }
+}
+
+task schemaZip(type: Zip) {
+    group = 'Distribution'
+    classifier = 'schema'
+    description = "Builds -${classifier} archive containing all XSDs for deployment"
+
+    def Properties schemas = new Properties();
+
+    sourceSets.main.resources.find {
+        it.path.endsWith('META-INF' + File.separator + 'spring.schemas')
+    }?.withInputStream { schemas.load(it) }
+
+    for (def key : schemas.keySet()) {
+        def shortName = key.replaceAll(/http.*schema.(.*).spring-.*/, '$1')
+        def alias = key.replaceAll(/http.*schema.(.*).(spring-.*)/, '$2')
+        assert shortName != key
+        File xsdFile = sourceSets.main.resources.find {
+            it.path.replace('\\', '/').endsWith(schemas.get(key))
+        }
+        assert xsdFile != null
+
+        into (shortName) {
+           from xsdFile.path
+           rename { String fileName -> alias }
+        }
+    }
+}
+
+task distZip(type: Zip, dependsOn: [jar, docsZip, schemaZip, sourcesJar, javadocJar]) {
+    group = 'Distribution'
+    classifier = 'dist'
+    description = "Builds -${classifier} archive, containing all jars and docs, " +
+                  "suitable for community download page."
+
+    ext.zipRootDir = "${project.name}-${project.version}"
+
+    into (zipRootDir) {
+        from('docs/src/info') {
+            include 'readme.txt'
+            include 'license.txt'
+            include 'notice.txt'
+            expand(copyright: new Date().format('yyyy'), version: project.version)
+        }
+
+        from(zipTree(docsZip.archivePath)) {
+            into "docs"
+        }
+
+        from(zipTree(schemaZip.archivePath)) {
+            into "schema"
+        }
+        into ("dist") {
+            from rootProject.collect { project -> project.libsDir }
+        }
+    }
+}
+
+tasks.withType(Test) {
+    systemProperty 'runLongTests', System.getProperty('runLongTests')
+
+    testLogging {
+        exceptionFormat = 'full'
+    }
+}
+
+artifacts {
+    archives sourcesJar
+    archives javadocJar
+
+    archives docsZip
+    archives schemaZip
+    archives distZip
+}
+
+task wrapper(type: Wrapper) {
+    description = 'Generates gradlew[.bat] scripts'
+    gradleVersion = '1.11'
+}
+
+assemble.dependsOn = ['jar', 'sourcesJar']
+defaultTasks 'build'

@@ -1,0 +1,323 @@
+// Information for all projects
+
+// The default tasks for all projects
+defaultTasks 'removeOldReleases', 'build', 'shadowJar', 'createReleaseJar', 'install'
+
+allprojects
+{
+    version = "2.6.1-SNAPSHOT"
+    group = "com.khorn.terraincontrol"
+
+    // Give this a value in a child project to change the name in your IDE
+    // Otherwise it will use the default name. In the case of the project
+    // 'platforms:bukkit', the default name is invalid because it contains a slash
+    ext.ideProjectName = null
+}
+
+// Information for all subprojects
+// (common, forge and bukkit, but not this file)
+subprojects
+{   task ->
+
+    task.plugins.withType(org.gradle.api.plugins.JavaBasePlugin)
+    {
+        // We're still on Java 6
+        sourceCompatibility = '1.6'
+
+        // Generate Eclipse config files when using "gradle eclipse"
+        task.apply plugin: 'eclipse'
+
+        // Generate IntelliJ IDEA config files
+        task.apply plugin: 'idea'
+
+        // Change project name in Eclipse
+        // See comment above about the ideProjectName
+        task.eclipse.project.file.whenMerged
+        {   project ->
+
+            if (task.project.ext.ideProjectName != null)
+            {
+                project.name = task.project.ext.ideProjectName
+            }
+        }
+
+        // Since we're renaming projects, we need to rename the
+        // dependency 'common' to 'TerrainControl-Common'
+        task.eclipse.classpath.file.whenMerged
+        {   classpath ->
+            classpath.entries.findAll{ entry -> entry.path == "/common" }*.path = "/TerrainControl-Common"
+        }
+
+    }
+
+    // Generate a pom.xml, upload to local Maven repository
+    apply plugin: 'maven'
+}
+
+task removeOldReleases <<
+{
+    allprojects
+    {
+        File distributionsFolder = new File(project.buildDir, "distributions")
+        if (distributionsFolder.exists())
+        {
+            distributionsFolder.deleteDir()
+        }
+    }
+}
+// Build script for the Common parts of Terrain Control
+
+apply plugin: 'java'
+
+// Project properties
+archivesBaseName = "terraincontrol-common"
+description = "Core files of TerrainControl"
+ext.ideProjectName = "TerrainControl-Common"
+
+repositories
+{
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies
+{
+    testCompile 'junit:junit:4+'
+    compile 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    compile 'org.apache.logging.log4j:log4j-core:2.0-beta9'
+}
+// Build script for Terrain Control for Bukkit
+
+buildscript
+{
+    repositories
+    {
+        jcenter() // For shadow plugin
+    }
+    dependencies
+    {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:0.8'
+    }
+}
+
+apply plugin: 'shadow'
+apply plugin: 'java'
+
+// Project properties
+archivesBaseName = "terraincontrol-bukkit"
+description = "TerrainControl for Bukkit"
+ext.ideProjectName = "TerrainControl-Bukkit"
+ext.bukkitVersion = "1.7.8-R0.1-SNAPSHOT"
+
+repositories
+{
+    maven // For Bukkit and CraftBukkit
+    {
+        url "http://repo.bukkit.org/content/groups/public"
+    }
+    mavenCentral() // For log4j
+    mavenLocal()
+}
+
+dependencies
+{
+    compile 'org.bukkit:bukkit:' + ext.bukkitVersion
+    compile 'org.bukkit:craftbukkit:' + ext.bukkitVersion
+    compile project(':common')
+    compile 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    compile 'org.apache.logging.log4j:log4j-core:2.0-beta9'
+}
+
+// Replace text in plugin.yml
+processResources
+{
+    // Replace stuff in plugin.yml, nothing else
+    from(sourceSets.main.resources.srcDirs) {
+        include 'plugin.yml'
+
+        // Replace version
+        expand 'version': project.version
+    }
+
+    // Copy everything else, that's not the plugin.yml
+    from(sourceSets.main.resources.srcDirs) {
+        exclude 'plugin.yml'
+    }
+}
+
+// Include all Terrain Control files in the jar
+shadow
+{
+    artifactAttached = false
+    include 'com/khorn/terraincontrol/**'
+}
+
+// Build script for Terrain Control for Forge
+
+buildscript
+{
+    repositories
+    {
+        mavenCentral()
+        mavenLocal()
+        jcenter() // For Shadow plugin
+        maven
+        {
+            url = "http://files.minecraftforge.net/maven"
+        }
+        maven
+        {
+            url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+    dependencies
+    {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:1.2-SNAPSHOT'
+        classpath 'com.github.jengelman.gradle.plugins:shadow:0.8'
+    }
+}
+
+apply plugin: 'forge'
+
+// Project properties
+archivesBaseName = "terraincontrol-forge"
+description = "TerrainControl for Minecraft Forge"
+ext.ideProjectName = "TerrainControl-Forge"
+ext.forgeVersion = "1.7.2-10.12.0.1057"
+minecraft.version = ext.forgeVersion
+
+// The shadow plugin requires all dependencies to be present,
+// even though we have set it to only use the Terrain Control dependency.
+// When TC is build for the first time on a machine, not all
+// dependencies are present yet, because ForgeGradle needs to
+// dynamically create them. So we don't launch the Shadow plugin
+// when TC is build for the first time.
+
+// Would there be a way to let Shadow run after ForgeGradle has
+// completed its task? At the moment Shadow gets it's dependency
+// list before anything has a chance to run.
+File notFirstTimeBuild = new File("$projectDir/forgeInfo/hasUsed" + ext.forgeVersion + ".flag");
+if (notFirstTimeBuild.exists())
+{
+    apply plugin: 'shadow'
+
+    // Include all Terrain Control files in the jar
+    shadow
+    {
+        artifactAttached = false
+        include 'com/khorn/terraincontrol/**'
+    }
+} else
+{
+    File buildFlagDir = notFirstTimeBuild.getParentFile()
+    if (buildFlagDir.exists() || buildFlagDir.mkdirs())
+    {
+        notFirstTimeBuild.createNewFile();
+    } else
+    {
+        println(" Could not create directory " + notFirstTimeBuild.getParentFile().getAbsolutePath())
+    }
+    println(" Skipping Shadow for Forge version, see comment in platforms/forge/build.gradle")
+}
+
+repositories
+{
+    mavenCentral()
+    mavenLocal()
+}
+
+dependencies
+{
+    compile project(':common')
+    compile 'org.apache.logging.log4j:log4j-api:2.0-beta9'
+    compile 'io.netty:netty-all:4.0.10.Final'
+}
+
+// Replace text in mcmod.info
+processResources
+{
+    // Replace stuff in mcmod.info, nothing else
+    from(sourceSets.main.resources.srcDirs)
+    {
+        include 'mcmod.info'
+
+        // Replace version and mcversion
+        expand 'version':project.version, 'mcversion':project.minecraft.version
+    }
+
+    // Copy everything else, that's not the mcmod.info
+    from(sourceSets.main.resources.srcDirs)
+    {
+        exclude 'mcmod.info'
+    }
+}
+
+// Build script for Terrain Control releases
+// This script simply packs together the Bukkit and Forge jars
+
+import java.util.zip.*;
+
+// Project properties
+description = "TerrainControl Releases"
+
+// Gets the JAR file for the project with the given name
+def getJarFile(Project project)
+{
+    String fileName = project.archivesBaseName + '-' + project.version + ".jar"
+    return new File(project.buildDir, 'distributions/' + fileName)
+}
+
+// Adds all files from the given zip file (source) to the given destination, which
+// must also be a zip file. A set of already added files is maintained to prevent
+// duplicates
+def addToZip(File source, ZipOutputStream destination, Set<String> alreadyAddedFiles)
+{
+    byte[] buffer = new byte[4096]
+    ZipInputStream inputStream = new ZipInputStream(new FileInputStream(source))
+    ZipEntry nextEntry = inputStream.getNextEntry()
+    while (nextEntry != null)
+    {
+        if (!alreadyAddedFiles.contains(nextEntry.name))
+        {
+            // Start new entry
+            alreadyAddedFiles.add(nextEntry.name)
+            destination.putNextEntry(new ZipEntry(nextEntry))
+
+            // Transfer all bytes
+            int bytesRead = inputStream.read(buffer)
+            while (bytesRead > 0)
+            {
+                destination.write(buffer, 0, bytesRead)
+
+                bytesRead = inputStream.read(buffer)
+            }
+        }
+
+        // Done reading this entry, on to the next one
+        nextEntry = inputStream.getNextEntry()
+    }
+
+    inputStream.close()
+}
+
+task createReleaseJar <<
+{
+    File forgeFile = getJarFile(project(":platforms:forge"))
+    File bukkitFile = getJarFile(project(":platforms:bukkit"))
+    File ourFile = getJarFile(project)
+
+    if (forgeFile.exists() && bukkitFile.exists())
+    {
+        ourFile.getParentFile().mkdirs()
+        ZipOutputStream outputStream = new ZipOutputStream(new FileOutputStream(ourFile))
+        Set<String> alreadyAddedFiles = new HashSet<String>()
+
+        addToZip(forgeFile, outputStream, alreadyAddedFiles)
+        addToZip(bukkitFile, outputStream, alreadyAddedFiles)
+
+        outputStream.close()
+    } else
+    {
+        println(" Skipping the release jar, as the Bukkit or the Forge file failed")
+    }
+}

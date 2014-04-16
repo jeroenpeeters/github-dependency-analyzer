@@ -1,0 +1,120 @@
+/*
+ * Copyright 2012 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+apply from: 'gradle/setup.gradle'
+apply plugin: 'java'
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'maven'
+
+defaultTasks = ['assemble']
+
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+jar.enabled = true // We don't produce a jar
+
+configurations {
+    provided
+}
+
+repositories {
+    maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+    mavenCentral()
+}
+
+dependencies {
+    compile "org.slf4j:slf4j-api:$slf4jVersion"
+    compile "ch.qos.logback:logback-classic:1.0.6"
+    provided "io.vertx:vertx-core:$vertxVersion"
+    provided "io.vertx:vertx-platform:$vertxVersion"
+
+    testCompile "io.vertx:testtools:$toolsVersion"
+    testCompile "org.mozilla:rhino:$rhinoVersion"
+    testCompile "junit:junit:$junitVersion"
+    testCompile "org.mockito:mockito-all:1.9.0"
+}
+
+buildscript {
+    repositories {
+        maven { url 'https://oss.sonatype.org/content/repositories/snapshots' }
+        mavenCentral()
+    }
+
+    dependencies {
+        classpath "io.vertx:vertx-core:$vertxVersion"
+        classpath "io.vertx:vertx-platform:$vertxVersion"
+    }
+}
+
+sourceSets {
+    main.compileClasspath += configurations.provided
+}
+
+task copyMod(type: Copy, dependsOn: 'classes') {
+    into "build/mod/$modulename-v$version"
+    from 'build/classes/main'
+    from 'src/main/conf'
+    into('lib') {
+        from configurations.compile
+    }
+    into('static') {
+        from 'build/resources/main'
+    }
+}
+
+// Package into build/libs/mod.zip
+task dist(type: Zip, dependsOn: 'copyMod') {
+    group = 'vert.x'
+    description = "Assembles a vert.x module in 'mod.zip' format"
+    destinationDir = project.file('build/libs')
+    archiveName = 'mod.zip'
+    from project.file("build/mod")
+}
+
+
+task prepareVertxTest(type: Sync, dependsOn: 'copyMod') {
+    from 'build/mod'
+    into 'build/tmp/mod-test'
+}
+
+task newPom << {
+    pom {}.writeTo("build/pom.xml")
+}
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+
+test {
+    // Show output
+    testLogging.showStandardStreams = true
+
+    dependsOn << ['copyMod', 'prepareVertxTest']
+}
+
+task collectDeps(type: Copy) {
+    group = 'vert.x'
+    description = 'conveniently collect dependencies for other IDEs'
+    destinationDir = file("build/deps")
+    into("compile") {
+        from configurations.compile
+    }
+    into("test") {
+        from configurations.testCompile
+    }
+}

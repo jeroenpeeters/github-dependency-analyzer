@@ -1,0 +1,237 @@
+<project name="Antlr3ActionScriptRuntime" basedir="." default="all">
+
+	<property environment="env"/>
+	<property name="build.dir" value="${basedir}/build"/>
+	<property name="build.lib.dir" value="${build.dir}/lib"/>
+	<property name="build.doc.dir" value="${build.dir}/doc"/>
+	<property name="build.test.dir" value="${build.dir}/test"/>
+	<property name="build.test.output.dir" value="${build.test.dir}/output"/>
+	<property name="src.dir" value="${basedir}/src"/>
+	
+	<property name="FLEX_HOME" value="${env.FLEX_HOME}"/>
+	
+	<!-- Assume SDK 3.0 or greater has the ant tasks -->
+	<taskdef resource="flexTasks.tasks" classpath="${FLEX_HOME}/ant/lib/flexTasks.jar"/>
+	<taskdef resource="com/adobe/ac/ant/tasks/tasks.properties" classpath="${basedir}/lib/FlexAntTasks.jar"/>
+
+	<fileset id="sources" dir="${src.dir}">
+		<include name="**/*.as"/>
+	</fileset>
+	
+	<pathconvert property="sourceClasses" refid="sources" pathsep=" ">
+		<filtermapper>
+			<replacestring from="${src.dir}/" to=""/>		<!-- Strip off directory -->
+			<replacestring from=".as" to=""/>				<!-- Strip off extension -->
+			<replacestring from="/" to="."/>				<!-- Convert path to package -->
+		</filtermapper>
+	</pathconvert>
+	
+	<target name="all" depends="build"/>
+	
+	<target name="check-env">
+		<fail>
+	     <condition>
+	       <not>
+	         <isset property="FLEX_HOME"/>
+	       </not>
+	     </condition>
+	   </fail>
+	</target>
+	
+	<target name="build" depends="check-env">
+		<echo>File are ${sourceClasses}</echo>
+		<compc output="${build.lib.dir}/antlr3.swc" include-classes="${sourceClasses}">
+			<load-config filename="${FLEX_HOME}/frameworks/air-config.xml"/>
+			<source-path path-element="${basedir}/src"/>
+		</compc>
+	</target>
+	
+	<target name="compile-tests">
+		<mxmlc debug="true" file="${basedir}/test/Antlr3Test.mxml" output="${build.test.dir}/testAntlr3.swf">
+			<source-path path-element="${basedir}/test"/>
+            <!-- List of SWC files or directories that contain SWC files. -->
+            <compiler.library-path dir="${basedir}" append="true">
+                <include name="lib/*.swc" />
+                <include name="build/lib/*.swc" />
+            </compiler.library-path>
+		</mxmlc>
+	</target>
+	
+	<target name="test" depends="compile-tests">
+		<flexunit timeout="0" swf="${build.test.dir}/testAntlr3.swf" toDir="${build.test.output.dir}" haltonfailure="false"/> 
+		<junitreport toDir="${build.test.output.dir}">
+			<fileset dir="${build.test.output.dir}">
+			    <include name="TEST-*.xml"/>
+			  </fileset>
+			  <report format="frames" todir="${build.test.output.dir}/html"/>
+		</junitreport>
+	</target>
+		
+	<target name="clean">
+		<delete dir="${build.dir}"/>
+	</target>
+	
+	<target name="docs">
+		<exec executable="${FLEX_HOME}/bin/aasdoc" failonerror="true">
+			<arg line="-doc-sources ${src.dir}"/>
+			<arg line="-window-title 'ANTLR 3 Runtime'"/>
+			<arg line="-output ${build.doc.dir}"/>
+		</exec>
+		<zip destfile="${build.dir}/antlr3-asdoc.zip">
+			<zipfileset dir="${build.doc.dir}" prefix="asdoc"/>
+		</zip>
+	</target>
+</project>
+<project name="Antlr3JavaScriptRuntime" basedir=".." default="build">
+<description>
+Build procedure and task automation for the ANTLR JavaScript target.
+</description>
+
+    <property name="build.dir" value="${basedir}/build" />
+    <property name="out.dir" value="${build.dir}/out" />
+    <property name="lib.dir" value="${basedir}/lib" />
+    <property name="doc.dir" value="${basedir}/doc" />
+    <property name="test.dir" value="${basedir}/tests" />
+    <property name="src.dir" value="${basedir}/src" />
+    <property name="third.dir" value="${basedir}/third" />
+    <property file="${build.dir}/antlr3.properties" />
+
+    <taskdef file="${third.dir}/antcontrib.properties" classpath="${third.dir}/ant-contrib-1.0b3.jar" />
+
+    <!-- ******* -->
+    <!-- LIBRARY -->
+    <!-- ******* -->
+
+    <target name="build" depends="-init" description="Build ANTLR JavaScript runtime library.">
+        <antcall target="-make-debug" />
+        <antcall target="-make-min" />
+        <!--<antcall target="-make-docs" />-->
+        <antcall target="-del-build" />
+    </target>
+
+    <!-- Make uncompressed JS runtime files -->
+    <target name="-make-debug">
+        <!-- no file name suffix for debug files -->
+        <property name="debugormin" value="" />
+        <antcall target="-make-packages" inheritall="true" />
+    </target>
+
+    <!-- Make compressed JS files -->
+    <target name="-make-min">
+        <property name="debugormin" value="-min" />
+        <antcall target="-make-packages" inheritall="true" />
+    </target>
+
+    <!-- Make each package defined in atlr3.list -->
+    <target name="-make-packages">
+        <property name="pkg" value="" />
+        <foreach list="${antlr3.list}" target="-make-package" param="pkg" inheritall="true" />
+    </target>
+
+    <!-- Create a package -->
+    <target name="-make-package">
+        <var name="package" value="${pkg}" />
+        <property name="dest" value="${lib.dir}/antlr3-${package}${debugormin}.js" />
+        <propertycopy property="list" from="antlr3.${package}.list" override="true" />
+        <propertyregex property="list" input="${list}" regexp=" +" replace="" override="true" />
+
+        <concat destfile="${dest}">
+            <filelist dir="${src.dir}" files="${list}" />
+        </concat>
+
+        <if>
+            <equals arg1="${debugormin}" arg2="-min" />
+            <then>
+                <antcall target="-compress" inheritall="true" />
+            </then>
+        </if>
+
+        <antcall target="-add-license" inheritall="true" />
+    </target>
+
+    <!-- Compress JavaScript using Closure Compiler -->
+    <target name="-compress">
+        <java fork="true" jar="${third.dir}/compiler.jar">
+            <arg line="--js" />
+            <arg value="${dest}" />
+            <arg line="--js_output_file" />
+            <arg line="${dest}.tmp" />
+        </java>
+        <move file="${dest}.tmp" tofile="${dest}" />
+    </target>
+
+    <!-- insert required legaleze at the top of a file -->
+    <target name="-add-license">
+        <property name="tmp-file" value="${dest}.tmp" />
+        <move file="${dest}" tofile="${tmp-file}" />
+        <concat destfile="${dest}">
+            <header file="${build.dir}/${antlr3.license}" />
+            <fileset file="${tmp-file}" />
+        </concat>
+        <delete file="${tmp-file}" />
+    </target>
+
+    <!-- delete build directory -->
+    <target name="-del-build">
+        <delete dir="${out.dir}" />
+    </target>
+
+    <!-- ***** -->
+    <!-- TESTS -->
+    <!-- ***** -->
+
+    <target name="compile-tests" depends="build" description="Compile all test grammars.">
+        <foreach target="-compile-test-class" param="testdirectory" inheritall="true">
+            <path>
+                <dirset dir="${test.dir}" includes="*" excludes="README" />
+            </path>
+        </foreach>
+    </target>
+
+    <target name="-compile-test-class" >
+        <foreach target="-compile-single-test" param="grammar" inheritall="true">
+            <path>
+                <fileset dir="${testdirectory}" includes="*.g" excludes="*__.g" />
+            </path>
+        </foreach>
+    </target>
+
+    <target name="-compile-single-test">
+        <!-- turn on antlr tracing if necessary -->
+        <var name="g" value="${grammar}" />
+        <loadfile property="g-contents" srcfile="${g}" />
+        <var name="opt" value="" />
+        <property name="trace-key" value="// @@ANTLR Tool Options@@: -trace" />
+        <if>
+            <contains string="${g-contents}" substring="${trace-key}" />
+            <then>
+                <var name="opt" value="-trace" />
+            </then>
+        </if>
+
+        <java dir="${testdirectory}" jar="${antlr3.tool}" fork="yes">
+            <arg line="${opt}" />
+            <arg line="${g}" />
+        </java>
+    </target>
+
+    <!-- **** -->
+    <!-- DOCS -->
+    <!-- **** -->
+
+    <target name="make-docs" description="Generate jsdoc API documentation." depends="-init">
+        <property name="jsdoc.dir" value="${third.dir}/jsdoc-toolkit" />
+        <property name="docs.dir" value="${lib.dir}/docs" />
+
+        <mkdir dir="${docs.dir}" />
+        <java jar="${jsdoc.dir}/jsrun.jar" fork="yes">
+            <arg line="${jsdoc.dir}/app/run.js ${src.dir} -r=10 -t=${jsdoc.dir}/templates/jsdoc -d=${docs.dir}" />
+        </java>
+    </target>
+
+    <target name="-init">
+        <!-- clear build dir -->
+        <delete dir="${out.dir}" quiet="true" />
+        <mkdir dir="${out.dir}" />
+    </target>
+</project>

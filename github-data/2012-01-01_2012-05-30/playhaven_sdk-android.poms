@@ -1,0 +1,466 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>com.playhaven.androidsdk</groupId>
+        <artifactId>android-sdk</artifactId>
+        <version>1.12.5</version>
+    </parent>
+    <artifactId>playhaven</artifactId>
+    <packaging>jar</packaging>
+    <name>Playhaven API</name>
+
+    <!-- Useful resources:
+         Building with Maven in Android: http://deepintojee.wordpress.com/2012/05/27/android-from-scratch-part-2-use-android-maven-plugin/
+         List of Maven Environment Variables: http://docs.codehaus.org/display/MAVENUSER/MavenPropertiesGuide
+    -->
+
+    <pluginRepositories>
+
+        <!-- This repository is for the quicktag plugin-->
+        <pluginRepository>
+            <snapshots>
+                <enabled>true</enabled>
+            </snapshots>
+            <id>mgorski.net</id>
+            <url>http://maven.mgorski.net</url>
+        </pluginRepository>
+
+    </pluginRepositories>
+
+
+    <dependencies>
+
+
+        <!-- Repeat dependencies from parent -->
+        <dependency>
+            <groupId>com.google.android</groupId>
+            <artifactId>android</artifactId>
+            <!-- version specified in parent -->
+        </dependency>
+        
+        <!-- Unit testing -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        
+        <dependency>
+            <groupId>com.google.android</groupId>
+            <artifactId>android-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <finalName>playhaven-${project.version}</finalName>
+
+        <plugins>
+            <!-- Generate Version.java via the quicktag plugin-->
+            <plugin>
+                <groupId>net.mgorski.quicktag</groupId>
+                <artifactId>quicktag</artifactId>
+                <version>2.1.2</version>
+
+                <executions>
+                    <execution>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>quicktag</goal>
+                        </goals>
+                    </execution>
+                </executions>
+
+                <!-- Place the quicktag version information in the new api package -->
+                <configuration>
+                    <outputPackage>v2.com.playhaven.configuration</outputPackage>
+
+                    <!-- the specially generated files should be placed in the appropriate directory
+                         so as to avoid cluttering the root directory
+                    -->
+                    <outputDirectory>${project.build.directory}/generated-sources/quicktag/</outputDirectory>
+                </configuration>
+            </plugin>
+
+            <!-- generate the documentation -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-site-plugin</artifactId>
+                <version>3.2</version>
+                <dependencies>
+                    <dependency>
+                        <groupId>org.apache.maven.doxia</groupId>
+                        <artifactId>doxia-module-markdown</artifactId>
+                        <version>1.3</version>
+                    </dependency>
+                </dependencies>
+                <executions>
+                    <execution>
+                        <id>attach-descriptor</id>
+                        <goals>
+                            <goal>attach-descriptor</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- we need to configure coberta for test coverage analysis.
+                 We use the doxia module to parse markdown.
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>cobertura-maven-plugin</artifactId>
+                <version>2.5.2</version>
+                <configuration>
+                    <instrumentation>
+                        <excludes>
+                            <exclude>com/playhaven/android/R.class</exclude>
+                            <exclude>com/playhaven/android/R$*.class</exclude>
+                            <exclude>com/playhaven/android/BuildConfig.class</exclude>
+                        </excludes>
+                    </instrumentation>
+                </configuration>
+            </plugin>
+
+            <!-- Now compile the freshly generated Version.java file from the
+                 quicktag plugin
+            -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>1.7</version>
+                <executions>
+                    <execution>
+                        <id>add-source</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.build.directory}/generated-sources/quicktag/</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <groupId>com.jayway.maven.plugins.android.generation2</groupId>
+                <artifactId>android-maven-plugin</artifactId>
+                <version>3.5.1</version>
+                <configuration>
+                    <sdk>
+                        <platform>10</platform>
+                        <path>${env.ANDROID_HOME}</path>
+                    </sdk>
+
+                    <test>
+                        <createReport>false</createReport>
+
+                        <!-- For now we wish to ignore the UI tests -->
+                        <packages>
+                            <package>v2.com.playhaven.test.unit</package>
+                        </packages>
+                    </test>
+
+                    <androidManifestFile>${project.basedir}/AndroidManifest.xml</androidManifestFile>
+                    <resourceDirectory>${project.basedir}/res</resourceDirectory>
+
+                </configuration>
+                <extensions>true</extensions>
+            </plugin>
+
+        </plugins>
+
+        <!-- Make sure we include the compiled Version.class from the quicktag plugin -->
+        <resources>
+            <resource>
+                <directory>${project.build.directory}/generated-sources/quicktag/</directory>
+            </resource>
+        </resources>
+        
+    </build>
+
+    <reporting>
+        <!-- don't generate unnecessary docs -->
+        <excludeDefaults>true</excludeDefaults>
+        <outputDirectory>${project.build.directory}/site</outputDirectory>
+
+        <plugins>
+            <!-- generate basic info about project -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-project-info-reports-plugin</artifactId>
+                <version>2.4</version>
+                <reportSets>
+                    <reportSet>
+                        <reports>
+                            <report>dependencies</report>
+                            <report>project-team</report>
+                            <report>mailing-list</report>
+                            <report>cim</report>
+                            <report>issue-tracking</report>
+                            <report>license</report>
+                            <report>scm</report>
+                        </reports>
+                    </reportSet>
+                </reportSets>
+            </plugin>
+
+            <!-- generate test results -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>2.12.4</version>
+            </plugin>
+
+            <!-- generate cross-referenced and linked HTML java code -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jxr-plugin</artifactId>
+                <version>2.3</version>
+            </plugin>
+
+            <!-- generate list of all TODO: tags -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>taglist-maven-plugin</artifactId>
+                <version>2.4</version>
+            </plugin>
+
+            <!-- run coberta to assess test coverage -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>cobertura-maven-plugin</artifactId>
+                <version>2.5.2</version>
+            </plugin>
+
+            <!-- run the PMD program to assess useless code -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-pmd-plugin</artifactId>
+                <version>2.7.1</version>
+                <configuration>
+                    <linkXref>true</linkXref>
+                    <sourceEncoding>utf-8</sourceEncoding>
+                    <minimumTokens>100</minimumTokens>
+                    <targetJdk>1.6</targetJdk>
+                </configuration>
+            </plugin>
+
+            <!-- run the emma test coverage tool as well -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>emma-maven-plugin</artifactId>
+                <version>1.0-alpha-3</version>
+            </plugin>
+
+            <!-- finally run javadoc to create documentation and UML diagrams -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <version>2.9</version>
+                <configuration>
+                    <!-- Default configuration for all reports -->
+                    <offlineLinks>
+                        <offlineLink>
+                            <url>http://d.android.com/reference</url>
+                            <location>${android.sdk.path}/docs/reference</location>
+                        </offlineLink>
+                    </offlineLinks>
+
+                    <detectOfflineLinks>true</detectOfflineLinks>
+                    <detectJavaApiLink>false</detectJavaApiLink>
+
+                    <!-- run the UML program -->
+                    <doclet>gr.spinellis.umlgraph.doclet.UmlGraphDoc</doclet>
+                    <docletArtifact>
+                        <groupId>gr.spinellis</groupId>
+                        <artifactId>UmlGraph</artifactId>
+                        <version>4.4</version>
+                    </docletArtifact>
+
+                    <!-- customize the display -->
+                    <additionalparam>
+                        -inferrel -inferdep -quiet -hide java.*
+                        -collpackages java.util.* -qualify
+                        -postfixpackage -nodefontsize 9
+                        -nodefontpackagesize 7
+                        -edgefontname "Trebuchet MS"
+                        -nodefontabstractname "Trebuchet MS"
+                        -nodefontclassabstractname
+                        "Trebuchet MS"
+                        -nodefontclassname "Trebuchet MS"
+                        -nodefontname
+                        "Trebuchet MS"
+                        -nodefontpackagename "Trebuchet MS"
+                        -nodefonttagname
+                        "Trebuchet MS"
+                    </additionalparam>
+                </configuration>
+                <reportSets>
+
+                    <!-- actually generate the documentation -->
+                    <reportSet>
+                        <id>non-aggregate</id>
+                        <!--<configuration>-->
+                        <!-- Specific configuration for the non aggregate report -->
+                        <!--</configuration>-->
+                        <reports>
+                            <report>javadoc</report>
+                        </reports>
+                    </reportSet>
+                </reportSets>
+            </plugin>
+        </plugins>
+    </reporting>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.playhaven.androidsdk</groupId>
+    <artifactId>android-sdk</artifactId>
+    <version>1.12.5</version>
+    <packaging>pom</packaging>
+    <name>Playhaven Android SDK</name>
+    <description>PlayHaven Android SDK</description>
+    <url>https://github.com/playhaven/sdk-android-2</url>
+
+    <!--
+    Some useful resources:
+    Android build cycle: http://www.alittlemadness.com/2010/06/07/understanding-the-android-build-process/
+    -->
+    <properties>
+        <maven.min-version>3.0.3</maven.min-version>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <github.global.server>github</github.global.server>
+        <github.deploy.repo>sdk-android</github.deploy.repo>
+        <android.sdk.path>${env.ANDROID_HOME}</android.sdk.path>
+        <android.dependency.version>4.1.1.4</android.dependency.version>
+    </properties>
+
+    <modules>
+        <module>api</module>
+    </modules>
+
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.google.android</groupId>
+                <artifactId>android</artifactId>
+                <version>${android.dependency.version}</version>
+                <!-- Provided at runtime on the device -->
+                <scope>provided</scope>
+            </dependency>
+            
+            <!-- Unit testing (needed for robolectric) -->
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>4.8.2</version>
+                <scope>test</scope>
+            </dependency>
+            
+            <!-- Need android testing framework -->
+            <dependency>
+                <groupId>com.google.android</groupId>
+                <artifactId>android-test</artifactId>
+                <version>2.3.3</version>
+            </dependency>
+            
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+
+                <!-- For building project with Android -->
+                <plugin>
+                    <groupId>com.jayway.maven.plugins.android.generation2</groupId>
+                    <artifactId>android-maven-plugin</artifactId>
+                    <version>3.5.1</version>
+                    <configuration>
+                        <sdk>
+                            <platform>10</platform>
+                            <path>${env.ANDROID_HOME}</path>
+                        </sdk>
+
+                        <test>
+                            <createReport>false</createReport>
+
+                            <!-- For now we wish to ignore the UI tests -->
+                            <packages>
+                                <package>v2.com.playhaven.test.unit</package>
+                            </packages>
+                        </test>
+
+                        <androidManifestFile>${project.basedir}/src/AndroidManifest.xml</androidManifestFile>
+                        <resourceDirectory>${project.basedir}/res</resourceDirectory>
+
+                        <undeployBeforeDeploy>true</undeployBeforeDeploy>
+
+                        <run>
+                            <debug>true</debug>
+                        </run>
+
+                    </configuration>
+                    <extensions>true</extensions>
+                </plugin>
+
+                <!-- Attach the source to the jar distribution. We place
+                 this code in plugin management so that children can inherit it.
+                 -->
+                <plugin>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>2.2.1</version>
+                    <executions>
+                        <execution>
+                            <id>bundle-sources</id>
+                            <phase>package</phase>
+                            <goals>
+                                <!-- produce source artifact for main project sources -->
+                                <goal>jar-no-fork</goal>
+                                <!-- produce source artifact for project test sources -->
+                                <goal>test-jar-no-fork</goal>
+                            </goals>
+                        </execution>
+                    </executions>
+                </plugin>
+
+            </plugins>
+        </pluginManagement>
+            
+    </build>
+
+    <licenses>
+        <license>
+            <name>PlayHaven SDK Agreement</name>
+            <url>https://github.com/playhaven/sdk-android/blob/master/PlayHaven_SDK_Agreement.markdown</url>
+            <distribution>repo</distribution>
+        </license>
+    </licenses>
+
+    <organization>
+        <name>PlayHaven</name>
+        <url>http://www.playhaven.com/</url>
+    </organization>
+
+    <scm>
+        <connection>scm:git:https://github.com/playhaven/sdk-android.git</connection>
+        <developerConnection>scm:git:https://github.com/playhaven/sdk-android-internal.git</developerConnection>
+        <tag>HEAD</tag>
+        <url>https://github.com/playhaven/sdk-android.git</url>
+    </scm>
+
+</project>

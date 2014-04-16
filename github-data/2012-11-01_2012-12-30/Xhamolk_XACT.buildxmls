@@ -1,0 +1,218 @@
+<project name="XACT" default="build" basedir="">
+
+    <property environment="env"/>
+
+    <!-- Versions -->
+    <property file="build.properties"/>
+    <property file="version.properties"/>
+
+    <property name="forge.version" value="${mc.version}-${forge.version.mayor}.${forgebuild}"/>
+
+
+    <!-- Directories -->
+    <condition property="custom.root">
+        <and>
+            <isset property="build.baseDir"/>
+            <not>
+                <equals arg1="${build.baseDir}" arg2=""/>
+            </not>
+        </and>
+    </condition>
+
+    <condition property="build.dir" value="${build.baseDir}/MC ${mc.version} #${forgebuild}"
+               else="MC ${mc.version} #${forgebuild}">
+        <istrue value="${custom.root}"/>
+    </condition>
+
+    <condition property="main.download.dir" value="${build.baseDir}/downloads"
+               else="downloads">
+        <istrue value="${custom.root}"/>
+    </condition>
+
+    <property name="download.dir" value="${build.dir}/downloads"/>
+    <property name="classes.dir" value="${build.dir}/packaging"/>
+    <property name="dist.dir" value="${build.dir}/dist"/>
+
+    <property name="forge.dir" value="${build.dir}/forge"/>
+    <property name="mcp.dir" value="${forge.dir}/mcp"/>
+    <property name="mcpsrc.dir" value="${mcp.dir}/src/minecraft"/>
+
+
+    <condition property="do.compile">
+        <istrue value="${copy.xact.srcs}"/>
+    </condition>
+
+    <!-- Main Targets -->
+
+    <target name="clean">
+        <delete dir="${forge.dir}"/>
+        <delete dir="${classes.dir}"/>
+    </target>
+
+    <target name="reobf and pack" depends="reobfuscate, pack-jar"
+            description="Reobfucate and pack a JAR for releasing. Doesn't install anything, and won't compile sources."/>
+
+    <target name="build" depends="install, copy-sources, compile, reobfuscate, pack-jar"
+            description="Build XACT from scratch."/>
+
+    <target name="install" depends="download-forge" unless="forge-installed">
+        <!-- Clean up dirs -->
+        <delete dir="${forge.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+
+        <!-- Download Everything -->
+        <ant antfile="plugins-setup.xml" target="download-all"/>
+
+        <!-- Extract Forge -->
+        <unzip src="${main.download.dir}/minecraftforge-src-${forge.version}.zip" dest="${build.dir}"/>
+
+        <!-- Copy Access Transformers -->
+        <ant antfile="plugins-setup.xml" target="copy-access-transformers"/>
+
+        <!-- Change file permissions (necessary for unix) -->
+        <chmod file="${forge.dir}/install.sh" perm="+x"/>
+
+        <!-- Install Forge -->
+        <echo message="Installing Forge #${forgebuild} for Minecraft ${mc.version}"/>
+
+        <delete dir="${mcp.dir}" failonerror="no"/>
+        <exec dir="${forge.dir}" executable="cmd" osfamily="windows" inputstring="Yes\n">
+            <arg line="/c install.cmd"/>
+        </exec>
+        <exec dir="${forge.dir}" executable="sh" osfamily="unix" inputstring="Yes\n">
+            <arg value="install.sh"/>
+        </exec>
+
+        <!-- Change file permissions (necessary for unix) -->
+        <chmod file="${mcp.dir}/updatemd5.sh" perm="+x"/>
+        <chmod file="${mcp.dir}/recompile.sh" perm="+x"/>
+        <chmod file="${mcp.dir}/reobfuscate.sh" perm="+x"/>
+        <chmod file="${mcp.dir}/runtime/bin/astyle-osx" perm="+x"/>
+        <chmod file="${mcp.dir}/runtime/bin/jad-osx" perm="+x"/>
+
+    </target>
+
+    <target name="compile" if="do.compile">
+        <echo message="Compiling..."/>
+        <exec dir="${mcp.dir}" executable="cmd" osfamily="windows">
+            <arg line="/c recompile.bat"/>
+        </exec>
+
+        <exec dir="${mcp.dir}" executable="bash" osfamily="unix">
+            <arg line="recompile.sh"/>
+        </exec>
+    </target>
+
+    <target name="reobfuscate">
+        <echo message="Reobfuscating..."/>
+        <exec dir="${mcp.dir}" executable="cmd" osfamily="windows">
+            <arg line="/c reobfuscate_srg.bat"/>
+        </exec>
+
+        <exec dir="${mcp.dir}" executable="bash" osfamily="unix">
+            <arg line="reobfuscate_srg.sh"/>
+        </exec>
+
+        <!-- Clean dir -->
+        <delete dir="${classes.dir}"/>
+        <mkdir dir="${classes.dir}"/>
+
+        <!-- Copy relevant classes -->
+        <echo message="Exporting classes..."/>
+        <copy todir="${classes.dir}">
+            <fileset dir="${mcp.dir}/reobf/minecraft">
+                <include name="xk/**/*.*"/>
+                <include name="xk/**/*.*"/>
+                <include name="invtweaks/api/container/ChestContainer*.class"/>
+                <include name="invtweaks/api/container/ContainerSection*.class"/>
+                <include name="invtweaks/api/container/ContainerSectionCallback*.class"/>
+                <include name="net/machinemuse/api/IModularItem.class"/>
+                <include name="net/machinemuse/api/IPowerModule.class"/>
+                <include name="net/mcft/copy/betterstorage/api/ICrateStorage.class"/>
+                <include name="net/mcft/copy/betterstorage/api/ICrateWatcher.class"/>
+                <include name="appeng/api/IAEItemStack.class"/>
+                <include name="appeng/api/me/util/IMEInventory.class"/>
+                <include name="appeng/api/me/tiles/ITileInterfaceApi.class"/>
+                <include name="appeng/api/me/tiles/IStorageAware.class"/>
+                <include name="appeng/api/me/tiles/INonSignalBlock.class"/>
+                <include name="appeng/api/me/tiles/IGridTileEntity.class"/>
+            </fileset>
+        </copy>
+
+    </target>
+
+    <target name="pack-jar" depends="get-build-number">
+        <!-- Copy resources -->
+        <copy todir="${classes.dir}/${dir.xact.rsc}">
+            <fileset dir="${dir.xact.rsc}"/>
+        </copy>
+        <copy file="mcmod.info" todir="${classes.dir}">
+            <filterset>
+                <filter token="MC_VERSION" value="${mc.version}"/>
+                <filter token="MOD_VERSION" value="${mod.version}"/>
+            </filterset>
+        </copy>
+
+        <!-- Clean dist dir. -->
+        <delete dir="${dist.dir}"/>
+        <mkdir dir="${dist.dir}"/>
+
+        <!-- Pack Jar -->
+        <echo message="Packing JAR: ${mod.name} v${mod.version} #${build.number}"/>
+        <jar destfile="${dist.dir}/${mod.name} v${mod.version}-${build.number}.jar" basedir="${classes.dir}"/>
+
+    </target>
+
+
+    <!-- Copy Sources -->
+
+    <target name="copy-sources">
+        <echo message="Copying Sources..."/>
+        <delete dir="${mcpsrc.dir}/xk"/>
+        <ant antfile="plugins-setup.xml" target="copy-sources"/>
+        <antcall target="copy-xact-sources"/>
+    </target>
+
+    <target name="copy-xact-sources" if="do.compile">
+        <echo message="${dir.xact.src}"/>
+
+        <copy todir="${mcpsrc.dir}">
+            <fileset dir="${dir.xact.src}"/>
+        </copy>
+
+        <echo message="Copying plug-in sources."/>
+        <ant antfile="plugins-setup.xml" target="copy-plugin-sources"/>
+    </target>
+
+
+    <!-- Forge Install -->
+
+    <property file="${forge.dir}/forgeversion.properties"/>
+
+    <condition property="forge-installed">
+        <equals arg1="${forge.build.number}" arg2="${forgebuild}"/>
+    </condition>
+
+    <condition property="forge-already-downloaded">
+        <available file="${main.download.dir}/minecraftforge-src-${forge.version}.zip"/>
+    </condition>
+
+    <target name="download-forge" unless="forge-already-downloaded">
+        <echo message="Downloading Forge ${forge.version}"/>
+        <mkdir dir="${main.download.dir}"/>
+        <get src="http://files.minecraftforge.net/maven/net/minecraftforge/forge/${forge.version}/forge-${forge.version}-src.zip"
+             dest="${main.download.dir}/minecraftforge-src-${forge.version}.zip"/>
+    </target>
+
+    <!-- Build Number -->
+    <target name="get-build-number" depends="version-provided, version-not-provided"/>
+
+    <target name="version-provided" if="env.BUILD_NUMBER">
+        <property name="build.number" value="${env.BUILD_NUMBER}"/>
+    </target>
+    <target name="version-not-provided" unless="env.BUILD_NUMBER">
+        <property name="build.number" value="local"/>
+    </target>
+
+
+</project>

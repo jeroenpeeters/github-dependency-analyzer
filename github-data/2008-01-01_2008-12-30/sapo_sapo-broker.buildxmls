@@ -1,0 +1,1159 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-agent">
+
+	<property name="target-dir" value="../sapo-broker" />
+
+	<loadfile srcfile="src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="sapo-broker-agent-${version}.jar" />
+
+	<echo message="Building version: '${version}'" />
+
+	<path id="project.classpath">
+		<pathelement location="../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../gcs/dist/sapo-gcs-${version}.jar" />
+		<pathelement location="../bindings/xml/java/dist/sapo-broker-xmlbinding-${version}.jar" />
+		<pathelement location="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<pathelement location="../bindings/thrift/java/dist/sapo-broker-thriftbinding-${version}.jar" />
+		<pathelement location="../bindings/json/java/dist/sapo-broker-jsonbinding-${version}.jar" />
+		<fileset dir="../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+		<delete dir="${target-dir}" />
+		<delete dir="./doc/docbook/gen" />
+	</target>
+
+	<target name="clean-all" depends="clean">
+		<ant antfile="../comm-types/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../gcs/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../bindings/xml/java/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../bindings/protobuf/java/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../bindings/thrift/java/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../bindings/json/java/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../clients/java-component/build.xml" inheritAll="false" target="clean" />
+		<ant antfile="../acl/dbauth/java/build.xml" inheritAll="false" target="clean" />
+	</target>
+
+	<target name="build" depends="init, build-depends">
+		<echo message="${ant.project.name}: ${ant.file}" />
+		<tstamp />
+
+		<!--<copy file="src/pt/com/broker/core/BrokerInfo.java" tofile="src/pt/com/broker/core/BrokerInfo.bak" overwrite="true" />
+		<replace file="src/pt/com/broker/core/BrokerInfo.java" token="@brokerVersion@" value="${version}" /> -->
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<!-- <move file="src/pt/com/broker/core/BrokerInfo.bak" tofile="src/pt/com/broker/core/BrokerInfo.java" overwrite="true" /> -->
+		<copy todir="bin">
+			<fileset dir="src" excludes="**/*.java" />
+		</copy>
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+			<!-- <fileset file="src/VERSION.txt"/> -->
+		</jar>
+	</target>
+
+	<target name="docs">
+		<delete dir="./doc/docbook/gen" />
+		<mkdir dir="./doc/docbook/gen" />
+		<mkdir dir="./doc/docbook/gen/images" />
+		<exec executable="xmlto" dir="./doc/docbook/">
+			<arg value="--skip-validation" />
+			<arg value="-m" />
+			<arg value="config.xsl" />
+			<arg value="xhtml-nochunks" />
+			<arg value="master.xml" />
+			<arg value="-o" />
+			<arg value="./gen" />
+		</exec>
+		<copy todir="./doc/docbook/gen/images">
+			<fileset dir="./doc/docbook/images" />
+		</copy>
+		<copy file="./doc/docbook/brokerdoc.css" todir="./doc/docbook/gen" />
+	</target>
+
+	<target name="build-depends">
+
+		<ant antfile="../clients/java-component/build.xml" inheritAll="false" target="build">
+			<property name="version" value="${version}" />
+			<property name="project.location" value="../clients/java-component" />
+		</ant>
+
+		<ant antfile="../acl/dbauth/java/build.xml" inheritAll="false" target="build">
+			<property name="version" value="${version}" />
+		</ant>
+
+		<ant antfile="../gcs/build.xml" inheritAll="false" target="build">
+			<property name="version" value="${version}" />
+		</ant>
+
+		<ant antfile="../bindings/json/java/build.xml" inheritAll="false" target="build" />
+
+	</target>
+
+
+
+	<target name="package-agent">
+
+		<mkdir dir="${target-dir}/lib" />
+
+		<copy todir="${target-dir}/lib">
+			<fileset dir="../common-libs/">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+		<copy file="dist/${package}" todir="${target-dir}/lib" />
+		<copy file="../comm-types/dist/sapo-broker-commtypes-${version}.jar" todir="${target-dir}/lib" />
+		<copy file="../gcs/dist/sapo-gcs-${version}.jar" todir="${target-dir}/lib" />
+		<copy file="../bindings/xml/java/dist/sapo-broker-xmlbinding-${version}.jar" todir="${target-dir}/lib" />
+		<copy file="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" todir="${target-dir}/lib" />
+		<copy file="../bindings/thrift/java/dist/sapo-broker-thriftbinding-${version}.jar" todir="${target-dir}/lib" />
+
+		<copy todir="${target-dir}/lib">
+			<fileset dir="../bindings/json/java/dist/">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+
+		<copy todir="${target-dir}/doc">
+			<fileset dir="doc/docbook/gen" />
+		</copy>
+
+		<copy todir="${target-dir}/bin">
+			<fileset dir="examples" />
+		</copy>
+
+		<copy todir="${target-dir}/conf">
+			<fileset dir="conf" />
+		</copy>
+
+		<copy todir="${target-dir}/license">
+			<fileset dir="../license" />
+		</copy>
+
+		<chmod dir="${target-dir}/bin" perm="+x" includes="*.sh" />
+
+	</target>
+
+
+	<!-- target name="package-dotnet-client">
+		<exec dir="../clients/dotnet-component" executable="./build.sh" />
+
+		<mkdir dir="${target-dir}/clients/dotnet/Lib" />
+		<copy todir="${target-dir}/clients/dotnet/Lib">
+			<fileset dir="../clients/dotnet-component/BrokerClient/bin/Release/">
+				<include name="*.dll" />
+			</fileset>
+		</copy>
+
+		<copy todir="${target-dir}/clients/dotnet/Samples">
+			<fileset dir="../clients/dotnet-component/Samples" />
+		</copy>
+	</target -->
+
+	<target name="package-java-client">
+
+		<mkdir dir="${target-dir}/clients/java/lib" />
+
+		<copy file="../clients/java-component/dist/java-component-${version}.jar" todir="${target-dir}/clients/java/lib" />
+		<copy file="../comm-types/dist/sapo-broker-commtypes-${version}.jar" todir="${target-dir}/clients/java/lib" />
+		<copy file="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" todir="${target-dir}/clients/java/lib" />
+
+		<copy todir="${target-dir}/clients/java/lib">
+			<fileset dir="../common-libs/">
+				<include name="logback*.jar" />
+				<include name="slf4j*.jar" />
+				<include name="protobuf-java*.jar" />
+				<include name="org.caudexorigo.jar" />
+			</fileset>
+		</copy>
+
+		<copy todir="${target-dir}/clients/java">
+			<fileset dir="../clients/java-component/samples" />
+		</copy>
+
+		<mkdir dir="${target-dir}/clients/java/src/pt/com/broker/client/sample" />
+		<copy todir="${target-dir}/clients/java/src/pt/com/broker/client/sample">
+			<fileset dir="../clients/java-component/src/pt/com/broker/client/sample" />
+		</copy>
+
+		<chmod dir="${target-dir}/clients/java/bin" perm="+x" includes="*.sh" />
+
+	</target>
+
+
+	<target name="package-c-client">
+		<mkdir dir="${target-dir}/clients/c" />
+		<copy todir="${target-dir}/clients/c">
+			<fileset dir="../clients/c-component/libsapo-broker2" />
+		</copy>
+	</target>
+
+	<target name="package-python-client">
+		<mkdir dir="${target-dir}/clients/python" />
+		<copy todir="${target-dir}/clients/python">
+			<fileset dir="../clients/python-component">
+				<exclude name="**/old_python-Component-BrokerTCP/**" />
+			</fileset>
+		</copy>
+	</target>
+
+
+	<target name="package-php-client">
+		<mkdir dir="${target-dir}/clients/php" />
+		<copy todir="${target-dir}/clients/php">
+			<fileset dir="../clients/php-ext-component" />
+		</copy>
+	</target>
+
+	<target name="package-perl-client">
+		<mkdir dir="${target-dir}/clients/perl" />
+		<copy todir="${target-dir}/clients/perl">
+			<fileset dir="../clients/perl-component">
+				<exclude name="**/old/**" />
+			</fileset>
+		</copy>
+	</target>
+
+	<!-- target name="build-dist" depends="build-depends, docs" -->
+	<target name="build-dist" depends="build, docs">
+
+		<antcall target="package-agent" />
+		<antcall target="package-java-client" />
+		<!-- antcall target="package-dotnet-client" / -->
+		<antcall target="package-c-client" />
+		<antcall target="package-python-client" />
+		<antcall target="package-php-client" />
+		<antcall target="package-perl-client" />
+
+	</target>
+
+	<target name="tarball" depends="build-dist">
+		<tar tarfile="../sapo-broker.tar">
+			<tarfileset dir="${target-dir}" prefix="sapo-broker-${version}">
+				<exclude name="bin/*.sh" />
+			</tarfileset>
+			<tarfileset dir="${target-dir}" prefix="sapo-broker-${version}" filemode="755">
+				<include name="bin/*.sh" />
+			</tarfileset>
+		</tar>
+		<gzip src="../sapo-broker.tar" destfile="../sapo-broker-${version}.tar.gz" />
+		<delete file="../sapo-broker.tar" />
+		<delete dir="${target-dir}" />
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-jsonbinding">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../../../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+
+	<property name="package" value="sapo-broker-jsonbinding-${version}.jar" />
+
+	<path id="project.classpath">
+		<pathelement location="../../../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../../protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<fileset dir="../../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="./lib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<!-- ant antfile="../../../comm-types/build.xml" inheritAll="false" target="build" / -->
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+
+		<copy todir="dist">
+			<fileset dir="lib/">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-protobufbinding">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../../../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+
+	<property name="package" value="sapo-broker-protobufbinding-${version}.jar" />
+
+	<path id="project.classpath">
+		<pathelement location="../../../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<fileset dir="../../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="protoc">
+		<echo message="Running Protocol Buffer compiler" />
+		<exec executable="protoc">
+			<arg value="--proto_path"/>
+			<arg value="../"/>
+			<arg value="--java_out"/>
+			<arg value="src"/>
+			<arg value="../broker.proto"/>
+		</exec>
+		<!-- PBMessage class and inner classes shouldn't be public -->
+		<replace file="src/pt/com/broker/codec/protobuf/PBMessage.java" token="public final class" value="final class"/>
+	</target>
+
+
+	<target name="build" depends="init, protoc">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<ant antfile="../../../comm-types/build.xml" inheritAll="false" target="build" />
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-thriftbinding">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../../../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+
+	<property name="package" value="sapo-broker-thriftbinding-${version}.jar" />
+
+	<path id="project.classpath">
+		<pathelement location="../../../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<fileset dir="../../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="thrift">
+		<echo message="Running Thrift compiler" />
+		<exec executable="thrift">
+			<arg value="-gen"/>
+			<arg value="java"/>			
+			<arg value="../broker.thrift"/>
+		</exec>
+
+		<copy todir="src">
+			<fileset dir="gen-java"/>
+		</copy>
+		
+		<property name="codedir" value="src/pt/com/broker/codec/thrift/" />
+		
+		<replace dir="${codedir}" token="public class" value="class">
+		  <include name="*.java"/>
+		  <exclude name="Thrift*.java"/>
+		</replace>
+
+		<delete dir="gen-java" />
+	</target>
+
+
+	<target name="build" depends="init, thrift">
+		<echo message="${ant.project.name}: ${ant.file}" />
+		
+		<ant antfile="../../../comm-types/build.xml" inheritAll="false" target="build" />
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-xmlbinding">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../../../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+
+	<property name="package" value="sapo-broker-xmlbinding-${version}.jar" />
+
+
+	<path id="project.classpath">
+		<pathelement location="../../../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="./bin" />
+		<fileset dir="../../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="./clib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+
+	<!-- bind as a separate step -->
+	<target name="bind">
+		<echo message="Running JiBX binding compiler" />
+		<taskdef name="bind" classname="org.jibx.binding.ant.CompileTask">
+			<classpath refid="project.classpath" />
+		</taskdef>
+		<bind binding="${project.location}/binding.xml">
+			<classpath refid="project.classpath" />
+		</bind>
+	</target>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="compile" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<ant antfile="../../../comm-types/build.xml" inheritAll="false" target="build" />
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+	</target>
+
+	<target name="build" depends="compile, bind">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-tests">
+	<property name="project.location" value="." />
+	<property name="dist" value="dist" />
+	<property name="src" value="src" />
+	<property name="bin" value="bin" />
+	
+	<property name="private.repo" value="../../BrokerSapoRepo" />
+		
+	<loadfile srcfile="../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+	
+	<property name="package" value="sapo-broker-tests-${version}.jar" />
+
+	<echo message="${private.repo}/sapo-sts/client/java/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+	
+	<path id="project.classpath">
+		<pathelement location="../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../gcs/dist/sapo-gcs-${version}.jar" />
+		<pathelement location="../acl/sapo-sts/client/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+		<pathelement location="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<pathelement location="../bindings/thrift/java/dist/sapo-broker-thriftbinding-${version}.jar" />
+		<pathelement location="../bindings/xml/java/dist/sapo-broker-xmlbinding-${version}.jar" />
+		<pathelement location="../clients/java-Component-BrokerTCP/dist/java-Component-BrokerTCP-${version}.jar" />
+		<pathelement location="${private.repo}/sapo-sts/client/java/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+		<fileset dir="../bindings/json/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+	
+	<path id="project.classpath">
+			<fileset dir="../common-libs/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../gcs/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../comm-types/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/protobuf/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/thrift/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/xml/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../clients/java-component/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../clients/java-component/dist/">
+					<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/json/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../acl/dbauth/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+		</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="${bin}" />
+		<mkdir dir="${dist}" />
+	</target>
+
+	<target name="clean">
+		<delete dir="${bin}" />
+		<delete dir="${dist}" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+		<javac destdir="${bin}" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.5" target="1.5">
+			<src path="${src}" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="${bin}">
+			<fileset dir="${src}" excludes="**/*.java" />
+		</copy>
+	</target>
+
+	<target name="package" depends="build">
+		<jar destfile="${dist}/${package}">
+			<fileset dir="${bin}" />
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="java-component">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="java-component-${version}.jar" />
+
+	<path id="project.classpath">
+		<pathelement location="../../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<pathelement location="../../bindings/thrift/java/dist/sapo-broker-thriftbinding-${version}.jar" />
+		<pathelement location="../../bindings/xml/java/dist/sapo-broker-xmlbinding-${version}.jar" />
+		<fileset dir="../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<ant antfile="../../bindings/protobuf/java/build.xml" inheritAll="false" target="build" />
+		<ant antfile="../../bindings/thrift/java/build.xml" inheritAll="false" target="build" />
+		<ant antfile="../../bindings/xml/java/build.xml" inheritAll="false" target="build">
+			<property name="project.location" value="${project.location}/../../bindings/xml/java" />
+		</ant>
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="bin">
+			<fileset dir="src" excludes="**/*.java" />
+		</copy>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+
+	<!-- target name="onejar" depends="package">
+		<jar destfile="wa.jar">
+			<zipgroupfileset dir="dist" includes="*.jar" excludes="logback*" />
+			<zipgroupfileset dir="dlib" includes="*.jar" />
+		</jar>
+	</target -->
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="java-samples">
+	<property name="project.location" value="." />
+	<property name="package" value="samples" />
+
+
+	<path id="project.classpath">
+		<fileset dir="./lib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+		<mkdir dir="classes" />
+		<mkdir dir="output" />
+	</target>
+
+	<target name="clean">
+		<delete dir="classes" />
+		<delete dir="output" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+
+		<javac destdir="classes" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+
+		<copy todir="classes">
+			<fileset dir="src" excludes="**/*.java" />
+		</copy>
+
+		<jar destfile="output/${package}">
+			<fileset dir="classes" />
+		</jar>
+	</target>
+
+</project>
+<project basedir="." default="build" name="broker-js-bridge">
+	<property name="project.location" value="." />
+	<property name="dist" value="./dist" />
+	<property name="src" value="./src" />
+	<property name="bin" value="./bin" />
+
+
+	<!-- <property name="broker-public-repo" value="../../../BrokerPublicRepo" /> -->
+
+	<property name="broker-public-repo" value="../.." />
+
+	<!-- loadfile property="version" srcFile="${broker-public-repo}/agent/${src}/VERSION.txt" / -->
+
+	<loadfile srcfile="${broker-public-repo}/agent/${src}/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="broker-js-bridge-${version}.jar" />
+
+	<path id="project.classpath">
+		<fileset dir="../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../comm-types/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/protobuf/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/thrift/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/xml/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../clients/java-component/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+
+		<fileset dir="./lib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="${bin}" />
+		<mkdir dir="${dist}" />
+	</target>
+
+	<target name="clean">
+		<delete dir="${bin}" />
+		<delete dir="${dist}" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+
+		<javac destdir="${bin}" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="${src}" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="${bin}">
+			<fileset dir="${src}" excludes="**/*.java" />
+		</copy>
+	</target>
+
+	<target name="package" depends="build">
+		<jar destfile="${dist}/${package}">
+			<fileset dir="${bin}" />
+		</jar>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-comm-types">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="sapo-broker-commtypes-${version}.jar" />
+
+	<path id="project.classpath">
+		<fileset dir="../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+
+	<!-- show list of targets -->
+	<target name="help">
+		<echo message="Targets are:" />
+		<echo />
+		<echo message="clean delete all class files and generated code" />
+		<echo message="build compile classes and JiBX binding" />
+		<echo message="package creates distribution" />
+	</target>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-gcs">
+	<property name="project.location" value="." />
+
+	<loadfile srcfile="../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="sapo-gcs-${version}.jar" />
+
+	<path id="project.classpath">
+		<pathelement location="../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<fileset dir="../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+		<copy file="src/pt/com/gcs/conf/GcsInfo.java" tofile="src/pt/com/gcs/conf/GcsInfo.bak" overwrite="true" />
+		<replace file="src/pt/com/gcs/conf/GcsInfo.java" token="@gcsVersion@" value="${version}" />
+
+		<ant antfile="../bindings/protobuf/java/build.xml" inheritAll="false" target="build" />
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<move file="src/pt/com/gcs/conf/GcsInfo.bak" tofile="src/pt/com/gcs/conf/GcsInfo.java" overwrite="true" />
+
+		<copy todir="bin">
+			<fileset dir="src" excludes="**/*.java" />
+		</copy>
+
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+
+</project>
+<project basedir="." default="build" name="monitorization-collector">
+	<property name="project.location" value="." />
+	<property name="dist" value="./dist" />
+	<property name="src" value="./src" />
+	<property name="bin" value="./bin" />
+	<property name="broker-public-repo" value="../../" />
+
+	<loadfile srcfile="${broker-public-repo}/agent/${src}/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="monitorization-collector-${version}.jar" />
+
+	<path id="project.classpath">
+		<fileset dir="../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../comm-types/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/protobuf/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/thrift/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/xml/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../clients/java-component/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+
+		<fileset dir="../lib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="${bin}" />
+		<mkdir dir="${dist}" />
+	</target>
+
+	<target name="clean">
+		<delete dir="${bin}" />
+		<delete dir="${dist}" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+
+		<javac destdir="${bin}" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="${src}" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="${bin}">
+			<fileset dir="${src}" excludes="**/*.java" />
+		</copy>
+	</target>
+
+	<target name="package" depends="build">
+		<jar destfile="${dist}/${package}">
+			<fileset dir="${bin}" />
+		</jar>
+	</target>
+</project>
+<project basedir="." default="build" name="monitorization-console">
+	<property name="project.location" value="." />
+	<property name="broker-public-repo" value="../../" />
+
+	<loadfile srcfile="${broker-public-repo}/agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>
+	</loadfile>
+
+	<property name="package" value="monitorization-console-${version}.jar" />
+
+	<path id="project.classpath">
+		<fileset dir="../../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../comm-types/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/protobuf/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/thrift/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../bindings/xml/java/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+		<fileset dir="../../clients/java-component/dist/">
+			<include name="**/*.jar" />
+		</fileset>
+
+		<fileset dir="../lib/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="bin" />
+		<mkdir dir="dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="bin" />
+		<delete dir="dist" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+
+
+		<javac destdir="bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.6" target="1.6" includeAntRuntime="false">
+			<src path="src" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="bin">
+			<fileset dir="src" excludes="**/*.java" />
+		</copy>
+	</target>
+
+	<target name="package" depends="build">
+		<jar destfile="dist/${package}">
+			<fileset dir="bin" />
+		</jar>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="build" name="sapo-broker-performance-tests">
+	<property name="project.location" value="." />
+	
+	<property name="private.repo" value="../../BrokerSapoRepo" />
+	
+	<loadfile srcfile="../agent/src/VERSION.txt" property="version">
+		<filterchain>
+			<striplinebreaks />
+			<tokenfilter>
+				<trim />
+				<ignoreblank />
+			</tokenfilter>
+		</filterchain>		
+	</loadfile>
+	
+	<property name="package" value="sapo-broker-tests-${version}.jar" />
+
+	<echo message="${private.repo}/sapo-sts/client/java/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+	
+	<path id="project.classpath">
+		<pathelement location="../comm-types/dist/sapo-broker-commtypes-${version}.jar" />
+		<pathelement location="../acl/sapo-sts/client/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+		<pathelement location="../bindings/protobuf/java/dist/sapo-broker-protobufbinding-${version}.jar" />
+		<pathelement location="../bindings/thrift/java/dist/sapo-broker-thriftbinding-${version}.jar" />
+		<pathelement location="../bindings/xml/java/dist/sapo-broker-xmlbinding-${version}.jar" />
+		<pathelement location="../clients/java-Component-BrokerTCP/dist/java-Component-BrokerTCP-${version}.jar" />
+		<pathelement location="${private.repo}/sapo-sts/client/java/dist/sapo-broker-clientauth-saposts-${version}.jar" />
+		<fileset dir="../common-libs/">
+			<include name="**/*.jar" />
+		</fileset>
+	</path>
+	
+	<path id="project.classpath">
+			<fileset dir="../common-libs/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../comm-types/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/protobuf/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/thrift/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../bindings/xml/java/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../clients/java-component/dist/">
+				<include name="**/*.jar" />
+			</fileset>
+			<fileset dir="../clients/java-component/dist/">
+					<include name="**/*.jar" />
+			</fileset>
+		</path>
+
+	<target name="init" depends="clean">
+		<mkdir dir="./bin" />
+		<mkdir dir="./dist" />
+	</target>
+
+	<target name="clean">
+		<delete dir="./bin" />
+		<delete dir="./dist" />
+	</target>
+
+	<target name="build" depends="init">
+		<echo message="${ant.project.name}: ${ant.file}" />
+		<javac destdir="./bin" encoding="UTF-8" debug="on" debuglevel="lines,vars,source" source="1.5" target="1.5">
+			<src path="./src" />
+			<classpath refid="project.classpath" />
+		</javac>
+		<copy todir="./bin">
+			<fileset dir="./dist" excludes="**/*.java" />
+		</copy>
+	</target>
+
+	<target name="package" depends="build">
+		<jar destfile="./dist/${package}">
+			<fileset dir="./bin" />
+		</jar>
+	</target>
+
+</project>

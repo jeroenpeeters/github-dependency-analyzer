@@ -1,0 +1,221 @@
+apply plugin: 'android'
+apply plugin: 'android-apt'
+
+dependencies {
+
+    compile "com.nineoldandroids:library:${nineOldAndroidsVersion}"
+
+    compile "com.android.support:appcompat-v7:${supportPackageVersion}"
+
+    // support-v4 は appcompat-v7 の依存に含まれているので明示は不要。appcompat を使わない場合は↓を生かしてsupport-v4 のみにもできる。
+    // compile "com.android.support:support-v4:${supportPackageVersion}"
+
+    compile "org.androidannotations:androidannotations-api:${project.androidAnnotationsVersion}"
+    apt "org.androidannotations:androidannotations:${project.androidAnnotationsVersion}"
+
+    // Android Annotations ではなく、 Butter Knife を使う場合はこちら
+    //compile "com.jakewharton:butterknife:${butterKnifeVersion}"
+    //apt "com.jakewharton:butterknife:${butterKnifeVersion}"
+
+    compile "com.squareup.dagger:dagger:${project.daggerVersion}"
+    apt "com.squareup.dagger:dagger-compiler:${project.daggerVersion}"
+
+    compile "net.vvakame:jsonpullparser-core:${project.jppVersion}"
+    apt "net.vvakame:jsonpullparser-apt:${project.jppVersion}"
+
+    compile "de.greenrobot:eventbus:${eventbusVersion}"
+    compile "com.google.android.gms:play-services:${playServicesVersion}"
+    compile "org.apache.commons:commons-lang3:${commonsLangVersion}"
+    compile "commons-io:commons-io:${commonsIoVersion}"
+    compile "com.google.guava:guava:${guavaVersion}"
+    // guava が内部で参照しているので、入れておかないとProGuard がエラーを出す
+    // なぜか 1.3.+ だとエラーが出るようになったので 1.3.9 にしておく
+    //compile "com.google.code.findbugs:jsr305:1.3.9"
+
+    compile("com.google.api-client:google-api-client-android:${googleApiClientVersion}") {
+        exclude module: 'xpp3'
+        exclude module: 'httpclient'
+        exclude module: 'junit'
+        exclude module: 'android'
+    }
+
+    // libs/ にある *.jar を一括で追加する
+    compile fileTree(dir: 'libs', include: '*.jar')
+
+    compile project(':MyLibrary')
+}
+
+// for Android Annotations
+android.applicationVariants.all { variant ->
+    variant.javaCompile.options.compilerArgs += [
+            '-AandroidManifestFile=' + variant.processResources.manifestFile
+    ]
+}
+
+android {
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+
+    defaultConfig {
+        minSdkVersion 9
+        targetSdkVersion 19
+
+        versionCode 1
+        versionName '0.0.1'
+    }
+
+    compileOptions {
+        encoding = "UTF-8"
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
+
+    packagingOptions {
+        // exclude duplicate files in apache commons
+        // pickFirst なら最初に見つけたやつが apk に入る
+        exclude 'META-INF/LICENSE.txt'
+        exclude 'META-INF/NOTICE.txt'
+    }
+
+    signingConfigs {
+        // debug {
+        //     storeFile file("debug.keystore")
+        // }
+
+        release
+    }
+
+    aaptOptions {
+        // 最近の PNG processor が生成するファイルがGB端末上でクラッシュを引き起こすとのことなので、その回避策
+        useAaptPngCruncher = true
+    }
+
+    buildTypes {
+        release {
+            runProguard true
+            proguardFile getDefaultProguardFile('proguard-android.txt')
+            proguardFile file('proguard-project.txt')
+
+            // gradle.properties にリリース署名用の設定があれば署名を有効化します。設定のサンプルとして gradle.properties.forReleaseSigning を置いたので参考にしてください。
+            if (project.hasProperty('storeFile')) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    task ndkBuild(type:Exec) {
+        commandLine 'ndk-build', '-j'
+    }
+
+    task ndkClean(type:Exec) {
+        commandLine 'ndk-build', 'clean'
+    }
+
+    task libsClean(type:Exec) {
+        commandLine 'rm', '-rf', 'libs/armeabi', 'libs/armeabi-v7a', 'libs/x86', 'libs/mips'
+    }
+
+    if(new File(projectDir, "jni").exists()){
+        tasks.withType(Compile) {
+            compileTask -> compileTask.dependsOn ndkBuild
+        }
+
+        tasks.withType(com.android.build.gradle.tasks.PackageApplication) {
+            pkgTask -> pkgTask.jniDir new File(projectDir, 'libs')
+        }
+
+        clean.dependsOn 'ndkClean'
+        clean.dependsOn 'libsClean'
+    }
+}
+
+if (project.hasProperty('storeFile')) {
+    android.signingConfigs.release.storeFile = file(storeFile)
+}
+if (project.hasProperty('storePassword')) {
+    android.signingConfigs.release.storePassword = storePassword
+}
+if (project.hasProperty('keyAlias')) {
+    android.signingConfigs.release.keyAlias = keyAlias
+}
+if (project.hasProperty('keyPassword')) {
+    android.signingConfigs.release.keyPassword = keyPassword
+}
+apply plugin: 'android-library'
+
+dependencies {
+    compile "com.android.support:support-v4:${supportPackageVersion}"
+}
+
+android {
+    compileSdkVersion rootProject.ext.compileSdkVersion
+    buildToolsVersion rootProject.ext.buildToolsVersion
+
+    defaultConfig {
+        minSdkVersion 9
+        targetSdkVersion 19
+    }
+
+    compileOptions {
+        encoding = "UTF-8"
+        sourceCompatibility JavaVersion.VERSION_1_7
+        targetCompatibility JavaVersion.VERSION_1_7
+    }
+}
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath "com.android.tools.build:gradle:0.9.+"
+        classpath 'com.uphyca.gradle:gradle-android-apt-plugin:0.9.3+'
+    }
+}
+
+subprojects {
+    repositories {
+        mavenCentral()
+//https://plus.google.com/109385828142935151413/posts/hF7W59uZ7rX
+//        mavenLocal()
+        maven {
+            url "${System.env.HOME}/.m2/repository"
+        }
+    }
+
+    project.plugins.whenPluginAdded { plugin ->
+        if ("com.android.build.gradle.AppPlugin".equals(plugin.class.name)) {
+            project.android.dexOptions.preDexLibraries = rootProject.ext.preDexLibs
+        } else if ("com.android.build.gradle.LibraryPlugin".equals(plugin.class.name)) {
+            project.android.dexOptions.preDexLibraries = rootProject.ext.preDexLibs
+        }
+    }
+}
+
+// http://www.gradle.org/docs/current/dsl/org.gradle.api.plugins.ExtraPropertiesExtension.html
+project.ext {
+    compileSdkVersion = 19
+    buildToolsVersion = "19.0.3"
+
+    // see http://tools.android.com/tech-docs/new-build-system/tips#TOC-Improving-Build-Server-performance.
+    // CIサーバなどでは -PdisablePreDex をつける。 preDexが省略されてビルドが速くなる
+    preDexLibs = !project.hasProperty('disablePreDex')
+
+    supportPackageVersion = "19.1.+"
+    playServicesVersion = "4.3.23"
+    butterKnifeVersion = '4.0.1'
+    daggerVersion = "1.2.1"
+    androidAnnotationsVersion = '3.0.1';
+    eventbusVersion = '2.2.+'
+    nineOldAndroidsVersion = "2.4.0"
+    commonsLangVersion = "3.2.1"
+    commonsIoVersion = "2.4"
+    guavaVersion = "16.0"
+    jppVersion = '1.6.+';
+    googleApiClientVersion = "1.16.0-rc"
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+}

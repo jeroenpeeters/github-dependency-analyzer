@@ -1,0 +1,613 @@
+<?xml version='1.0'?>
+
+<!--
+  ~ Copyright (c) 2014 MongoDB, Inc.
+  ~
+  ~ Licensed under the Apache License, Version 2.0 (the "License");
+  ~ you may not use this file except in compliance with the License.
+  ~ You may obtain a copy of the License at
+  ~
+  ~   http://www.apache.org/licenses/LICENSE-2.0
+  ~
+  ~ Unless required by applicable law or agreed to in writing, software
+  ~ distributed under the License is distributed on an "AS IS" BASIS,
+  ~ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  ~ See the License for the specific language governing permissions and
+  ~ limitations under the License.
+  -->
+
+<project name="mongo-java-driver" default="compile" basedir=".">
+
+    <!-- ******************************************************************* -->
+    <!-- Properties                                                          -->
+    <!-- ******************************************************************* -->
+
+    <property environment="env"/>
+    <property prefix="build.conf" file="build.properties"/>
+    <property name="build.dir" location="${basedir}/build"/>
+    <property name="build.main.dir" location="${build.dir}/main"/>
+    <property name="build.test.dir" location="${build.dir}/test"/>
+    <property name="build.util.dir" location="${build.dir}/util"/>
+    <property name="build.instrumented.dir" location="${build.dir}/instrumented"/>
+    <property name="build.logs.dir" location="${basedir}/logs"/>
+    <property name="build.docs.dir" location="${basedir}/docs"/>
+    <property name="artifact.name" value="mongo.jar"/>
+    <property name="target.dir" location="${basedir}/target"/>
+    <property name="test.dir" location="${target.dir}/test"/>
+    <property name="test.classes" value="*"/>
+    <property name="cobertura.datafile" location="${target.dir}/cobertura.ser"/>
+    <property name="cobertura.format" value="xml"/>
+    <property name="test.com.mongodb.slaveAcceptableLatencyMS" value="15"/>
+
+    <!-- ******************************************************************* -->
+    <!-- Path definition                                                     -->
+    <!-- ******************************************************************* -->
+
+    <path id="test.classpath">
+        <pathelement location="lib/junit-4.11.jar"/>
+        <pathelement location="lib/hamcrest-core-1.3.jar"/>
+        <path refid="build.classpath"/>
+    </path>
+    <path id="cobertura.classpath">
+        <fileset dir="lib/cobertura"><include name="**/*.jar"/></fileset>
+    </path>
+    <path id="task.classpath">
+        <pathelement location="lib/ant-contrib-1.0b3.jar"/>
+        <pathelement location="lib/clirr-core-0.6-uber.jar"/>
+        <path refid="test.classpath"/>
+        <path refid="cobertura.classpath"/>
+    </path>
+    <path id="build.classpath">
+        <pathelement path="${build.main.dir}" />
+        <pathelement path="${build.test.dir}" />
+    </path>
+
+    <!-- ******************************************************************* -->
+    <!-- Tasks definition                                                    -->
+    <!-- ******************************************************************* -->
+
+    <taskdef classpathref="task.classpath" resource="net/sf/antcontrib/antcontrib.properties"/>
+    <taskdef classpathref="task.classpath" resource="tasks.properties" />
+    <taskdef classpathref="task.classpath" resource="clirrtask.properties"/>
+
+    <!-- ******************************************************************* -->
+    <!-- Vars                                                                -->
+    <!-- ******************************************************************* -->
+
+    <var name="cobertura.arg" value="none"/>
+    <var name="test.classpath" value="test.classpath"/>
+
+    <!-- ******************************************************************* -->
+    <!-- The init target.                                                    -->
+    <!-- ******************************************************************* -->
+
+    <target name="init">
+        <mkdir dir="${build.dir}" />
+        <mkdir dir="${build.main.dir}" />
+        <mkdir dir="${build.test.dir}" />
+        <mkdir dir="${build.util.dir}" />
+        <mkdir dir="${build.logs.dir}" />
+        <mkdir dir="${build.docs.dir}" />
+        <mkdir dir="${test.dir}" />
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The clean target.                                                   -->
+    <!-- ******************************************************************* -->
+
+    <target name="clean">
+        <delete dir="${build.dir}"/>
+        <delete dir="${target.dir}"/>
+        <delete dir="${build.logs.dir}"/>
+        <delete dir="${build.docs.dir}"/>
+        <delete file="mongo.jar"/>
+        <delete file="mongo-javadoc.jar"/>
+        <delete file="mongo-sources.jar"/>
+        <delete file="bson.jar"/>
+        <delete file="bson-javadoc.jar"/>
+        <delete file="bson-sources.jar"/>
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The compile target.                                                 -->
+    <!-- ******************************************************************* -->
+
+    <target name="compile" depends="init">
+
+        <propertyregex property="lib.major"
+                       input="${build.conf.lib.version}"
+                       regexp="(\d+)\.(\d+)\.(\d+)"
+                       select="\1" />
+
+        <propertyregex property="lib.minor"
+                       input="${build.conf.lib.version}"
+                       regexp="(\d+)\.(\d+)\.(\d+)"
+                       select="\2" />
+
+        <replaceregexp file="src/main/com/mongodb/Mongo.java" match="\sMAJOR_VERSION\s=\s\d+;" replace=" MAJOR_VERSION = ${lib.major};" byline="false"/>
+        <replaceregexp file="src/main/com/mongodb/Mongo.java" match="\sMINOR_VERSION\s=\s\d+;" replace=" MINOR_VERSION = ${lib.minor};" byline="false"/>
+        <replaceregexp file="src/main/com/mongodb/Mongo.java" match='\sFULL_VERSION\s=\s"\S*";'
+                       replace=' FULL_VERSION = "${build.conf.lib.version}";' byline="false"/>
+
+        <javac
+            srcdir="src/main"
+            destdir="${build.main.dir}"
+            optimize="off"
+            deprecation="off"
+            source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
+            encoding="ISO-8859-1"
+            fork="true"
+            debug="on"
+            includeantruntime="false"
+            memoryMaximumSize="256M"
+            >
+            <compilerarg value="-Xlint:all,-rawtypes,-deprecation"/>
+        </javac>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The util compile target.                                            -->
+    <!-- ******************************************************************* -->
+
+    <target name="utilcompile" depends="init">
+
+        <javac
+            srcdir="src/util"
+            destdir="${build.util.dir}"
+            optimize="off"
+            deprecation="off"
+            source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
+            encoding="ISO-8859-1"
+            memoryMaximumSize="256M"
+            fork="true"
+            debug="on"
+            includeantruntime="false">
+            <classpath location="${env.JAVA_HOME}/lib/tools.jar"/>
+            <compilerarg value="-Xlint:all,-fallthrough"/>
+        </javac>
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The jar target.                                                     -->
+    <!-- ******************************************************************* -->
+
+    <target name="jar" depends="compile" description="Create driver jar">
+
+        <copy file="src/main/META-INF/MANIFEST.MF" tofile="${build.dir}/MANIFEST.MF" filtering="true">
+            <filterset><filter token="VERSION" value="${build.conf.lib.version.osgi.compat}"/></filterset>
+        </copy>
+
+        <copy file="src/main/META-INF/MANIFEST_BSON.MF" tofile="${build.dir}/MANIFEST_BSON.MF" filtering="true">
+            <filterset><filter token="VERSION" value="${build.conf.lib.version.osgi.compat}"/></filterset>
+        </copy>
+
+        <exec executable="git" output="${build.main.dir}/git-hash">
+            <arg value="log" />
+            <arg value="--pretty=format:%H" />
+            <arg value="-1" />
+        </exec>
+
+        <jar jarfile="mongo.jar" manifest="${build.dir}/MANIFEST.MF"><fileset dir="${build.main.dir}" /></jar>
+
+        <jar jarfile="bson.jar" manifest="${build.dir}/MANIFEST_BSON.MF">
+          <fileset dir="${build.main.dir}"><not><filename name="com/"/></not></fileset>
+        </jar>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The javadocs target.                                                -->
+    <!-- ******************************************************************* -->
+
+    <target name="javadocs" depends="compile,utilcompile" description="Generate API docs">
+        <delete dir="${build.docs.dir}"/>
+        <javadoc
+            packagenames="com.mongodb,com.mongodb.gridfs,com.mongodb.util,com.mongodb.tools,org.bson,org.bson.types,org.bson.io,org.bson.util"
+            sourcepath="src/main/"
+            defaultexcludes="yes"
+            destdir="${build.docs.dir}/mongo-java-driver"
+            author="true"
+            version="true"
+            source="${build.conf.javac.source}"
+            use="true"
+            access="protected">
+            <link href="http://download.oracle.com/javase/1.5.0/docs/api/"/>
+            <classpath refid="build.classpath"/>
+            <taglet name="DochubTaglet" path="${build.util.dir}"/>
+            <taglet name="ManualTaglet" path="${build.util.dir}"/>
+            <taglet name="ServerReleaseTaglet" path="${build.util.dir}"/>
+        </javadoc>
+
+        <javadoc
+            packagenames="org.bson,org.bson.types,org.bson.io,org.bson.util"
+            sourcepath="src/main/"
+            defaultexcludes="yes"
+            destdir="${build.docs.dir}/bson"
+            author="true"
+            version="true"
+            source="${build.conf.javac.source}"
+            use="true"
+            access="protected">
+            <link href="http://download.oracle.com/javase/1.5.0/docs/api/"/>
+            <classpath refid="build.classpath"/>
+            <taglet name="DochubTaglet" path="${build.util.dir}"/>
+            <taglet name="ManualTaglet" path="${build.util.dir}"/>
+        </javadoc>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- Jar the rest of the files.                                          -->
+    <!-- ******************************************************************* -->
+
+    <target name="alljars" depends="jar, javadocs" description="build jar, source jar, javadoc jar">
+
+        <jar jarfile="mongo-sources.jar"><fileset dir="src/main"><not><filename name="META-INF/"/></not></fileset></jar>
+        <jar jarfile="mongo-javadoc.jar"><fileset dir="${build.docs.dir}/mongo-java-driver"/></jar>
+
+        <jar jarfile="bson-sources.jar">
+            <fileset dir="src/main">
+            <not><filename name="com/"/></not>
+            <not><filename name="META-INF/"/></not>
+            </fileset>
+        </jar>
+
+        <jar jarfile="bson-javadoc.jar"><fileset dir="${build.docs.dir}/bson"/></jar>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The clean compile target                                            -->
+    <!-- ******************************************************************* -->
+
+    <target name="rebuild" depends="clean, compile"/>
+
+    <!-- ******************************************************************* -->
+    <!-- The test targets                                                    -->
+    <!-- ******************************************************************* -->
+
+    <target name="test-compile" depends="compile">
+        <javac
+                srcdir="src/test"
+                destdir="${build.test.dir}"
+                optimize="off"
+                deprecation="off"
+                source="${build.conf.javac.source}"
+                target="${build.conf.javac.source}"
+                encoding="ISO-8859-1"
+                fork="true"
+                debug="on"
+                includeantruntime="false">
+            <classpath refid="test.classpath"/>
+            <compilerarg value="-Xlint:all,-rawtypes,-deprecation"/>
+        </javac>
+    </target>
+
+    <target name="test" depends="test-compile, test-nodeps"/>
+
+    <target name="test-nodeps">
+        <junit fork="true" forkmode="once" haltonfailure="true" maxmemory="512m" printsummary="on">
+            <jvmarg value="-Dcom.mongodb.slaveAcceptableLatencyMS=${test.com.mongodb.slaveAcceptableLatencyMS}"/>
+            <classpath>
+                <path refid="test.classpath"/>
+                <pathelement location="${build.test.dir}"/>
+            </classpath>
+            <formatter type="plain" usefile="false" />
+            <batchtest todir="${test.dir}">
+                <fileset dir="src/test">
+                    <include name="**/*Test.java"/>
+                    <exclude name="**/PerformanceTest.java"/>
+                    <exclude name="**/ReplPairTest.java"/>
+                    <exclude name="**/ReplSetTest.java"/>
+                    <exclude name="**/SingleThreadedMongoPerfTest.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- The coverage targets                                                -->
+    <!-- ******************************************************************* -->
+
+    <target name="coverage-instrument" depends="compile">
+        <cobertura-instrument todir="${build.instrumented.dir}" datafile="${cobertura.datafile}">
+            <fileset dir="${build.main.dir}">
+                <include name="**/*.class"/>
+            </fileset>
+        </cobertura-instrument>
+        <path id="coverage.classpath">
+            <pathelement path="${build.instrumented.dir}" />
+            <path refid="test.classpath" />
+            <path refid="cobertura.classpath" />
+        </path>
+        <var name="cobertura.arg" value="net.sourceforge.cobertura.datafile"/>
+        <var name="test.classpath" value="coverage.classpath"/>
+    </target>
+
+    <target name="coverage-report" depends="coverage-instrument,test">
+        <cobertura-report format="${cobertura.format}" srcdir="src/main" destdir="${test.dir}" datafile="${cobertura.datafile}"/>
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- Misc targets                                                        -->
+    <!-- ******************************************************************* -->
+
+    <target name="examples" depends="compile">
+
+        <javac
+            srcdir="test"
+            destdir="${build.test.dir}"
+            optimize="off"
+            deprecation="off"
+            source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
+            encoding="ISO-8859-1"
+            debug="on"
+            includeantruntime="false">
+            <classpath refid="build.classpath"/>
+        </javac>
+
+        <java classname="example.QuickTour"><classpath refid="build.classpath"/></java>
+        <java classname="example.QuickTourAdmin"><classpath refid="build.classpath"/></java>
+
+    </target>
+
+    <target name="readoplog" depends="compile">
+
+        <javac
+            srcdir="test"
+            destdir="${build.test.dir}"
+            optimize="off"
+            deprecation="off"
+            source="${build.conf.javac.source}"
+            target="${build.conf.javac.source}"
+            encoding="ISO-8859-1"
+            debug="on"
+            includeantruntime="false">
+            <classpath refid="build.classpath"/>
+        </javac>
+
+        <java classname="example.ReadOplog" fork="true"><classpath refid="build.classpath"/></java>
+
+    </target>
+
+    <target name="check-binary-compatibility" depends="jar">
+
+        <property name="jar.baseline" value="${ant.project.name}-${build.conf.compatibility.baseline.version}.jar"/>
+
+        <get src="${build.conf.url.libbase}/${build.conf.compatibility.baseline.version}/${jar.baseline}" dest="${jar.baseline}"
+             verbose="true" usetimestamp="true"/>
+
+        <clirr failOnBinError="no" failOnSrcError="no">
+            <origfiles dir="." includes="${jar.baseline}"/>
+            <newfiles dir="." includes="mongo.jar"/>
+            <formatter type="plain" outfile="${build.dir}/clirr.txt"/>
+        </clirr>
+    </target>
+
+  <!-- NOTE: publish-local is now located in maven/ -->
+
+</project>
+<?xml version="1.0"?>
+
+<!--
+Copyright 2011, 10gen
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at:
+
+http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+
+<project name="maven-mongo-java-driver" default="compile" basedir="../" xmlns:aspectj="antlib:org.aspectj" xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+    <!-- ******************************************************************* -->
+    <!-- Set the base attributes.                                            -->
+    <!-- ******************************************************************* -->
+
+    <import file="../build.xml" as="core"/>
+
+    <property file="../build.properties" prefix="build.conf"/>
+    
+    <property name="dir.build" value="../build"/>
+
+    <!-- ******************************************************************* -->
+    <!-- Set the Maven attributes.                                           -->
+    <!-- ******************************************************************* -->
+
+    <property name="maven-snapshots-repository-id" value="mongodb-snapshots"/>
+    <property name="maven-snapshots-repository-url" value="https://oss.sonatype.org/content/repositories/snapshots"/>
+    <property name="maven-staging-repository-id" value="mongodb-staging"/>
+    <property name="maven-staging-repository-url" value="https://oss.sonatype.org/service/local/staging/deploy/maven2/"/>
+
+    <!-- ******************************************************************* -->
+    <!-- Setup the build for the the Maven fun.                              -->
+    <!-- ******************************************************************* -->
+	<typedef onerror="report" resource="org/apache/maven/artifact/ant/antlib.xml" uri="antlib:org.apache.maven.artifact.ant">
+		<classpath path="maven/maven-ant-tasks-2.1.3.jar"/>
+	</typedef>
+	
+    <target name="maven.init" depends="clean, jar, alljars" description="Init the maven fun">
+
+        <copy file="maven/maven-mongo-java-driver.xml" tofile="build/maven-mongo-java-driver.xml" filtering="true">
+            <filterset><filter token="VERSION" value="${build.conf.lib.version}"/></filterset>
+        </copy>
+
+        <copy file="maven/maven-bson.xml" tofile="build/maven-bson.xml" filtering="true">
+            <filterset><filter token="VERSION" value="${build.conf.lib.version}"/></filterset>
+        </copy>
+
+        <mkdir dir="build/dist"/>
+
+        <copy tofile="build/dist/mongo-java-driver-sources-${build.conf.lib.version}.jar" file="mongo-sources.jar" overwrite="true" filtering="false"/>
+        <copy tofile="build/dist/mongo-java-driver-javadoc-${build.conf.lib.version}.jar" file="mongo-javadoc.jar" overwrite="true" filtering="false"/>
+        <copy tofile="build/dist/mongo-java-driver-${build.conf.lib.version}.jar" file="mongo.jar" overwrite="true" filtering="false"/>
+
+        <copy tofile="build/dist/bson-sources-${build.conf.lib.version}.jar" file="bson-sources.jar" overwrite="true" filtering="false"/>
+        <copy tofile="build/dist/bson-javadoc-${build.conf.lib.version}.jar" file="bson-javadoc.jar" overwrite="true" filtering="false"/>
+        <copy tofile="build/dist/bson-${build.conf.lib.version}.jar" file="bson.jar" overwrite="true" filtering="false"/>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- Publish locally.                                                    -->
+    <!-- ******************************************************************* -->
+
+    <target name="publish-local" depends="maven.init">
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=file:///${user.home}/.m2/repository"/>
+            <arg value="-DrepositoryId=local"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-${build.conf.lib.version}.jar"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=file:///${user.home}/.m2/repository"/>
+            <arg value="-DrepositoryId=local"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=sources"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=file:///${user.home}/.m2/repository"/>
+            <arg value="-DrepositoryId=local"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-${build.conf.lib.version}.jar"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb" />
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=file:///${user.home}/.m2/repository"/>
+            <arg value="-DrepositoryId=local"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=sources"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb" />
+        </artifact:mvn>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- Stage in the Maven repository.                                      -->
+    <!-- ******************************************************************* -->
+
+    <target name="maven.stage" depends="maven.init" description="Deploy build to maven central server - stage">
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-${build.conf.lib.version}.jar"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-sources-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=sources"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-javadoc-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=javadoc"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-${build.conf.lib.version}.jar"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb" />
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-sources-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=sources"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file"/>
+            <arg value="-Durl=${maven-staging-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-staging-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-javadoc-${build.conf.lib.version}.jar"/>
+            <arg value="-Dclassifier=javadoc"/>
+            <arg value="-Dkeyname=CAA86C78"/>
+            <arg value="-Pgpg-mongodb"/>
+        </artifact:mvn>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+    <!-- Deploy to Maven repository.                                         -->
+    <!-- ******************************************************************* -->
+
+    <target name="maven.snapshot" depends="maven.init" description="Deploy build to maven central server - snapshot">
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-deploy-plugin:2.6:deploy-file"/>
+            <arg value="-Durl=${maven-snapshots-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-snapshots-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-mongo-java-driver.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/mongo-java-driver-${build.conf.lib.version}.jar"/>
+            <arg value="-Dsources=${dir.build}/dist/mongo-java-driver-sources-${build.conf.lib.version}.jar"/>
+            <arg value="-Djavadoc=${dir.build}/dist/mongo-java-driver-javadoc-${build.conf.lib.version}.jar"/>
+        </artifact:mvn>
+
+        <artifact:mvn>
+            <arg value="org.apache.maven.plugins:maven-deploy-plugin:2.6:deploy-file"/>
+            <arg value="-Durl=${maven-snapshots-repository-url}"/>
+            <arg value="-DrepositoryId=${maven-snapshots-repository-id}"/>
+            <arg value="-DpomFile=${dir.build}/maven-bson.xml"/>
+            <arg value="-Dfile=${dir.build}/dist/bson-${build.conf.lib.version}.jar"/>
+            <arg value="-Dsources=${dir.build}/dist/bson-sources-${build.conf.lib.version}.jar"/>
+            <arg value="-Djavadoc=${dir.build}/dist/bson-javadoc-${build.conf.lib.version}.jar"/>
+        </artifact:mvn>
+
+    </target>
+
+    <!-- ******************************************************************* -->
+
+</project>

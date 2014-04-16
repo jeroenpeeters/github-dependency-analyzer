@@ -1,0 +1,185 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.9.+'
+    }
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'http://wordpress-mobile.github.io/WordPress-Android' }
+}
+
+apply plugin: 'android'
+
+android {
+    lintOptions {
+        quiet true
+        abortOnError false
+    }
+
+    packagingOptions {
+        exclude "META-INF/LICENSE.txt"
+        exclude "META-INF/NOTICE.txt"
+    }
+
+    buildTypes {
+        release {
+            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.playstore\""
+            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProvider\""
+        }
+        debug {
+            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.debug.build\""
+            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProvider\""
+        }
+        zbetagroup {
+            buildConfigField "String", "APP_PN_KEY", "\"org.wordpress.android.beta.build\""
+            buildConfigField "String", "STATS_PROVIDER_AUTHORITY", "\"org.wordpress.android.providers.StatsContentProviderBeta\""
+            packageNameSuffix ".beta"
+        }
+    }
+
+    compileSdkVersion 19
+    buildToolsVersion "19.0.1"
+
+    defaultConfig {
+        packageName "org.wordpress.android"
+        versionName "2.7.3"
+        versionCode 105
+        minSdkVersion 9
+        targetSdkVersion 19
+    }
+
+    dependencies {
+        // Provided by maven central
+        compile 'com.google.code.gson:gson:2.2.2'
+        compile 'org.ccil.cowan.tagsoup:tagsoup:1.2.1'
+        compile 'com.android.support:support-v4:19.0.+'
+        compile 'com.github.castorflex.smoothprogressbar:library:0.4.0'
+
+        androidTestCompile 'com.jayway.android.robotium:robotium-solo:5.+'
+        androidTestCompile 'com.google.dexmaker:dexmaker-mockito:1.0'
+        androidTestCompile 'org.objenesis:objenesis:2.1'
+        androidTestCompile 'org.mockito:mockito-core:+'
+
+        // These are provided by the WordPress-Android Repository
+        compile 'org.wordpress:actionbarsherlock:4.4.0'
+        compile 'org.wordpress:menudrawer:3.0.5-SNAPSHOT'
+        compile 'org.wordpress:gcm:1.0.0'
+        compile 'org.wordpress:volley:wp-0.0.1'
+        compile 'com.automattic:wordpresscom-rest:0.0.3'
+        compile 'org.wordpress:httpmime:4.1.2'
+        compile 'org.wordpress:graphview:3.1.1'
+        compile 'org.wordpress:drag-sort-listview:0.6.1'
+        compile 'org.wordpress:slidinguppanel:1.0.0'
+        compile 'org.wordpress:android-passcodelock:0.0.5'
+        compile 'org.wordpress:commons-lang:2.6'
+        compile 'org.wordpress:pulltorefresh-main:+'
+        compile 'org.wordpress:pulltorefresh-abs:+'
+        releaseCompile 'org.wordpress:emailchecker:0.2'
+        debugCompile 'org.wordpress:emailchecker-debug:0.2'
+        zbetagroupCompile 'org.wordpress:emailchecker:0.2'
+
+        // Local dependencies
+        compile files('libs/MixpanelAPI.jar')
+    }
+
+    sourceSets {
+        main {
+            manifest.srcFile 'AndroidManifest.xml'
+            java.srcDirs = ['src']
+            res.srcDirs = ['res']
+            assets.srcDirs = ['assets']
+        }
+
+        release {
+            manifest.srcFile 'AndroidManifestReleaseAndDebug.xml'
+        }
+
+        debug {
+            manifest.srcFile 'AndroidManifestReleaseAndDebug.xml'
+        }
+
+        zbetagroup {
+            res.srcDirs = ['res-zbetagroup']
+            manifest.srcFile 'AndroidManifestBetagroup.xml'
+        }
+
+        androidTest.setRoot('tests')
+    }
+
+} // end android
+
+// Generates the Config.java class using properties defined in gradle.properties
+// or by other means provided by Gradle
+task generateWPConfig(group: "generate", description: "Generate Config class") {
+    def dir = "${buildDir}/source/wordpress"
+    def file = new File(dir, "org/wordpress/android/Config.java")
+    android {
+        sourceSets {
+            main {
+                java {
+                    srcDir dir
+                }
+            }
+        }
+    }
+    outputs.file file
+    doLast {
+        file.getParentFile().mkdirs()
+        def properties = new Properties()
+        new File("${rootDir}/local.properties").withInputStream { stream ->
+            properties.load(stream)
+        }
+        def constants = [:]
+        properties.propertyNames().each { property ->
+            def keys = property.tokenize('.')
+            if (keys[0] == 'wp') {
+                def name = property.tokenize('.')[1..-1].collect { key -> key.toUpperCase() }.join('_')
+                constants[name] = properties.getProperty(property)
+            }
+        }
+        def writer = new FileWriter(file)
+        def config = constants.inject("") { consts, name, val ->
+            consts + "   public static final String ${name} = \"${val}\";\n"
+        }
+        writer.write("""/* auto-generated file do not modify */
+package org.wordpress.android;
+
+public final class Config {
+
+${config}
+}
+""")
+        writer.close()
+    }
+}
+
+// Add the generateWPConfig task to every flavor's compile tasks
+android.buildTypes.all { buildType ->
+    def name = "generate${buildType.name.capitalize()}BuildConfig"
+    tasks.whenTaskAdded { task ->
+        if (task.name == name) {
+            task.dependsOn(generateWPConfig)
+            task.mustRunAfter(generateWPConfig)
+        }
+    }
+}
+
+// For app signing
+if (["storeFile", "storePassword", "keyAlias", "keyPassword"].count { !project.hasProperty(it) } == 0) {
+    android {
+        signingConfigs {
+            release {
+                storeFile = file(project.storeFile)
+                storePassword = project.storePassword
+                keyAlias = project.keyAlias
+                keyPassword = project.keyPassword
+            }
+        }
+    }
+    android.buildTypes.release.signingConfig = android.signingConfigs.release
+    android.buildTypes.zbetagroup.signingConfig = android.signingConfigs.release
+}

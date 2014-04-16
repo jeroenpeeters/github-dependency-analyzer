@@ -1,0 +1,229 @@
+<?xml version="1.0"?>
+<project name="spring-stringtemplate" default="build" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+
+    <property name="src.dir" location="src/main/java" />
+    <property name="test.dir" location="src/test/java" />
+
+    <property name="build.dir" location="build" />
+    <property name="report.dir" location="${build.dir}/report" />
+    <property name="compile.dir" location="${build.dir}/compile" />
+
+    <property name="cobertura.dir" location="${build.dir}/cobertura" />
+    <property name="cobertura.report.dir" location="${cobertura.dir}/report" />
+    <property name="cobertura.classes.dir" location="${cobertura.dir}/classes" />
+    <property name="cobertura.datafile" location="${cobertura.dir}/cobertura.ser" />
+
+    <macrodef name="make-jar">
+        <attribute name="srcdir" />
+        <attribute name="jarfile" />
+        <attribute name="classpath" />
+        <sequential>
+            <mkdir dir="${compile.dir}/classes" />
+            <javac srcdir="@{srcdir}" destdir="${compile.dir}/classes" includeantruntime="no" debug="yes">
+                <classpath>
+                    <fileset dir="${compile.dir}" includes="*.jar" />
+                    <path refid="@{classpath}" />
+                </classpath>
+            </javac>
+            <copy todir="${compile.dir}/classes" includeemptydirs="no">
+                <fileset dir="@{srcdir}" excludes="**/*.java" />
+            </copy>
+            <jar destfile="${compile.dir}/@{jarfile}" basedir="${compile.dir}/classes">
+                <metainf dir="${basedir}" includes="LICENSE" />
+                <manifest>
+                    <attribute name="Implementation-Title" value="${application.name}" />
+                    <attribute name="Implementation-Version" value="${application.version}" />
+                </manifest>
+            </jar>
+            <delete dir="${compile.dir}/classes" />
+        </sequential>
+    </macrodef>
+
+    <target name="build"
+            depends="clean,check-tests,make-sources-jar,make-javadoc-jar,make-pom,make-zip"
+            description="Build JARs, run unit tests and create distributable bundles." />
+
+    <target name="clean">
+        <delete dir="${build.dir}" />
+    </target>
+
+    <target name="fetch-libs" description="Fetch third-party libraries.">
+        <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant">
+            <classpath location="bootstrap/ivy-2.2.0.jar" />
+        </taskdef>
+        <ivy:configure />
+        <ivy:resolve file="ivy.xml" conf="compile,test,provided,cobertura" />
+        <ivy:retrieve pattern="lib/[conf]/[type]/[artifact]-[revision].[ext]" sync="true" />
+        <path id="compile.classpath">
+            <fileset dir="lib/provided/jar" includes="*.jar" />
+            <fileset dir="lib/compile/jar" includes="*.jar" />
+        </path>
+        <path id="test.classpath">
+            <fileset dir="lib/test/jar" includes="*.jar" />
+            <path refid="compile.classpath" />
+        </path>
+        <path id="cobertura.classpath">
+            <fileset dir="lib/cobertura/jar" includes="*.jar" />
+        </path>
+        <property name="application.name" value="${ivy.module}" />
+        <property name="application.version" value="${ivy.revision}" />
+        <property name="application.file.name" value="${application.name}-${application.version}" />
+    </target>
+
+    <target name="make-jars" depends="fetch-libs">
+        <make-jar srcdir="${src.dir}" jarfile="${application.file.name}.jar" classpath="compile.classpath" />
+        <make-jar srcdir="${test.dir}" jarfile="${application.file.name}-tests.jar" classpath="test.classpath" />
+    </target>
+
+    <target name="run-tests" depends="make-jars" unless="skip.tests"
+            description="Run all tests. Use -Dtestcase=SomeTestClassName to specify a single test.">
+        <mkdir dir="${report.dir}" />
+        <junit fork="yes" forkmode="once" printsummary="yes" haltonfailure="no" failureproperty="tests.failed">
+            <classpath>
+                <fileset dir="${compile.dir}" includes="*.jar" />
+                <path refid="test.classpath" />
+            </classpath>
+            <formatter type="xml" />
+            <batchtest if="testcase" todir="${report.dir}">
+                <fileset dir="${test.dir}">
+                    <include name="**/${testcase}.java" />
+                </fileset>
+            </batchtest>
+            <batchtest unless="testcase" todir="${report.dir}">
+                <fileset dir="${test.dir}">
+                    <include name="**/*Tests.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <target name="check-tests" depends="run-tests" if="tests.failed">
+        <junitreport todir="${report.dir}">
+            <fileset dir="${report.dir}" includes="TEST-*.xml" />
+            <report todir="${report.dir}/html" />
+        </junitreport>
+        <fail message="One or more tests failed. Please check the test report for more info." />
+    </target>
+
+    <target name="make-sources-jar">
+        <mkdir dir="${compile.dir}" />
+        <jar destfile="${compile.dir}/${application.file.name}-sources.jar" basedir="${src.dir}">
+            <metainf dir="${basedir}" includes="LICENSE" />
+            <manifest>
+                <attribute name="Implementation-Title" value="${application.name}" />
+                <attribute name="Implementation-Version" value="${application.version}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="make-javadoc-jar" depends="fetch-libs">
+        <mkdir dir="${compile.dir}/javadoc" />
+        <javadoc sourcepath="${src.dir}" destdir="${compile.dir}/javadoc" classpathref="compile.classpath"
+                 windowtitle="${application.file.name}" doctitle="${application.file.name}"
+                 footer="Copyright &#169; 2010, Thomas Czarniecki" />
+        <jar destfile="${compile.dir}/${application.file.name}-javadoc.jar" basedir="${compile.dir}/javadoc">
+            <metainf dir="${basedir}" includes="LICENSE" />
+            <manifest>
+                <attribute name="Implementation-Title" value="${application.name}" />
+                <attribute name="Implementation-Version" value="${application.version}" />
+            </manifest>
+        </jar>
+        <delete dir="${compile.dir}/javadoc" />
+    </target>
+
+    <target name="make-pom" depends="fetch-libs">
+        <mkdir dir="${compile.dir}" />
+        <loadfile srcfile="LICENSE" property="license.text" />
+        <property name="ivy.pom.license" value="${license.text}" />
+        <ivy:makepom ivyfile="ivy.xml"
+                     conf="compile,test,provided"
+                     pomfile="${compile.dir}/pom.xml"
+                     templatefile="bootstrap/template.xml" />
+    </target>
+
+    <target name="make-zip">
+        <zip destfile="${build.dir}/${application.file.name}.zip">
+            <zipfileset prefix="${application.file.name}" dir="${basedir}">
+                <include name="README" />
+                <include name="LICENSE" />
+            </zipfileset>
+            <zipfileset prefix="${application.file.name}" dir="${compile.dir}">
+                <exclude name="*-tests.jar" />
+            </zipfileset>
+        </zip>
+    </target>
+
+    <target name="run-jetty" depends="make-jars" description="Run sample jetty web application.">
+        <java classname="com.watchitlater.spring.webapp.WebServer" fork="yes" failonerror="yes">
+            <classpath>
+                <fileset dir="${compile.dir}" includes="*.jar" />
+                <path refid="test.classpath" />
+            </classpath>
+        </java>
+    </target>
+
+    <target name="cobertura" depends="clean,make-jars" description="Create Cobertura code coverage report.">
+        <taskdef classpathref="cobertura.classpath" resource="tasks.properties" />
+
+        <mkdir dir="${cobertura.classes.dir}" />
+        <cobertura-instrument todir="${cobertura.classes.dir}" datafile="${cobertura.datafile}">
+            <fileset dir="${compile.dir}" excludes="*-tests.jar" />
+        </cobertura-instrument>
+
+        <junit fork="yes" forkmode="once" printsummary="yes" haltonfailure="no">
+            <sysproperty key="net.sourceforge.cobertura.datafile" file="${cobertura.datafile}" />
+            <classpath>
+                <fileset dir="${cobertura.classes.dir}" />
+                <fileset dir="${compile.dir}" includes="*.jar" />
+                <path refid="test.classpath" />
+                <path refid="cobertura.classpath" />
+            </classpath>
+            <batchtest unless="testcase">
+                <fileset dir="${test.dir}">
+                    <include name="**/*Tests.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+
+        <mkdir dir="${cobertura.report.dir}" />
+        <cobertura-report format="html" datafile="${cobertura.datafile}"
+                          destdir="${cobertura.report.dir}" srcdir="${src.dir}" />
+    </target>
+
+    <target name="publish-build" depends="build" description="Publish build to local ivy repository.">
+        <copy file="${compile.dir}/${application.file.name}.jar"
+              tofile="${build.dir}/publish/jar/${application.name}.jar"
+              overwrite="yes" />
+        <copy file="${compile.dir}/${application.file.name}-sources.jar"
+              tofile="${build.dir}/publish/source/${application.name}.jar"
+              overwrite="yes" />
+        <copy file="${compile.dir}/${application.file.name}-javadoc.jar"
+              tofile="${build.dir}/publish/javadoc/${application.name}.jar"
+              overwrite="yes" />
+        <ivy:publish resolver="local" overwrite="yes">
+            <ivy:artifacts pattern="${build.dir}/publish/[type]/[artifact].[ext]" />
+        </ivy:publish>
+    </target>
+
+    <macrodef name="gpg">
+        <attribute name="dir" />
+        <attribute name="file" />
+        <sequential>
+            <exec executable="gpg" dir="@{dir}" failonerror="yes">
+                <arg value="-ab" />
+                <arg value="@{file}" />
+            </exec>
+        </sequential>
+    </macrodef>
+
+    <target name="artifact-bundle" depends="build" description="Create staging bundle for Sonatype.">
+        <gpg dir="${compile.dir}" file="pom.xml" />
+        <gpg dir="${compile.dir}" file="${application.file.name}.jar" />
+        <gpg dir="${compile.dir}" file="${application.file.name}-sources.jar" />
+        <gpg dir="${compile.dir}" file="${application.file.name}-javadoc.jar" />
+        <jar destfile="${build.dir}/${application.file.name}-release.jar" basedir="${compile.dir}">
+            <exclude name="*-tests.jar" />
+        </jar>
+    </target>
+
+</project>

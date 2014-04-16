@@ -1,0 +1,399 @@
+<project name="artifacts" basedir="." default="build">
+	<property file="../oshi.properties" />
+    <property name="artifacts.dir" location="../dist" />
+    <target name="gather-artifacts">    	
+        <delete dir="${artifacts.dir}" quiet="true"/>
+        <mkdir dir="${artifacts.dir}" />
+    	<copy tofile="${artifacts.dir}/license.html" file="../epl-v10.html" />
+        <mkdir dir="${artifacts.dir}/bin" />
+    	<copy todir="${artifacts.dir}/bin">
+    		<fileset dir="../oshi-core/build" includes="*.jar" />
+    		<fileset dir="../thirdparty/jna" includes="*.jar" />
+    	</copy>
+        <mkdir dir="${artifacts.dir}/doc" />
+    	<copy todir="${artifacts.dir}/doc">
+    		<fileset dir="../oshi-core/doc" />
+    	</copy>
+        <echo message="================ Done: ${artifacts.dir} ================"/>
+    </target>
+	<target name="zip-artifacts">
+		<zip basedir="${artifacts.dir}" destfile="${artifacts.dir}/oshi-${oshi.version}.zip" 
+			excludes="${artifacts.dir}/*.zip" />
+	</target>
+    <target name="clean">
+        <delete dir="${artifacts.dir}" quiet="true"/>
+    </target>
+    <target name="build">
+    	<antcall target="gather-artifacts" />
+    	<antcall target="zip-artifacts" />
+	</target>
+    <target name="clean-build" depends="clean, build" />    
+    <target name="test">
+        <echo message="Project ${ant.project.name} doesn't have any tests" />
+    </target>
+</project>
+<?xml version="1.0" encoding="utf-8" ?>
+<project name="Oshi" basedir="." default="build">
+  <target name="recurse">
+    <ant dir="oshi-core" target="${ant.target}" />
+    <ant dir="artifacts" target="${ant.target}" />
+  </target>
+  <target name="build">
+    <antcall target="recurse">
+      <param name="ant.target" value="build" />
+    </antcall>
+  </target>
+  <target name="clean">
+    <antcall target="recurse">
+      <param name="ant.target" value="clean" />
+    </antcall>
+  </target>
+  <target name="test" depends="clean">
+    <antcall target="recurse">
+      <param name="ant.target" value="test" />
+    </antcall>
+  </target>
+  <target name="clean-build" depends="clean, build" />
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="oshi-core" default="build" basedir=".">
+    <property file="../oshi.properties" />
+    <property name="oshi.java.version" value="1.5" />
+    <property name="oshi.copyright" value="Daniel Doubrovkine" />
+    <property name="oshi.root" value="${basedir}" />
+    <property name="oshi.build" value="${oshi.root}/build" />
+    <property name="oshi.doc" value="${oshi.root}/doc" />
+    <property name="oshi.bin" value="${oshi.root}/bin" />
+    <property name="oshi.lib" value="${oshi.root}/lib" />
+    <property name="oshi.src" value="${oshi.root}/src" />
+    <property name="oshi.cover" value="${oshi.root}/cover" />
+    <property name="oshi.test.src" value="${oshi.root}/src-test" />
+    <property name="oshi.test.lib" value="${oshi.root}/lib-test" />
+    <property name="oshi.test" value="${oshi.root}/test" />
+    <property name="thirdparty.dir" location="${basedir}/../thirdparty" />
+    <!-- compile -->
+    <path id="jna.classpath">
+        <fileset dir="${thirdparty.dir}/jna">
+            <include name="jna.jar" />
+            <include name="platform.jar" />
+        </fileset>
+    </path>
+    <path id="oshi.classpath">       
+        <path refid="jna.classpath" />    
+    </path>
+    <macrodef name="compile">
+        <attribute name="optimize" />
+        <attribute name="debug" />
+        <sequential>
+            <delete dir="${oshi.lib}" />
+            <mkdir dir="${oshi.lib}" />
+            <javac target="${oshi.java.version}" srcdir="${oshi.src}" 
+                destdir="${oshi.lib}" 
+                optimize="@{optimize}" debug="@{debug}">
+                <classpath refid="oshi.classpath" />
+                <include name="**/*.java" />
+            </javac>
+        </sequential>
+    </macrodef>
+    <!-- test -->
+    <path id="oshi.test.classpath">
+        <pathelement location="${oshi.lib}" />
+        <path refid="oshi.classpath" />      
+        <fileset dir="${thirdparty.dir}/junit">
+            <include name="*.jar" />
+        </fileset>
+        <pathelement location="${oshi.test.lib}" />
+        <path refid="emma.classpath" />
+    </path>
+    <target name="compile-tests">
+        <mkdir dir="${oshi.test.lib}" />
+        <javac target="${oshi.java.version}" srcdir="${oshi.test.src}" 
+            destdir="${oshi.test.lib}" optimize="no" debug="yes">
+            <classpath refid="oshi.test.classpath" />
+            <include name="**/*.java" />
+        </javac>
+    </target>
+    <target name="test-report">
+        <mkdir dir="${oshi.test}/report" />
+        <junitreport todir="${oshi.test}/report">
+            <fileset dir="${oshi.test}" includes="TEST-*.xml" />
+            <report todir="${oshi.test}/report" />
+        </junitreport>
+        <echo message="See ${oshi.test}\report\index.html" />
+    </target>
+    <target name="test" depends="compile-tests">
+        <mkdir dir="${oshi.test}" />
+        <junit fork="true" newenvironment="true" failureproperty="tests.failed" 
+            haltonfailure="no" haltonerror="no" printsummary="on" 
+            errorproperty="tests.failed">
+            <batchtest todir="${oshi.test}">
+                <fileset dir="${oshi.test.lib}" includes="**/*Tests.class" />
+            </batchtest>
+            <formatter type="xml" />
+            <classpath refid="oshi.test.classpath" />
+            <jvmarg value="-Demma.coverage.out.file=${oshi.cover}/coverage.emma" /> 
+        </junit>
+        <antcall target="test-report" />
+        <fail message="Unit Tests failed" if="tests.failed" />
+    </target>
+    <!-- cover -->
+    <property name="emma.dir" value="${thirdparty.dir}/emma/lib" />
+    <path id="emma.classpath" >
+        <fileset dir="${thirdparty.dir}/emma/lib">
+            <include name="emma.jar" />
+            <include name="emma_ant.jar" />
+        </fileset>
+    </path>
+    <taskdef resource="emma_ant.properties" classpathref="emma.classpath" />
+    <target name="instrument">
+        <echo message="Instrumenting ${oshi.lib}" />
+        <path id="build.classpath">     
+            <pathelement path="${oshi.lib}"/>   
+        </path> 
+        <emma>
+            <instr instrpathref="build.classpath" destdir="${oshi.cover}/lib" 
+                metadatafile="${oshi.cover}/metadata.emma" merge="true" />
+        </emma>
+        <copy todir="${oshi.lib}">
+            <fileset dir="${oshi.cover}/lib" includes="**/*" />
+        </copy>
+    </target>
+    <target name="cover-report">
+        <emma>   
+            <report sourcepath="${oshi.src}">   
+                <fileset dir="${oshi.cover}">   
+                    <include name="*.emma" />   
+                </fileset>   
+                <html outfile="${oshi.cover}/coverage.html" />   
+            </report>   
+        </emma>   
+    </target>
+    <target name="cover">
+        <compile debug="yes" optimize="no"/>
+        <antcall target="instrument" />
+        <antcall target="test" />
+        <antcall target="cover-report" />
+    </target>
+    <!-- package -->
+    <target name="jar">
+        <delete dir="${oshi.build}" />
+        <mkdir dir="${oshi.build}" />
+        <jar jarfile="${oshi.build}/oshi-core.jar">
+            <fileset dir="${oshi.lib}">
+                <include name="oshi/**/*.class" />
+            </fileset>
+            <manifest>
+                <attribute name="Version" value="${oshi.version}" />
+                <attribute name="Created-By" value="${oshi.copyright}" />
+            </manifest>
+        </jar>
+        <jar jarfile="${oshi.build}/oshi-core-src.zip">
+            <fileset dir="${oshi.src}">
+                <include name="oshi/**/*.java" />
+            </fileset>
+            <manifest>
+                <attribute name="Version" value="${oshi.version}" />
+                <attribute name="Created-By" value="${oshi.copyright}" />
+            </manifest>
+        </jar>        
+    </target>
+    <target name="doc">
+        <javadoc destdir="${oshi.doc}" sourcepath="${oshi.src}" 
+            classpathref="oshi.classpath" />
+    </target>
+    <target name="clean">
+        <delete dir="${oshi.build}" />
+        <delete dir="${oshi.bin}" />
+        <delete dir="${oshi.lib}" />
+        <delete dir="${oshi.test.lib}" />
+        <delete dir="${oshi.doc}" />
+        <delete dir="${oshi.cover}" />
+        <delete dir="${oshi.test}" />
+    </target>
+    <target name="build">
+        <compile debug="no" optimize="yes"/>
+        <antcall target="jar" />
+        <antcall target="test" />
+        <antcall target="doc" />
+    </target>
+    <target name="clean-build" depends="clean,build" />
+</project>
+<project name="junit" default="dist" basedir=".">
+	<tstamp />
+
+	<property file="${user.home}/.junit.properties" />
+	<property name="src" value="src/main/java" />
+	<property name="target" location="target" />
+	<property name="bin" location="${target}/main" />
+	<property name="version" value="4.7" />
+	<property name="dist" value="junit${version}" />
+	<property name="versionfile" value="${src}/junit/runner/Version.java" />
+	<property name="zipfile"  value="${dist}/${dist}.zip" />
+	<property name="testsrc" location="src/test/java" />
+	<property name="testbin" location="${target}/test/java" />
+	<property name="unjarred" value="**/*.jar, ${testfiles}, doc/**, README.html, .classpath, .project, cpl-v10.html" />
+	<property name="binjar" value="junit-${version}.jar" />
+	<property name="depjar" value="junit-dep-${version}.jar" />
+	<property name="srcjar" value="junit-${version}-src.jar" />
+	<property name="javadocdir" location="${dist}/javadoc" />
+	<property name="javadoczip" location="${dist}-javadoc.zip" />
+	<property name="javadocpackages" value="org.junit, org.junit.runner, org.junit.runner.description, org.junit.runner.manipulation, org.junit.runner.notification, org.junit.runners, org.hamcrest.core, org.junit.matchers" />
+	<property name="hamcrestlib" location="lib/hamcrest-core-1.1.jar" />
+	<property name="hamcrestsrc" location="${dist}/temp.hamcrest.source" />
+	
+	<target name="init">
+		<tstamp/>
+	</target>
+
+	<target name="versiontag" depends="init">
+		<filter token="version" value="${version}" />
+		<copy 
+			file="${versionfile}.template" 
+			tofile="${versionfile}" 
+			filtering="on"
+                        overwrite="true"
+		/>
+	</target>
+
+	<target name="clean">
+		<!-- If two builds are made within a minute -->
+		<delete dir="${dist}" quiet="true" />
+		<!-- Delete all previous temporary build artifacts -->
+		<delete dir="${target}" quiet="true" />
+		
+		<delete file="${zipfile}" quiet="true"/>
+		<delete file="${javadoczip}" />
+		 
+		<!-- What is this good for? It will clear out earlier dist builds and the eclipse bin folder. Remove?
+		<delete>
+			<fileset dir="${basedir}" includes="**/*.class" />
+		</delete>
+		-->
+	</target>
+
+	<macrodef name="junit_compilation">
+		<attribute name="srcdir"/>
+		<attribute name="destdir"/>
+		<attribute name="classpath"/>
+		<sequential>
+			<mkdir dir="@{destdir}"/>
+			<javac 
+				srcdir="@{srcdir}"
+				destdir="@{destdir}"
+				debug="on"
+				classpath="@{classpath}"
+				includeantruntime="false"
+				target="1.5"
+	  		>
+				<compilerarg value="-Xlint:unchecked" />
+			</javac>
+		</sequential>
+	</macrodef>
+	
+	<target name="build" depends="versiontag">
+		<junit_compilation srcdir="${src}" destdir="${bin}" classpath="${hamcrestlib}"/>
+		<unjar src="${hamcrestlib}" dest="${bin}" />
+		<junit_compilation srcdir="${testsrc}" destdir="${testbin}" classpath="${hamcrestlib};${bin}"/>
+	</target>
+
+	<target name="jars" depends="build">
+		<mkdir dir="${dist}" />
+		<jar 
+			jarfile="${dist}/${srcjar}"
+			basedir="${src}"
+			excludes="${unjarred}, **/*.class"
+		/>
+		<jar 
+			jarfile="${dist}/${binjar}"
+			basedir="${bin}"
+			excludes="${unjarred}, **/*.java, build.xml"
+		/>
+		<jar 
+			jarfile="${dist}/${depjar}" 
+			basedir="${bin}" 
+			excludes="${unjarred}, org/hamcrest/**, **/*.java, build.xml" 
+		/>
+	</target>
+
+	<target name="samples-and-tests">
+		<copy todir="${dist}">
+			<fileset dir="${testbin}" />
+			<fileset dir="${testsrc}" />
+		</copy>
+	</target>
+
+	<target name="unjar.hamcrest">
+		<unjar src="${hamcrestlib}" dest="${hamcrestsrc}" />
+	</target>
+	
+	<target name="javadoc" depends="unjar.hamcrest">
+		<javadoc packagenames="${javadocpackages}"
+		         destdir="${javadocdir}"
+		         author="false"
+		         version="false"
+		         use="false"
+		         windowtitle="JUnit API"
+		         stylesheetfile="stylesheet.css"
+		>
+			<sourcepath location="${src}" />
+			<sourcepath location="${hamcrestsrc}" />
+			<link href="http://java.sun.com/javase/6/docs/api/" />
+		</javadoc>
+	</target>
+
+	<target name="javadoczip">
+		<delete file="${javadoczip}" />
+		<antcall target="javadoc" />
+		<zip basedir="${javadocdir}" file="${javadoczip}" />
+	</target>
+
+	<target name="populate-dist" 
+		    depends="clean, build, jars, samples-and-tests, javadoc"
+	>
+		<copy todir="${dist}/doc">
+			<fileset dir="doc"/>
+		</copy>
+		<copy file="README.html" tofile="${dist}/README.html" />
+		<copy file="cpl-v10.html" tofile="${dist}/cpl-v10.html" />
+		<copy file="build.xml" tofile="${dist}/build.xml" />
+	</target>
+
+	<target name="dist" depends="populate-dist">
+		<java classname="org.junit.runner.JUnitCore" fork="yes" failonerror="true">
+			<arg value="org.junit.tests.AllTests"/>
+			<classpath>
+				<pathelement location="${dist}" />
+				<pathelement location="${dist}/${binjar}" />
+			</classpath>
+		</java>
+	</target>
+
+	<!-- TODO: DUP above -->
+
+	<target name="profile" depends="populate-dist">
+		<java classname="org.junit.runner.JUnitCore" fork="yes" failonerror="true">
+			<jvmarg value="-agentlib:hprof=cpu=samples"/>
+			<arg value="org.junit.tests.AllTests"/>
+			<classpath>
+				<pathelement location="${dist}" />
+				<pathelement location="${dist}/${binjar}" />
+			</classpath>
+		</java>
+	</target>	
+
+	<target name="zip" depends="dist">
+		<zip zipfile="${zipfile}" basedir="." includes="${dist}/**" />
+	</target>
+
+	<target name="upload.to.sourceforge" depends="zip">
+		<ftp server="upload.sourceforge.net"
+		     userid="anonymous"
+		     password="saff@mit.edu"
+		     remotedir="incoming"
+		>
+			<fileset dir="${dist}" includes="*.jar" />
+			<fileset file="${zipfile}" />
+		</ftp>
+		<echo message="To upload docs, use build/upload_docs.sh" />
+	</target>
+</project>

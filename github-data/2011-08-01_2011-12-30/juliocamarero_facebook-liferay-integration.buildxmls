@@ -1,0 +1,807 @@
+<?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="plugins" basedir="." default="all" xmlns:antelope="antlib:ise.antelope.tasks">
+	<property name="project.dir" value="." />
+
+	<import file="build-common.xml" />
+
+	<target name="all">
+		<antcall target="clean" />
+		<antcall target="deploy" />
+	</target>
+
+	<target name="build-service">
+		<ant dir="portlets" target="build-service" inheritAll="false" />
+		<ant dir="webs" target="build-service" inheritAll="false" />
+	</target>
+
+	<target name="build-summary">
+		<java
+			classname="com.liferay.portal.tools.PluginsSummaryBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<jvmarg value="-Dplugins.dir=${project.dir}" />
+		</java>
+
+		<java
+			classname="com.liferay.portal.tools.XSLTBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<arg value="${project.dir}/summary.xml" />
+			<arg value="${project.dir}/summary.xsl" />
+			<arg value="${project.dir}/summary.html" />
+		</java>
+	</target>
+
+	<target name="clean">
+		<ant dir="hooks" target="clean" inheritAll="false" />
+		<ant dir="layouttpl" target="clean" inheritAll="false" />
+		<ant dir="portlets" target="clean" inheritAll="false" />
+		<ant dir="themes" target="clean" inheritAll="false" />
+		<ant dir="webs" target="clean" inheritAll="false" />
+	</target>
+
+	<target name="compile">
+		<ant dir="hooks" target="compile" inheritAll="false" />
+		<ant dir="layouttpl" target="compile" inheritAll="false" />
+		<ant dir="portlets" target="compile" inheritAll="false" />
+		<ant dir="themes" target="compile" inheritAll="false" />
+		<ant dir="webs" target="compile" inheritAll="false" />
+	</target>
+
+	<target name="deploy">
+		<ant dir="hooks" target="deploy" inheritAll="false" />
+		<ant dir="layouttpl" target="deploy" inheritAll="false" />
+		<ant dir="portlets" target="deploy" inheritAll="false" />
+		<ant dir="themes" target="deploy" inheritAll="false" />
+		<ant dir="webs" target="deploy" inheritAll="false" />
+	</target>
+
+	<target name="direct-deploy">
+		<ant dir="hooks" target="direct-deploy" inheritAll="false" />
+		<ant dir="layouttpl" target="direct-deploy" inheritAll="false" />
+		<ant dir="portlets" target="direct-deploy" inheritAll="false" />
+		<ant dir="themes" target="direct-deploy" inheritAll="false" />
+		<ant dir="webs" target="direct-deploy" inheritAll="false" />
+	</target>
+
+	<target name="ear">
+		<delete dir="dist/liferay-portal.ear" />
+		<delete dir="dist/modules" />
+
+		<copy todir="dist" overwrite="yes">
+			<fileset
+				dir="${project.dir}/tools/ear_tmpl"
+			/>
+		</copy>
+
+		<copy todir="dist/modules/APP-INF/lib">
+			<fileset dir="${app.server.lib.global.dir}">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+
+		<fileset dir="dist/modules" id="ear.dependency.libraries">
+			<include name="APP-INF/lib/*.jar" />
+		</fileset>
+
+		<pathconvert pathsep=" " property="ear.dependency.libraries.converted" refid="ear.dependency.libraries">
+			<mapper>
+				<chainedmapper>
+					<flattenmapper />
+					<globmapper from="*.jar" to="APP-INF/lib/*.jar" />
+				</chainedmapper>
+			</mapper>
+		</pathconvert>
+
+		<war
+			basedir="${app.server.portal.dir}"
+			destfile="dist/modules/liferay-portal.war"
+		>
+			<manifest>
+				<attribute name="Class-Path" value="${ear.dependency.libraries.converted}" />
+			</manifest>
+		</war>
+
+		<for param="module.full.path">
+			<path>
+				<dirset
+					dir="${app.server.deploy.dir}"
+					excludes="${plugins.ear.excludes}"
+					includes="${plugins.ear.includes}"
+				/>
+			</path>
+
+			<sequential>
+				<antelope:stringutil string="@{module.full.path}" property="module.full.path.unix">
+					<antelope:replace regex="\\" replacement="/" />
+				</antelope:stringutil>
+
+				<antelope:grep in="${module.full.path.unix}" regex="(.*/)(.*)" group="2" property="module.name" />
+
+				<war
+					basedir="@{module.full.path}"
+					destfile="dist/modules/${module.name}.war"
+				/>
+			</sequential>
+		</for>
+
+		<fileset dir="dist/modules" id="ear.modules">
+			<include name="*.war" />
+		</fileset>
+
+		<pathconvert pathsep="," property="ear.modules.converted" refid="ear.modules">
+			<mapper>
+				<chainedmapper>
+					<flattenmapper />
+				</chainedmapper>
+			</mapper>
+		</pathconvert>
+
+		<java
+			classname="com.liferay.portal.tools.EARBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<arg value="${basedir}/dist/modules/META-INF/application.xml" />
+			<arg value="${ear.modules.converted}" />
+		</java>
+
+		<ear
+			appxml="dist/modules/META-INF/application.xml"
+			basedir="dist/modules"
+			destfile="dist/liferay-portal.ear"
+			excludes="META-INF/application.xml"
+			includes="**/*.jar,*.war,META-INF/*.xml"
+		/>
+
+		<delete dir="dist/modules" />
+	</target>
+
+	<target name="extract-plugins-sdk">
+		<mkdir dir="dist" />
+
+		<delete file="dist/liferay-plugins-sdk-${lp.version}.zip" />
+
+		<zip
+			basedir="."
+			destfile="dist/liferay-plugins-sdk-${lp.version}.zip"
+			excludes=".git/**,build.*.properties,dist/**,clients/*-client/**,ext/*-ext/**,hooks/*-hook/**,layouttpl/*-layouttpl/**,portlets/*-portlet/**,private-plugins.txt,themes/*-theme/**,webs/*-web/**"
+		/>
+	</target>
+
+	<target name="format-javadoc">
+		<ant dir="hooks" target="format-javadoc" inheritAll="false" />
+		<ant dir="layouttpl" target="format-javadoc" inheritAll="false" />
+		<ant dir="portlets" target="format-javadoc" inheritAll="false" />
+		<ant dir="themes" target="format-javadoc" inheritAll="false" />
+		<ant dir="webs" target="format-javadoc" inheritAll="false" />
+	</target>
+
+	<target name="setup-eclipse">
+		<ant dir="hooks" target="clean" inheritAll="false" />
+		<ant dir="portlets" target="clean" inheritAll="false" />
+		<ant dir="webs" target="clean" inheritAll="false" />
+
+		<ant dir="hooks" target="compile" inheritAll="false" />
+		<ant dir="portlets" target="compile" inheritAll="false" />
+		<ant dir="webs" target="compile" inheritAll="false" />
+
+		<ant dir="hooks" target="setup-eclipse" inheritAll="false" />
+		<ant dir="portlets" target="setup-eclipse" inheritAll="false" />
+		<ant dir="webs" target="setup-eclipse" inheritAll="false" />
+	</target>
+
+	<target name="war">
+		<ant dir="hooks" target="war" inheritAll="false" />
+		<ant dir="layouttpl" target="war" inheritAll="false" />
+		<ant dir="portlets" target="war" inheritAll="false" />
+		<ant dir="themes" target="war" inheritAll="false" />
+		<ant dir="webs" target="war" inheritAll="false" />
+	</target>
+
+	<target name="zip-portal">
+		<if>
+			<not>
+				<equals arg1="${app.server.type}" arg2="tomcat" />
+			</not>
+			<then>
+				<fail>
+.
+
+This task only works when the property "app.server.type" is "tomcat". However,
+the outputted files will work in any supported application server.
+				</fail>
+			</then>
+		</if>
+
+		<tstamp>
+			<format property="tstamp.value" pattern="yyyyMMddkkmmssSSS" />
+		</tstamp>
+
+		<zip destfile="dist/liferay-portal-dependencies-${tstamp.value}.zip">
+			<zipfileset
+				dir="${app.server.lib.global.dir}"
+				prefix="liferay-portal-dependencies-${tstamp.value}"
+			/>
+		</zip>
+
+		<delete file="dist/liferay-portal-${lp.version}.war" failonerror="false" />
+
+		<zip
+			basedir="${app.server.portal.dir}"
+			destfile="dist/liferay-portal-${tstamp.value}.war"
+			excludes="html/js/editor/_fckeditor/**,html/js/editor/fckeditor/_samples/**"
+		/>
+
+		<copy todir="${tstamp.value}/WEB-INF/lib">
+			<fileset
+				dir="lib"
+				includes="ccpp.jar"
+			/>
+		</copy>
+
+		<zip
+			basedir="${tstamp.value}"
+			destfile="dist/liferay-portal-${tstamp.value}.war"
+			update="yes"
+		/>
+
+		<delete dir="${tstamp.value}" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="hooks" basedir="." default="deploy">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ext" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<not>
+				<isset property="ext.name" />
+			</not>
+			<then>
+				<fail>This task must be called by create.bat.</fail>
+			</then>
+			<else>
+				<if>
+					<not>
+						<isset property="ext.parent.dir" />
+					</not>
+					<then>
+						<property name="ext.parent.dir" value="${basedir}" />
+					</then>
+				</if>
+
+				<property name="ext.plugin.dir" value="${ext.parent.dir}/${ext.name}-ext" />
+
+				<if>
+					<available file="${ext.plugin.dir}" />
+					<then>
+						<fail>${ext.name}-ext already exists.</fail>
+					</then>
+				</if>
+
+				<copy todir="${ext.plugin.dir}">
+					<fileset
+						dir="${project.dir}/tools/ext_tmpl"
+					/>
+				</copy>
+
+				<replace dir="${ext.plugin.dir}">
+					<replacefilter token="@ext.name@" value="${ext.name}" />
+					<replacefilter token="@ext.display.name@" value="${ext.display.name}" />
+				</replace>
+			</else>
+		</if>
+	</target>
+
+	<target name="upgrade-ext">
+		<if>
+			<not>
+				<isset property="ext.name" />
+			</not>
+			<then>
+				<fail>
+.
+
+Usage: ant upgrade-ext -Dext.dir=C:\ext -Dext.name=hello-world -Dext.display.name="Hello World"
+
+The arguments "ext.dir", "ext.name", and "ext.display.name" are not properly
+specified.
+
+This task will build an EXT plugin from a legacy EXT environment. The files in
+the directory denoted by "ext.dir" will be copied into the EXT plugin directory
+called "ext.name"-ext. The property "ext.dir" must point to a legacy EXT
+environment and the EXT plugin directory called "ext-name"-ext must not already
+exist.
+				</fail>
+			</then>
+		</if>
+
+		<if>
+			<available file="${ext.name}-ext" />
+			<then>
+				<fail>${ext.name}-ext already exists.</fail>
+			</then>
+		</if>
+
+		<antcall target="create">
+			<param name="ext.name" value="${ext.name}" />
+			<param name="ext.display.name" value="${ext.display.name}" />
+		</antcall>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-impl/src" failonerror="false">
+			<fileset dir="${ext.dir}/ext-impl/src" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-lib/global" failonerror="false">
+			<fileset dir="${ext.dir}/ext-lib/global" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-lib/portal" failonerror="false">
+			<fileset dir="${ext.dir}/ext-lib/portal" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-service/src" failonerror="false">
+			<fileset dir="${ext.dir}/ext-service/src" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot" failonerror="false" overwrite="true">
+			<fileset
+				dir="${ext.dir}/ext-web/docroot"
+				excludes="**/struts-config.xml,**/tiles-defs.xml"
+			/>
+		</copy>
+
+		<copy
+			file="${ext.dir}/ext-web/docroot/WEB-INF/struts-config.xml"
+			tofile="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot/WEB-INF/struts-config-ext.xml"
+		/>
+
+		<copy
+			file="${ext.dir}/ext-web/docroot/WEB-INF/tiles-defs.xml"
+			tofile="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot/WEB-INF/tiles-defs-ext.xml"
+		/>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/sql" failonerror="false">
+			<fileset dir="${ext.dir}/sql" />
+		</copy>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="hooks" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="hook.name" />
+				</not>
+				<not>
+					<isset property="hook.display.name" />
+				</not>
+			</or>
+			<then>
+				<echo message="This task must be called by create.bat." />
+			</then>
+			<else>
+				<if>
+					<not>
+						<isset property="hook.parent.dir" />
+					</not>
+					<then>
+						<property name="hook.parent.dir" value="${basedir}" />
+					</then>
+				</if>
+
+				<property name="hook.dir" value="${hook.parent.dir}/${hook.name}-hook" />
+
+				<if>
+					<available file="${hook.dir}" />
+					<then>
+						<fail>${hook.name}-hook already exists.</fail>
+					</then>
+				</if>
+
+				<copy todir="${hook.dir}">
+					<fileset
+						dir="${project.dir}/tools/hook_tmpl"
+					/>
+				</copy>
+
+				<replace dir="${hook.dir}">
+					<replacefilter token="@hook.name@" value="${hook.name}" />
+					<replacefilter token="@hook.display.name@" value="${hook.display.name}" />
+				</replace>
+			</else>
+		</if>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="opengraph-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="layouttpl" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="layouttpl.name" />
+				</not>
+				<not>
+					<isset property="layouttpl.display.name" />
+				</not>
+			</or>
+			<then>
+				<echo message="This task must be called by the create script." />
+			</then>
+			<else>
+				<if>
+					<not>
+						<isset property="layouttpl.parent.dir" />
+					</not>
+					<then>
+						<property name="layouttpl.parent.dir" value="${basedir}" />
+					</then>
+				</if>
+
+				<property name="layouttpl.dir" value="${layouttpl.parent.dir}/${layouttpl.name}-layouttpl" />
+
+				<if>
+					<available file="${layouttpl.dir}" />
+					<then>
+						<fail>${layouttpl.name}-layouttpl already exists.</fail>
+					</then>
+				</if>
+
+				<copy todir="${layouttpl.dir}">
+					<fileset
+						dir="${project.dir}/tools/layouttpl_tmpl"
+					/>
+				</copy>
+
+				<antelope:stringutil string="${layouttpl.name}" property="layouttpl.template.name">
+					<replace regex="-" replacement="_" />
+				</antelope:stringutil>
+
+				<replace dir="${layouttpl.dir}">
+					<replacefilter token="@layouttpl.name@" value="${layouttpl.name}" />
+					<replacefilter token="@layouttpl.display.name@" value="${layouttpl.display.name}" />
+					<replacefilter token="@layouttpl.template.name@" value="${layouttpl.template.name}" />
+				</replace>
+
+				<move
+					file="${layouttpl.dir}/docroot/blank_columns.png"
+					tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.png"
+				/>
+
+				<move
+					file="${layouttpl.dir}/docroot/blank_columns.tpl"
+					tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.tpl"
+				/>
+
+				<move
+					file="${layouttpl.dir}/docroot/blank_columns.wap.tpl"
+					tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.wap.tpl"
+				/>
+
+				<touch file="${layouttpl.dir}/docroot/${layouttpl.template.name}.wap.tpl" />
+			</else>
+		</if>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portlets" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="portlet.name" />
+				</not>
+				<not>
+					<isset property="portlet.display.name" />
+				</not>
+			</or>
+			<then>
+				<echo message="This task must be called by create.bat." />
+			</then>
+			<else>
+				<if>
+					<not>
+						<isset property="portlet.parent.dir" />
+					</not>
+					<then>
+						<property name="portlet.parent.dir" value="${basedir}" />
+					</then>
+				</if>
+
+				<property name="portlet.dir" value="${portlet.parent.dir}/${portlet.name}-portlet" />
+
+				<if>
+					<available file="${portlet.dir}" />
+					<then>
+						<fail>${portlet.dir} already exists.</fail>
+					</then>
+				</if>
+
+				<copy todir="${portlet.dir}">
+					<fileset
+						dir="${project.dir}/tools/portlet_tmpl"
+					/>
+				</copy>
+
+				<antelope:stringutil string="${portlet.display.name}" property="portlet.java.class.name">
+					<antelope:replace regex="\s+" replacement="" />
+					<antelope:trim />
+				</antelope:stringutil>
+
+				<antelope:stringutil string="${portlet.name}" property="portlet.java.package.name">
+					<antelope:replace regex="-" replacement="" />
+					<antelope:trim />
+				</antelope:stringutil>
+
+				<if>
+					<not>
+						<or>
+							<not>
+								<isset property="portlet.framework" />
+							</not>
+							<equals arg1="${portlet.framework}" arg2="" />
+							<equals arg1="${portlet.framework}" arg2="mvc" />
+						</or>
+					</not>
+					<then>
+						<copy todir="${portlet.dir}">
+							<fileset
+								dir="${project.dir}/tools/portlet_${portlet.framework}_tmpl"
+							/>
+						</copy>
+					</then>
+				</if>
+
+				<if>
+					<equals arg1="${portlet.framework}" arg2="jsf" />
+					<then>
+						<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=commons-beanutils.jar,commons-collections.jar,commons-digester.jar,commons-lang.jar</echo>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<portlet-class>com.liferay.util.bridges.mvc.MVCPortlet</portlet-class>]]></replacetoken>
+							<replacevalue><![CDATA[<portlet-class>org.portletfaces.bridge.GenericFacesPortlet</portlet-class>]]></replacevalue>
+						</replace>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<name>view-jsp</name>]]></replacetoken>
+							<replacevalue><![CDATA[<name>javax.portlet.faces.defaultViewId.view</name>]]></replacevalue>
+						</replace>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<value>/view.jsp</value>]]></replacetoken>
+							<replacevalue><![CDATA[<value>/xhtml/portletViewMode.xhtml</value>]]></replacevalue>
+						</replace>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/liferay-portlet.xml">
+							<replacetoken><![CDATA[</instanceable>]]></replacetoken>
+							<replacevalue><![CDATA[</instanceable>
+		<ajaxable>false</ajaxable>]]></replacevalue>
+						</replace>
+
+						<replaceregexp match="&lt;/header-portlet-css&gt;(.*)&lt;/footer-portlet-javascript&gt;" replace="&lt;/header-portlet-css&gt;" flags="s">
+							<fileset
+								dir="${portlet.dir}/docroot/WEB-INF"
+								includes="liferay-portlet.xml"
+							/>
+						</replaceregexp>
+
+						<delete includeemptydirs="true">
+							<fileset
+								dir="${portlet.dir}/docroot"
+								includes="js/**,view.jsp"
+							/>
+						</delete>
+					</then>
+				</if>
+
+				<if>
+					<equals arg1="${portlet.framework}" arg2="vaadin" />
+					<then>
+						<move
+							file="${portlet.dir}/docroot/WEB-INF/src/Application.java"
+							tofile="${portlet.dir}/docroot/WEB-INF/src/${portlet.java.package.name}/${portlet.java.class.name}Application.java"
+						/>
+
+						<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=vaadin.jar</echo>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<portlet-class>com.liferay.util.bridges.mvc.MVCPortlet</portlet-class>]]></replacetoken>
+							<replacevalue><![CDATA[<portlet-class>com.vaadin.terminal.gwt.server.ApplicationPortlet2</portlet-class>]]></replacevalue>
+						</replace>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<name>view-jsp</name>]]></replacetoken>
+							<replacevalue><![CDATA[<name>application</name>]]></replacevalue>
+						</replace>
+
+						<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+							<replacetoken><![CDATA[<value>/view.jsp</value>]]></replacetoken>
+							<replacevalue><![CDATA[<value>@portlet.java.package.name@.@portlet.java.class.name@Application</value>]]></replacevalue>
+						</replace>
+
+						<replaceregexp match="&lt;/instanceable&gt;(.*)&lt;/footer-portlet-javascript&gt;" replace="&lt;/instanceable&gt;" flags="s">
+							<fileset
+								dir="${portlet.dir}/docroot/WEB-INF"
+								includes="liferay-portlet.xml"
+							/>
+						</replaceregexp>
+
+						<delete includeemptydirs="true">
+							<fileset
+								dir="${portlet.dir}/docroot"
+								includes="css/**,js/**,view.jsp"
+							/>
+						</delete>
+					</then>
+				</if>
+
+				<replace dir="${portlet.dir}">
+					<replacefilter token="@portlet.name@" value="${portlet.name}" />
+					<replacefilter token="@portlet.display.name@" value="${portlet.display.name}" />
+					<replacefilter token="@portlet.java.class.name@" value="${portlet.java.class.name}" />
+					<replacefilter token="@portlet.java.package.name@" value="${portlet.java.package.name}" />
+				</replace>
+
+				<mkdir dir="${portlet.dir}/docroot/WEB-INF/tld" />
+
+				<copy todir="${portlet.dir}/docroot/WEB-INF/tld">
+					<fileset dir="${app.server.portal.dir}/WEB-INF/tld">
+						<include name="aui.tld" />
+						<include name="liferay-faces.tld" />
+						<include name="liferay-portlet.tld" />
+						<include name="liferay-portlet-ext.tld" />
+						<include name="liferay-security.tld" />
+						<include name="liferay-theme.tld" />
+						<include name="liferay-ui.tld" />
+						<include name="liferay-util.tld" />
+					</fileset>
+				</copy>
+			</else>
+		</if>
+	</target>
+</project><?xml version="1.0"?>
+
+<project name="portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="themes" basedir="." default="deploy">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="theme.name" />
+				</not>
+				<not>
+					<isset property="theme.display.name" />
+				</not>
+			</or>
+			<then>
+				<echo message="This task must be called by create.bat." />
+			</then>
+			<else>
+				<if>
+					<not>
+						<isset property="theme.parent.dir" />
+					</not>
+					<then>
+						<property name="theme.parent.dir" value="${basedir}" />
+					</then>
+				</if>
+
+				<property name="theme.dir" value="${theme.parent.dir}/${theme.name}-theme" />
+
+				<if>
+					<available file="${theme.dir}" />
+					<then>
+						<fail>${theme.name}-theme already exists.</fail>
+					</then>
+				</if>
+
+				<copy todir="${theme.dir}">
+					<fileset
+						dir="${project.dir}/tools/theme_tmpl"
+					/>
+				</copy>
+
+				<mkdir dir="${theme.dir}/docroot/_diffs" />
+
+				<replace dir="${theme.dir}">
+					<replacefilter token="@theme.name@" value="${theme.name}" />
+					<replacefilter token="@theme.display.name@" value="${theme.display.name}" />
+				</replace>
+			</else>
+		</if>
+	</target>
+
+	<target name="merge">
+		<echo message="${theme.name}-theme" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@ext.name@-ext" basedir="." default="deploy">
+	<import file="../build-common-ext.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@hook.name@-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@layouttpl.name@-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@portlet.name@-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@theme.name@-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="webs" basedir="." default="deploy">
+	<property name="project.dir" value=".." />
+
+	<import file="../build-common-plugins.xml" />
+</project>

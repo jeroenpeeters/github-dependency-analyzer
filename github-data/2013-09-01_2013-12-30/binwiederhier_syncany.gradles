@@ -1,0 +1,559 @@
+//
+// Build script for main project
+//
+
+// Global Helpers //////////////////////////////////////////////////////////////
+
+String execAndGetOutput(String command) {
+	try {
+		def stdout = new ByteArrayOutputStream()
+
+		exec {
+			workingDir rootProject.projectDir
+			commandLine command.split()
+			standardOutput = stdout
+		}
+
+		return stdout.toString().trim()
+	}
+	catch (Exception e) {
+		return null
+	}
+}
+
+String getRevision() {
+	String currentCommit = execAndGetOutput("git rev-parse --short HEAD")
+	return (currentCommit != null) ? currentCommit : "UNKNOWN"
+}
+
+boolean isApplicationRelease() {
+	// Note: This must work for detached commits (git checkout -qf <commit>)
+
+	String currentBranches = execAndGetOutput("git log -n 1 --pretty=%d HEAD")
+	return currentBranches.contains("origin/master")
+}
+
+
+// Global Settings /////////////////////////////////////////////////////////////
+
+project.ext {
+	applicationVersion = "0.1.1-alpha"
+
+	applicationRelease = isApplicationRelease()
+	applicationDate = new Date()
+	applicationRevision = getRevision()
+	
+	applicationVersionSnapshot = (!applicationRelease) ? "-SNAPSHOT+${applicationDate.format('yyMMddHHmm')}git${applicationRevision}" : ""
+	applicationVersionFull = "${applicationVersion}${applicationVersionSnapshot}"
+}
+
+repositories {
+	mavenCentral()
+}
+
+// Coverage (Cobertura) ////////////////////////////////////////////////////////
+// Run as: gradle testGlobal coberturaReport performCoverageCheck
+
+apply plugin: 'cobertura'
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+
+	dependencies {
+		classpath 'net.saliman:gradle-cobertura-plugin:2.2.2' 
+	}
+}
+
+cobertura {	
+	coverageFormats = ['html', 'xml'] 
+	coverageReportDatafile = file("build/cobertura/cobertura.ser")
+	coverageReportDir = file("build/reports/coverage")
+	
+	coverageDirs = []
+	coverageSourceDirs = []
+	coverageMergeDatafiles = []
+	
+	rootProject.subprojects.each {
+		coverageFormats = ['html', 'xml'] 
+		coverageDirs << file("${it.buildDir}/classes/main")
+		coverageSourceDirs << file("${it.projectDir}/src/main/java")
+		coverageMergeDatafiles << file("${it.buildDir}/cobertura/cobertura.ser")
+	}		
+}
+
+
+// JavaDoc Requirements ////////////////////////////////////////////////////////
+
+configurations {
+	doclet 
+}
+
+dependencies {
+	doclet group: 'org.jboss.apiviz', name: 'apiviz', version: '1.3.2.GA'
+}
+
+
+// Sub-Project Settings and Hooks //////////////////////////////////////////////
+
+subprojects {
+	apply plugin: 'java'
+	apply plugin: 'eclipse'
+	apply plugin: 'cobertura'
+	
+	group = 'org.syncany'		
+		
+	sourceCompatibility = 1.7
+	targetCompatibility = 1.7
+	
+	repositories {
+		mavenCentral()
+	}
+	
+	sourceSets {
+		main {
+			java      { srcDir 'src/main/java'}
+			resources { srcDir 'src/main/resources'}
+		}
+		
+		test {
+			java      { srcDir 'src/test/java'}
+			resources { srcDir 'src/test/resources'}
+		}
+	}
+	
+	task testAllLong(type: Test, dependsOn: testClasses, group: 'Verification') {
+		description = "Test long running scenarios"
+		ignoreFailures = true
+		maxParallelForks = 2
+		testLogging { events 'started', 'passed'}
+		include '**/LongRunning*'
+	}
+	
+	task testScenario(type: Test, dependsOn: testClasses, group: 'Verification') {
+		description = "Test all scenarios"
+		ignoreFailures = true
+		maxParallelForks = 2
+		testLogging { events 'started', 'passed'}
+		include '**/*ScenarioTest*'
+	}
+	
+	task testAll(type: Test, dependsOn: testClasses, group: 'Verification') {
+		description = "All tests"
+		ignoreFailures = true
+		maxParallelForks = 2
+		testLogging { events 'started', 'passed'}
+		exclude '**/*TestSuite*'
+	}
+	
+	task testAllButLongCrypto(type: Test, dependsOn: testClasses, group: 'Verification') {
+		jvmArgs '-Dcrypto.enable=true'
+		description = "All tests except long running with crypto"
+		ignoreFailures = true
+		maxParallelForks = 2
+		testLogging { events 'started', 'passed'}
+		exclude '**/LongRunning*', '**/*TestSuite*'
+	}
+	
+	test {
+		group = "verification"	
+		description = "All tests except long running"
+		ignoreFailures = true
+		maxParallelForks = 2
+		testLogging { events 'started', 'passed'}
+		exclude '**/LongRunning*', '**/*TestSuite*'
+	}
+	
+	// JAR /////////////////////////////////////////////////////////////////////
+	
+	jar {
+		baseName = "${project.name}"
+		version  = "$applicationVersion"				
+	}
+
+	
+	// Test JARs ///////////////////////////////////////////////////////////////
+	
+	task testJar(type: Jar, dependsOn: testClasses) {
+		baseName = "test-${project.archivesBaseName}"
+		from sourceSets.test.output
+	}
+
+
+	configurations {
+	      tests
+	}
+	
+
+	artifacts {
+		tests testJar
+	}	
+		
+	// Eclipse Settings and Hooks //////////////////////////////////////////////
+	
+	eclipse {
+		classpath {
+			downloadSources = true
+		}
+		
+		jdt {
+			sourceCompatibility = 1.7
+			targetCompatibility = 1.7			
+		}		
+	}
+	
+	task eclipseSettings(type: Copy) {
+		from rootProject.files(
+			"gradle/eclipse/org.eclipse.jdt.ui.prefs",			
+			"gradle/eclipse/org.eclipse.jdt.core.prefs"
+		)
+		
+		into project.file('.settings/')
+		
+		outputs.upToDateWhen { 
+			false 
+		}
+	}
+	
+	task cleanEclipseJdtUi(type: Delete) {
+		delete project.file(".settings/")
+		delete project.file("bin/")
+	}	
+	
+	tasks["cleanEclipse"].dependsOn(cleanEclipseJdtUi)
+	tasks["eclipse"].dependsOn(eclipseSettings)
+}
+
+
+// JavaDoc /////////////////////////////////////////////////////////////////////
+
+task javadocAll(type: Javadoc) {
+	group = "documentation"
+	description = "Creates the JavaDoc for all subprojects and puts it into build/javadoc"
+	
+	source subprojects.collect { project -> project.sourceSets.main.allJava } 
+	classpath = files(subprojects.collect { project -> project.sourceSets.main.compileClasspath }) 
+	destinationDir = new File(projectDir, 'build/javadoc')
+	
+	doFirst {
+	  subprojects.each { project -> project.sourceSets.main.output.each { dir -> dir.mkdirs() } }
+	}
+	
+	options.linkSource = true
+        options.addStringOption('sourceclasspath', files(subprojects.collect { project -> project.sourceSets.main.output }).getAsPath())
+
+	configure(options) {
+	        doclet "org.jboss.apiviz.APIviz"
+	        docletpath file(configurations.doclet.asPath)
+		windowTitle = 'Syncany API Documentation'
+		docTitle = "Syncany JavaDoc ($applicationVersion)"
+		bottom = " \
+			<span style=\"font-size: 13px\"><br /> \
+				<a href=\"http://www.syncany.org/\" target=\"_top\">Syncany</a> is an open-source cloud storage and filesharing application.<br /><br /> \
+				Code located at <a href=\"https://github.com/binwiederhier/syncany\" target=\"_top\">https://github.com/binwiederhier/syncany</a><br /> \
+				JavaDoc for version $applicationVersion generated based on commit <a href=\"https://github.com/binwiederhier/syncany/tree/$applicationRevision\" target=\"_top\">$applicationRevision</a> at $applicationDate<br /><br /> \
+				Copyright &copy; 2011-2014 <a href=\"http://www.philippheckel.com/\" target=\"_top\">Philipp C. Heckel</a> \
+			</span> \
+		"
+	}
+}
+
+task cleanJavadocAll(type: Delete) {
+	group = "documentation"
+	description = "Deletes the all subprojects from build/javadoc (completent to javadocAll)"
+	delete 'build/javadoc'	
+}
+
+
+// Gradle Wrapper Tasks (for local gradlew scripts) ////////////////////////////
+
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.11'
+	jarFile = 'gradle/wrapper/wrapper.jar'
+}
+
+
+// Task to clean build folder on project root //////////////////////////////////	
+
+task cleanBuildDir(type: Delete) {
+	delete 'build'	
+}
+
+tasks["clean"].dependsOn(cleanBuildDir)
+
+
+// Global Tests ////////////////////////////////////////////////////////////////
+
+task testGlobal(type: TestReport) {
+	group = "verification"	
+	description = "All the results from the 'test' task in all subprojects (global report!)"
+	destinationDir = file("$buildDir/reports/tests")
+	reportOn subprojects*.test
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+import java.io.File;
+
+dependencies {
+	compile			project(":syncany-lib")
+	compile			project(":syncany-util")
+	compile			project(":syncany-plugins:syncany-plugin-ftp")
+	compile			project(":syncany-plugins:syncany-plugin-webdav")    	
+	compile			"net.sf.jopt-simple:jopt-simple:4.5"      
+
+	testCompile		"com.github.stefanbirkner:system-rules:1.5.0"            
+      	
+	testCompile		project(path: ":syncany-lib", configuration: "tests")
+	testCompile		project(path: ":syncany-util", configuration: "tests")
+	testCompile		project(path: ":syncany-plugins:syncany-plugin-ftp", configuration: "tests")
+	testCompile		"org.apache.ftpserver:ftpserver-core:1.0.6"      
+	testCompile		"junit:junit:4.9"   	      
+}
+
+
+// Application Plugin Settings and Hooks ///////////////////////////////////////	
+
+apply plugin: "application"
+
+applicationName = "syncany"
+mainClassName = "org.syncany.Syncany"
+
+startScripts {
+	defaultJvmOpts = [ "-Xmx1024m", "-Dfile.encoding=utf-8" ]
+	
+	doLast {
+		def wFile = file getWindowsScript()
+		def uFile = file getUnixScript()
+		
+		wFile.text = wFile.text.replace('set CLASSPATH=', 'set CLASSPATH=%APP_HOME%\\lib\\*;')
+		uFile.text = uFile.text.replace('CLASSPATH=$APP_HOME', 'CLASSPATH=$APP_HOME/lib/*:$APP_HOME')
+	}
+}
+
+applicationDistribution.from("${rootProject.projectDir}/") {
+	include "AUTHORS.md", "CHANGELOG.md", "LICENSE.md", "README.md"
+}
+
+distTar {
+	baseName = "syncany"
+	version = "$applicationVersionFull"
+	compression = Compression.GZIP
+	extension = "tar.gz"	
+}
+
+distZip {
+	baseName = "syncany"
+	version = "$applicationVersionFull"
+}
+
+// Packaging ///////////////////////////////////////////////////////////////////
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	dependencies {
+		classpath "com.kenshoo:gradle-fpm:0.4"
+	}
+}
+
+apply plugin: "fpm-packaging"
+
+packaging {
+	dependencies = ["openjdk-7-jre"] 
+	baseDir = "${buildDir}/install/${applicationName}"
+	prefix = "/usr/lib/syncany"
+	extraOptions = [ 
+		"--name": "syncany", 
+		"--architecture": "all",
+		"--license": "GPLv2",
+		"--version": "${applicationVersionFull}",
+		"--maintainer": "Philipp Heckel <philipp.heckel@gmail.com>",
+		"--vendor": "Philipp Heckel <philipp.heckel@gmail.com>",		
+		"--url": "http://www.syncany.org/",
+		"--description": 
+"""
+Syncany is an open-source cloud storage and filesharing application. 
+
+It allows users to backup and share certain folders of their workstations
+using any kind of storage. Syncany is open-source and provides data encryption
+and incredible flexibility in terms of storage type and provider:
+
+ - Data encryption: Syncany encrypts the files locally, so that any online 
+   storage can be used even for sensitive data.
+                   
+ - Arbitrary storage: Syncany uses a plug-in based storage system. It can be
+   used with any type of remote storage.
+""",
+		"--after-install": "${rootProject.projectDir}/gradle/fpm/postinst",
+		"--before-remove": "${rootProject.projectDir}/gradle/fpm/prerm",
+		"--exclude": "*.bat"
+	] 
+	filesArgs = ["."]
+	force = true
+}
+
+debian.dependsOn installApp
+rpm.dependsOn installApp
+
+
+// Windows Installer ///////////////////////////////////////////////////////////
+
+task exe(dependsOn: ["installApp"]) << {
+	def innoSetupDir = new File("${buildDir}/innosetup")
+
+	delete innoSetupDir	
+	innoSetupDir.mkdir();	
+	
+	copy {
+		from("${rootProject.projectDir}/gradle/innosetup/setup-left.bmp")
+		from("${rootProject.projectDir}/gradle/innosetup/setup-top.bmp")
+		from("${rootProject.projectDir}/gradle/innosetup/setup-info-before.rtf")		
+		from("${rootProject.projectDir}/gradle/innosetup/setup-info-after.rtf")		
+		from("${rootProject.projectDir}/gradle/innosetup/setup-icon.ico")		
+		from("${rootProject.projectDir}/gradle/innosetup/modpath.iss")
+		into(innoSetupDir)
+	}
+
+	copy {
+		from("${rootProject.projectDir}/gradle/innosetup/setup.iss.skel")
+		rename("setup.iss.skel", "setup.iss")
+		expand([
+			applicationVersion: "${applicationVersion}",
+			applicationVersionFull: "${applicationVersionFull}",			
+		])
+		into(innoSetupDir)
+	}
+
+	exec {
+		workingDir rootProject.projectDir
+		commandLine "iscc ${innoSetupDir}/setup.iss".split()
+	}
+}
+
+
+// CLI-specific Tasks //////////////////////////////////////////////////////////
+
+String osName = System.getProperty("os.name").toLowerCase();
+
+task fakeinstall(dependsOn: ["fakeuninstall"]) << {
+	description = "Must be run as root: Makes syncany/sy command available everywhere (symlink to syncany-cli/build/..)"
+	
+	// Do not depend on :syncany-cli:installApp to avoid permission issues when 
+	// running fakeinstall as "root"; manually calling installApp required
+	
+	if (osName.startsWith("windows")) {
+		copy {
+			from "../gradle/windows/syncany.bat"
+			into System.getenv()["windir"]
+			expand(appBinary: "${buildDir}/install/${applicationName}/bin/${applicationName}.bat")
+		}
+	}
+	else{
+    		ant.symlink(resource: "${buildDir}/install/${applicationName}/bin/${applicationName}", link: "/usr/local/bin/syncany")
+    		ant.symlink(resource: "${buildDir}/install/${applicationName}/bin/${applicationName}", link: "/usr/local/bin/sy")
+	}
+}
+
+task fakeuninstall << {
+	description = "Must be run as root: Removes symlink for syncany/sy command (complement to fakeinstall)"
+
+	if (osName.startsWith("windows")) {
+		new File(System.getenv()["windir"] + "/syncany.bat").delete()
+	}
+	else {
+		new File("/usr/local/bin/syncany").delete()
+		new File("/usr/local/bin/sy").delete()
+	}
+}
+
+task(runCli, dependsOn: "classes", type: JavaExec) {
+	main = "org.syncany.Syncany"
+	classpath = sourceSets.main.runtimeClasspath
+}	
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+configurations {
+	tests
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile			project(':syncany-util')
+	
+	compile			"commons-io:commons-io:2.4"	
+	compile			"org.bouncycastle:bcprov-ext-jdk15on:1.50"            
+	compile			"org.simpleframework:simple-xml:2.7.1"
+	compile			"com.google.guava:guava:15.0"
+	compile			"commons-codec:commons-codec:1.8"            
+	compile			"org.reflections:reflections:0.9.8"
+	compile			"org.slf4j:slf4j-api:1.6.0" // for reflections
+	
+	compile			"org.hsqldb:hsqldb:2.3.1"
+	
+	testCompile		project(path: ':syncany-util', configuration: 'tests')
+	testCompile		"junit:junit:4.9"
+}
+
+processResources {	
+	filter{ String line -> line.replaceAll('%RELEASE%', "${applicationRelease}") }        	            
+	filter{ String line -> line.replaceAll('%VERSION%', "${applicationVersion}") }        	            
+	filter{ String line -> line.replaceAll('%REVISION%', "${applicationRevision}") }
+	filter{ String line -> line.replaceAll('%COMPILEDATE%', "${applicationDate}") }          	            
+}
+	
+	
+// Test helper tasks ///////////////////////////////////////////////////////////
+
+task(runSql, dependsOn: "classes", type: JavaExec) {
+	String db = (project.ext.has("db")) ? $db : ""
+	String sql = (project.ext.has("sql")) ? $sql : ""
+
+	description = "Creates database and runs SQL query, syntax: runSql -Pdb=DBPATH -P=SCRIPTRESOURCE"
+	main = "org.syncany.tests.util.TestSqlDatabaseUtil"
+	classpath = sourceSets.test.runtimeClasspath
+	args = [ "${db}", "${sql}" ]
+}		
+
+repositories {
+	mavenCentral()
+}
+dependencies {
+	compile			project(':syncany-lib')
+	compile			project(":syncany-util")	
+	compile			"commons-net:commons-net:2.2"    
+
+	testCompile		project(path : ':syncany-lib', configuration: 'tests')      
+	testCompile		project(path: ":syncany-util", configuration: "tests")
+	testCompile		"junit:junit:4.9"
+	testCompile		"org.apache.ftpserver:ftpserver-core:1.0.6"      
+}
+dependencies {
+	compile		project(':syncany-lib')
+	compile		"com.github.lookfirst:sardine:5.0.1"          
+
+	testCompile		project(path: ':syncany-lib', configuration: 'tests')      
+	testCompile		project(path: ':syncany-util', configuration: 'tests')
+	testCompile		"junit:junit:4.9"	
+}
+apply plugin: 'java'
+apply plugin: 'eclipse'
+
+configurations {
+	tests
+}
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile			"commons-io:commons-io:2.4"	
+	testCompile		"junit:junit:4.9"   	      
+}

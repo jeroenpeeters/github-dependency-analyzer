@@ -1,0 +1,898 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="activiti.distro" default="distro">
+
+	<property file="${user.home}/.activiti/build.properties" />
+
+	<property name="activiti.version" value="5.16-SNAPSHOT" />
+	<property name="target.distro.root" value="target/zip/activiti-${activiti.version}" />
+	<property name="activiti.website" value="../../activiti-website" />
+
+	<condition property="mvn.executable" value="mvn.bat" else="mvn">
+		<os family="windows" />
+	</condition>
+
+	<target name="clean">
+		<delete dir="target" />
+	</target>
+
+	<target name="distro" depends="clean,
+	   build.modules,
+	   copy.static.resources,
+	   copy.dependencies,
+	   copy.webapps,
+	   copy.docs,
+	   copy.sql">
+		<zip destfile="${target.distro.root}.zip">
+			<fileset dir="target/zip">
+				<include name="activiti-${activiti.version}/**" />
+			</fileset>
+		</zip>
+	</target>
+
+	<target name="build.modules">
+		<condition property="nodocs.profile" value=",nodocs -Dskiptests" else="">
+			<equals arg1="${nodocs}" arg2="true" />
+		</condition>
+		<exec executable="${mvn.executable}" dir=".." failonerror="true">
+			<env key="MAVEN_OPTS" value="-Xmx1024m -Xms512m -XX:MaxPermSize=256M" />
+			<arg line="-Pdistro${nodocs.profile} clean install -Dmaven.test.skip=true" />
+		</exec>
+	</target>
+
+	<target name="copy.static.resources">
+		<copy todir="${target.distro.root}">
+			<fileset dir="src" />
+		</copy>
+	</target>
+
+	<target name="copy.dependencies">
+
+		<!-- MOVE ALL LIBS TO libs -->
+		<mkdir dir="${target.distro.root}/libs" />
+		<copy todir="${target.distro.root}/libs">
+			<fileset dir="../modules/activiti-engine/target">
+				<include name="activiti-engine-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-spring/target">
+				<include name="activiti-spring-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-bpmn-model/target">
+				<include name="activiti-bpmn-model-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-bpmn-converter/target">
+				<include name="activiti-bpmn-converter-*.jar" />
+			</fileset>
+      <fileset dir="../modules/activiti-process-validation/target">
+        <include name="activiti-process-validation-*.jar" />
+      </fileset>
+			<fileset dir="../modules/activiti-bpmn-layout/target">
+				<include name="activiti-bpmn-layout-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-json-converter/target">
+				<include name="activiti-json-converter-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-simple-workflow/target">
+				<include name="activiti-simple-workflow-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-ldap/target">
+				<include name="activiti-ldap*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-explorer/target">
+				<include name="activiti-explorer-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-common-rest/target">
+				<include name="activiti-common-rest-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-modeler/target">
+				<include name="activiti-modeler-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-diagram-rest/target">
+				<include name="activiti-diagram-rest-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-rest/target">
+				<include name="activiti-rest-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-camel/target">
+				<include name="activiti-camel-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-cdi/target">
+				<include name="activiti-cdi*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-cxf/target">
+				<include name="activiti-cxf-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-mule/target">
+				<include name="activiti-mule-*.jar" />
+			</fileset>
+			<fileset dir="../modules/activiti-osgi/target">
+				<include name="activiti-osgi-*.jar" />
+			</fileset>
+		</copy>
+
+	</target>
+
+	<target name="copy.webapps">
+		<mkdir dir="${target.distro.root}/wars" />
+		<copy todir="${target.distro.root}/wars">
+			<fileset dir="../modules/activiti-webapp-explorer2/target">
+				<include name="activiti-webapp-explorer*.war" />
+			</fileset>
+			<fileset dir="../modules/activiti-webapp-rest2/target">
+				<include name="activiti-webapp-rest*.war" />
+			</fileset>
+		</copy>
+		<move file="${target.distro.root}/wars/activiti-webapp-explorer2-${activiti.version}.war" tofile="${target.distro.root}/wars/activiti-explorer.war"/>
+		<move file="${target.distro.root}/wars/activiti-webapp-rest2-${activiti.version}.war" tofile="${target.distro.root}/wars/activiti-rest.war"/>
+	</target>
+
+	<target name="build.docs" unless="nodocs">
+		<!-- JAVADOCS -->
+		<exec executable="${mvn.executable}" dir="../modules/activiti-engine">
+			<arg line="-DexcludePackageNames=org.activiti.engine.impl* javadoc:javadoc" />
+		</exec>
+		<mkdir dir="${target.distro.root}/docs/javadocs" />
+		<copy todir="${target.distro.root}/docs/javadocs">
+			<fileset dir="../modules/activiti-engine/target/site/apidocs" />
+		</copy>
+		<!-- USERGUIDE -->
+		<echo message="On failure, make sure that you have installed the Xalan libs by executing the 'install.xalan.libs' target in the 'userguide' folder.">
+		</echo>
+		<ant antfile="../userguide/build.xml" inheritall="false" />
+		<mkdir dir="${target.distro.root}/docs/userguide" />
+		<copy todir="${target.distro.root}/docs/userguide">
+			<fileset dir="../userguide/target/html/en" />
+		</copy>
+	</target>
+
+	<target name="copy.docs" depends="build.docs" unless="nodocs">
+		<!-- COPY XSD -->
+		<copy todir="${target.distro.root}/docs/xsd">
+			<fileset dir="../modules/activiti-bpmn-converter/src/main/resources/org/activiti/impl/bpmn/parser">
+				<include name="*.xsd" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="publish.docs" depends="build.docs">
+		<mkdir dir="${activiti.website}/javadocs" />
+		<copy todir="${activiti.website}/javadocs" overwrite="true">
+			<fileset dir="../modules/activiti-engine/target/site/apidocs" />
+		</copy>
+		<mkdir dir="${activiti.website}/userguide" />
+		<copy todir="${activiti.website}/userguide" overwrite="true">
+			<fileset dir="../userguide/target/html/en" />
+		</copy>
+		<copy todir="${activiti.website}" overwrite="true">
+			<fileset dir="src">
+				<include name="readme.html" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="copy.sql">
+		<!-- COPY SQL -->
+		<copy todir="${target.distro.root}/database">
+			<fileset dir="../modules/activiti-engine/src/main/resources/org/activiti/db">
+				<include name="create/**" />
+				<include name="drop/**" />
+				<include name="upgrade/**" />
+			</fileset>
+		</copy>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<project name="Activiti BPM Editor" default="js.compress">
+
+	<!-- Editor properties *************************************************** -->
+	<property name="root" value="." />
+	<property name="src" value="${root}/scripts" />
+	<property name="data" value="${root}/data" />
+	<property name="destdir" value="../src/main/webapp/editor" />
+	<property name="target" value="target" />
+	<property name="temp" value="temp" />
+
+	<!-- parses plugin xml-->
+	<xmlproperty file="../src/main/resources/plugins.xml" collapseAttributes="true" />
+
+	<!-- Main targets ****************************************************** -->
+	<target name="js.concat">
+
+		<concat destfile='${destdir}/oryx.debug.js'>
+			<filelist id="coresourcefiles" dir="${src}">
+				<file name='utils.js' />
+				<file name='kickstart.js' />
+				<file name='erdfparser.js' />
+				<file name='datamanager.js' />
+				<file name='clazz.js' />
+				<file name='server.js' />
+				<file name='config.js' />
+				<file name='editor.js' />
+				<file name='Core/SVG/editpathhandler.js' />
+				<file name='Core/SVG/minmaxpathhandler.js' />
+				<file name='Core/SVG/pointspathhandler.js' />
+				<file name='Core/SVG/svgmarker.js' />
+				<file name='Core/SVG/svgshape.js' />
+				<file name='Core/SVG/label.js' />
+				<file name='Core/Math/math.js' />
+				<file name='Core/StencilSet/stencil.js' />
+				<file name='Core/StencilSet/property.js' />
+				<file name='Core/StencilSet/propertyitem.js' />
+				<file name='Core/StencilSet/complexpropertyitem.js' />
+				<file name='Core/StencilSet/rules.js' />
+				<file name='Core/StencilSet/stencilset.js' />
+				<file name='Core/StencilSet/stencilsets.js' />
+				<file name='Core/command.js' />
+				<file name='Core/bounds.js' />
+				<file name='Core/uiobject.js' />
+				<file name='Core/abstractshape.js' />
+				<file name='Core/canvas.js' />
+				<file name='Core/main.js' />
+				<file name='Core/svgDrag.js' />
+				<file name='Core/shape.js' />
+				<file name='Core/Controls/control.js' />
+				<file name='Core/Controls/docker.js' />
+				<file name='Core/Controls/magnet.js' />
+				<file name='Core/node.js' />
+				<file name='Core/edge.js' />
+				<file name='Core/abstractPlugin.js' />
+				<file name='Core/abstractLayouter.js' />
+        <file name='imageviewer.js' />
+			</filelist>
+			<!-- load all sources from plugins defined in the plugins.xml-->
+			<filelist dir="${src}/Plugins/" files="${config.plugins.plugin.source}" />
+		</concat>
+	</target>
+
+	<target name='js.compress' depends="js.concat">
+
+    <mkdir dir="${temp}" />
+		<tempfile property="compress.temp" suffix=".js" prefix="compressed" destDir="${temp}" />
+
+		<java dir="${temp}" jar="lib/yuicompressor-2.4.2.jar" fork="true" failonerror="true" output='${compress.temp}'>
+			<arg file='${destdir}/oryx.debug.js' />
+		</java>
+
+		<concat destfile='${destdir}/oryx.js'>
+			<fileset file="LICENSE" />
+			<fileset file="${compress.temp}" />
+		</concat>
+
+		<delete file='${compress.temp}' />
+  
+    <delete dir="${temp}" />
+
+	</target>
+	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="activiti.qa">
+  	
+  <property file="${user.home}/.activiti/build.properties" />
+  <property file="../distro/src/setup/build.properties" />
+  <property name="activiti.version" value="5.16-SNAPSHOT" />
+  <property name="activiti.home" value="../distro/target/activiti-${activiti.version}" /> 
+  <property name="macos.browser" value="/usr/bin/open" />
+  <property name="windows.browser" value="C:/Program Files/Mozilla Firefox/firefox.exe" />
+  <property name="linux.browser" value="firefox" />
+  <property name="tomcat.home" value="${activiti.home}/apps/apache-tomcat-${tomcat.version}" />
+  <property name="downloads.dir" value="${user.home}/.activiti/downloads" />
+  
+  <condition property="mvn.executable" value="mvn.bat" else="mvn">
+     <os family="windows"/>
+  </condition>
+
+  <target name="pre.commit.check">
+    <exec executable="${mvn.executable}" dir="..">
+      <arg line="-Pcheck clean install" />
+    </exec>
+  </target>
+
+  <target name="test.demo.start" depends="build.clean.distro">
+    <ant antfile="../distro/target/activiti-${activiti.version}/setup/build.xml"
+         target="demo.start"
+         inheritall="false">
+    	<property name="nodocs" value="true" />
+    </ant>
+  </target>
+	
+  <target name="test.demo.stop">
+    <ant antfile="../distro/target/activiti-${activiti.version}/setup/build.xml"
+         target="demo.stop"
+         inheritall="false" />
+  </target>
+	
+  <target name="test.upgrade" depends="build.clean.distro">
+    <copy file="../distro/target/activiti-${activiti.version}.zip" todir="${downloads.dir}" />
+  	<ant antfile="upgrade/build.xml" target="upgrade" inheritall="false" />
+  </target>
+  
+  <target name="build.userguide">
+    <ant antfile="../userguide/build.xml"
+         target="build.userguide"
+         inheritall="false">
+    </ant>
+    <sleep seconds="1"/>
+    <property name="url" value="file://${basedir}/../userguide/target/html/en/index.html" />
+    <antcall target="open.html.page"/>
+  </target>
+  
+  <target name="test.demo.setup.refresh">
+    <ant antfile="../distro/target/activiti-${activiti.version}/setup/build.xml"
+         target="demo.teardown"
+         inheritall="false" />
+		<antcall target="test.demo.setup" />
+	</target>
+
+  <target name="build.clean.distro">
+  	<ant antfile="../distro/build.xml" inheritall="false">
+      <target name="clean" />
+      <target name="distro" />
+  		<property name="nodocs" value="true" />
+    </ant>
+  </target>
+
+  <target name="build.javadocs">
+    <exec executable="${mvn.executable}" dir="../modules/activiti-engine">
+      <arg line="javadoc:javadoc" />
+    </exec>
+  	<property name="url" value="file://${basedir}/../modules/activiti-engine/target/site/apidocs/index.html" />
+  	<antcall target="open.html.page"/>
+  </target>
+
+  <target name="webapp.rest.redeploy">
+    <property name="webapp.redeploy.module" value="rest"/>
+    <antcall target="webapp.redeploy"/>
+  </target>
+
+  <target name="webapp.probe.redeploy">
+    <property name="webapp.redeploy.module" value="probe"/>
+    <antcall target="webapp.redeploy"/>
+  </target>
+
+  <target name="webapp.explorer.redeploy">
+    <property name="webapp.redeploy.module" value="explorer"/>
+    <antcall target="webapp.redeploy"/>
+  </target>
+  
+  <target name="webapp.redeploy">
+    <fail message="To use this target, set property webapp.redeploy.module to the chosen module" unless="webapp.redeploy.module"/>
+    <available file="${user.home}/.activiti/tomcat-users.xml" property="tomcat.users.available" />
+  	<fail message="To use this target, a tomcat-users.xml must be in your user home ${user.home}/.activiti with following content:&#10;
+&lt;?xml version=&quot;1.0&quot; encoding=&quot;utf-8&quot;?&gt; &#10;
+&lt;tomcat-users&gt; &#10;
+ 	&lt;role rolename=&quot;manager&quot;/&gt; &#10;
+ 	&lt;user username=&quot;activiti&quot; password=&quot;activiti&quot; roles=&quot;manager&quot;/&gt; &#10;
+&lt;/tomcat-users&gt; &#10;
+Then run test.demo.setup to make it get placed inside your tomcat server." unless="tomcat.users.available"/>
+    <exec executable="${mvn.executable}" dir="../modules/activiti-webapp">
+      <arg line="clean install" />
+    </exec>
+    <exec executable="${mvn.executable}" dir="../modules/activiti-webapp-${webapp.redeploy.module}">
+      <arg line="clean package" />
+    </exec>
+    <taskdef name="undeploy" classname="org.apache.catalina.ant.UndeployTask">
+      <classpath>
+        <fileset dir="${tomcat.home}/lib">
+          <include name="catalina-ant.jar"/>
+        </fileset>
+      </classpath>
+    </taskdef>
+    <undeploy url="http://localhost:8080/manager"
+            username="activiti"
+            password="activiti"
+            path="/activiti-${webapp.redeploy.module}"
+            failonerror="false"/>
+    <taskdef name="deploy" classname="org.apache.catalina.ant.DeployTask">
+      <classpath>
+        <fileset dir="${tomcat.home}/lib">
+          <include name="catalina-ant.jar"/>
+        </fileset>
+      </classpath>
+    </taskdef>
+    <deploy url="http://localhost:8080/manager"
+            username="activiti"
+            password="activiti"
+            path="/activiti-${webapp.redeploy.module}"
+            war="${basedir}/../modules/activiti-webapp-${webapp.redeploy.module}/target/activiti-webapp-${webapp.redeploy.module}-${activiti.version}.war"/>
+  </target>
+
+
+  <target name="webapp.rest.redeploy.resources">
+    <copy todir="${tomcat.home}/webapps/activiti-webapp-rest/WEB-INF/classes/webscripts" verbose="true">
+      <fileset dir="../modules/activiti-webapp-rest/src/main/resources/webscripts" />
+    </copy>
+    <copy todir="${tomcat.home}/webapps/activiti-webapp-rest" verbose="true">
+      <fileset dir="../modules/activiti-webapp-rest/src/main/webapp/" excludes="WEB-INF/web.xml" />
+    </copy>
+  </target>
+
+  <target name="webapp.probe.redeploy.resources">
+    <property name="webapp.redeploy.module" value="probe"/>
+    <antcall target="webapp.redeploy.resources"/>
+  </target>
+
+  <target name="webapp.explorer.redeploy.resources">
+    <property name="webapp.redeploy.module" value="explorer"/>
+    <antcall target="webapp.redeploy.resources"/>
+  </target>
+
+  <target name="webapp.redeploy.resources">
+    <copy todir="${tomcat.home}/webapps/activiti-${webapp.redeploy.module}" verbose="true">
+      <fileset dir="../modules/activiti-webapp/src/main/webapp/" excludes="WEB-INF/web.xml" />
+    </copy>
+    <copy todir="${tomcat.home}/webapps/activiti-${webapp.redeploy.module}" verbose="true">
+      <fileset dir="../modules/activiti-webapp-${webapp.redeploy.module}/src/main/webapp/" excludes="WEB-INF/web.xml" />
+    </copy>
+  </target>
+
+  <target name="open.html.page">
+    <fail message="property url has to be specified to use this target" unless="url" />
+    <exec executable="${macos.browser}" os="Mac OS X">
+      <arg value="${url}" />
+    </exec>
+    <exec executable="cmd" os="Windows Vista, Windows XP,Windows 2000,Windows 98">
+      <arg value="/C start &quot;${windows.browser}&quot; &quot;${url}&quot;" />
+    </exec>
+    <exec executable="${linux.browser}" os="Linux">
+      <arg value="${url}" />
+    </exec>
+  </target>
+	
+	<!-- Assumes that a demo setup is successfully running (in /distro/target/etc) -->
+	<target name="deploy.ui.qa.processes">
+		<delete dir="ui/build" />
+		<mkdir dir="ui/build"/>
+		<zip destfile="ui/build/ui-qa-processes.bar">
+		  <fileset dir="ui/processes">
+		    <include name="verifyJobExceptionStacktrace.bpmn20.xml"/>
+		  </fileset>
+		</zip>
+		<taskdef name="deploy-bar" classname="org.activiti.engine.impl.ant.DeployBarTask">
+		  <classpath>
+		    <fileset dir="${activiti.home}/setup/build/">
+		      <include name="activiti-cfg.jar"/>
+		     </fileset>
+		     <fileset dir="${activiti.home}/examples/activiti-engine-examples/libs-runtime/" />
+         <fileset dir="${activiti.home}/examples/activiti-engine-examples/libs-test/" />
+		   </classpath>
+		  </taskdef>
+		
+		  <deploy-bar file="ui/build/ui-qa-processes.bar" />
+		  <delete dir="ui/build" />
+	</target>
+	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="activiti.qa.db">
+
+	<target name="create.db.schema">
+		<echo message="creating database schema"/>
+		<echo message="  basedir: ${basedir}"/>
+		<echo message="  database: ${database}"/>
+		<property file="${user.home}/.activiti/jdbc/${database}.properties"/>
+		<echo message="  jdbc.driver: ${jdbc.driver}"/>
+		<echo message="  jdbc.url: ${jdbc.url}"/>
+		<echo message="  jdbc.username: ${jdbc.username}"/>
+		<echo message="  jdbc.password: ${jdbc.password}"/>
+		<!-- echo message="  test_classpath: ${test_classpath}" / -->
+		<path id="test.classpath">
+			<pathelement path="${test_classpath}"/>
+		</path>
+		<sql driver="${jdbc.driver}" password="${jdbc.password}" url="${jdbc.url}" userid="${jdbc.username}" classpathref="test.classpath">
+			<javaresource name="org/activiti/db/create/activiti.${database}.create.engine.sql" classpathref="test.classpath"/>
+      <javaresource name="org/activiti/db/create/activiti.${database}.create.history.sql" classpathref="test.classpath"/>
+      <javaresource name="org/activiti/db/create/activiti.${database}.create.identity.sql" classpathref="test.classpath"/>
+		</sql>
+	</target>
+
+	<target name="drop.db.schema">
+		<echo message="dropping database schema"/>
+		<echo message="  basedir: ${basedir}"/>
+		<echo message="  database: ${database}"/>
+		<property file="${user.home}/.activiti/jdbc/${database}.properties"/>
+		<echo message="  jdbc.driver: ${jdbc.driver}"/>
+		<echo message="  jdbc.url: ${jdbc.url}"/>
+		<echo message="  jdbc.username: ${jdbc.username}"/>
+		<echo message="  jdbc.password: ${jdbc.password}"/>
+		<!-- echo message="  test_classpath: ${test_classpath}" / -->
+		<path id="test.classpath">
+			<pathelement path="${test_classpath}"/>
+		</path>
+		<sql driver="${jdbc.driver}" password="${jdbc.password}" url="${jdbc.url}" userid="${jdbc.username}" classpathref="test.classpath">
+			<javaresource name="org/activiti/db/drop/activiti.${database}.drop.engine.sql" classpathref="test.classpath"/>
+      <javaresource name="org/activiti/db/drop/activiti.${database}.drop.history.sql" classpathref="test.classpath"/>
+      <javaresource name="org/activiti/db/drop/activiti.${database}.drop.identity.sql" classpathref="test.classpath"/>
+		</sql>
+	</target>
+	
+	<target name="create.activiti.cfg">
+		<echo message="creating activiti.cfg.xml in target environment"/>
+		<echo message="  basedir: ${basedir}"/>
+		<echo message="  database: ${database}"/>
+		
+		<property file="${user.home}/.activiti/jdbc/${database}.properties"/>
+
+		<echo message="  jdbc.driver: ${jdbc.driver}"/>
+		<echo message="  jdbc.url: ${jdbc.url}"/>
+		<echo message="  jdbc.username: ${jdbc.username}"/>
+		<echo message="  jdbc.password: ${jdbc.password}"/>
+		
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                match='databaseType" value=".*?"' 
+			              replace='databaseType" value="${database}"'/>
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                    match='jdbcDriver" value=".*?"' 
+		                    replace='jdbcDriver" value="${jdbc.driver}"'/>
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                        match='jdbcUrl" value=".*?"' 
+		                        replace='jdbcUrl" value="${jdbc.url}"'/>
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                        match='jdbcUsername" value=".*?"' 
+		                        replace='jdbcUsername" value="${jdbc.username}"'/>
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                        match='jdbcPassword" value=".*?"' 
+		                        replace='jdbcPassword" value="${jdbc.password}"'/>
+		<replaceregexp file="./target/test-classes/activiti.cfg.xml" flags="s"
+		                        match='databaseSchemaUpdate" value=".*?"' 
+		                        replace='databaseSchemaUpdate" value="false"'/>
+	</target>
+	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="activiti.qa.upgrade" default="upgrade">
+	
+  <property file="${user.home}/.activiti/build.properties" />
+  <property name="activiti.version" value="5.16-SNAPSHOT" />
+  <property name="database" value="h2" />
+  <property name="activiti.old.version" value="5.0" />
+  <property name="downloads.dir" value="${user.home}/.activiti/downloads" />
+  <property name="download.old.distro.url" value="http://activiti.org/downloads/activiti-${activiti.old.version}.zip" />
+
+	<condition property="mvn.executable" value="mvn.bat" else="mvn">
+     <os family="windows"/>
+  </condition>
+	
+	<target name="clean">
+		<delete dir="target" />
+	</target>
+	
+  <condition property="is.database.mysql">
+     <equals arg1="${database}" arg2="mysql" />
+  </condition>
+
+  <condition property="is.database.h2">
+     <equals arg1="${database}" arg2="h2" />
+  </condition>
+	
+  <condition property="db.create.target" value="db.create" else="internal.db.create">
+     <or>
+       <equals arg1="${activiti.old.version}" arg2="5.0" />
+       <equals arg1="${activiti.old.version}" arg2="5.1" />
+       <equals arg1="${activiti.old.version}" arg2="5.2" />
+       <equals arg1="${activiti.old.version}" arg2="5.3" />
+       <equals arg1="${activiti.old.version}" arg2="5.4" />
+       <equals arg1="${activiti.old.version}" arg2="5.5" />
+       <equals arg1="${activiti.old.version}" arg2="5.6" />
+     </or>
+   </condition>
+	
+	<target name="newupgrade">
+    <exec executable="${mvn.executable}" dir="../../modules/activiti-upgrade">
+      <arg line="-PexportCurrentDbSchema clean install" />
+    </exec>
+    <mkdir dir="target/activiti-${activiti.old.version}/libs" />
+    <copy file="${user.home}/.activiti/upgrade/build.${database}.properties" todir="target" overwrite="true" />
+    <exec executable="${mvn.executable}">
+      <arg line="dependency:copy-dependencies -Dactiviti.upgrade.version=${activiti.old.version} -Ddatabase=${database} -DoutputDirectory=target/activiti-${activiti.old.version}/libs" />
+    </exec>
+    <mkdir dir="target/activiti-${activiti.version}/libs" />
+    <exec executable="${mvn.executable}" dir="../../modules/activiti-engine">
+      <arg line="clean install dependency:copy-dependencies -Ddatabase=${database} -DincludeScopes=test -DoutputDirectory=../../qa/upgrade/target/activiti-${activiti.version}/libs" />
+    </exec>
+    <java classname="org.activiti.engine.impl.db.DbSchemaCreate" classpathref="old.classpath" />
+    <java classname="org.activiti.engine.impl.db.DbSchemaUpdate" classpathref="new.classpath" />
+    <exec executable="${mvn.executable}" dir="../../modules/activiti-upgrade">
+      <arg line="-PcheckUpgrade clean install" />
+    </exec>
+	</target>
+	
+	<target name="upgrade" depends="get.old.distro,
+		                              install.old.distro,
+		                              build.engine.module,
+		                              clean.db">
+    <copy file="${user.home}/.activiti/upgrade/build.${database}.properties" todir="target/activiti-${activiti.old.version}/setup" overwrite="true" />
+		<antcall target="internal.h2.start" />
+    <echo message="####################################" />
+    <echo message="### CREATING ACTIVITI ${activiti.old.version} TABLES ###" />
+    <echo message="####################################" />
+	  <loadfile property="old.database.properties.used" srcFile="target/activiti-${activiti.old.version}/setup/build.${database}.properties" failonerror="false"/>
+    <echo message="${old.database.properties.used}" />
+		<jar destfile="target/activiti-${activiti.old.version}/setup/files/dependencies/libs/logging-config.jar">
+			<fileset dir=".">
+				<includesfile name="logging.properties"/>
+			</fileset>
+		</jar>
+		<condition property="db.create.target" value="db.create" else="internal.db.create">
+			<or>
+				<equals arg1="${activiti.old.version}" arg2="5.0" />
+        <equals arg1="${activiti.old.version}" arg2="5.1" />
+        <equals arg1="${activiti.old.version}" arg2="5.2" />
+        <equals arg1="${activiti.old.version}" arg2="5.3" />
+        <equals arg1="${activiti.old.version}" arg2="5.4" />
+        <equals arg1="${activiti.old.version}" arg2="5.5" />
+        <equals arg1="${activiti.old.version}" arg2="5.6" />
+			</or>
+		</condition>
+    <ant antfile="target/activiti-${activiti.old.version}/setup/build.xml" target="${db.create.target}" inheritall="false">
+      <property name="db" value="${database}" />
+    	<property name="feature.cycle" value="disabled" />
+    </ant>
+    <echo message="###################################################" />
+    <echo message="### RUNNING BEFORE-TESTS IN ACTIVITI ${activiti.old.version} ###" />
+    <echo message="###################################################" />
+    <echo message="unpacking upgrade before test classes" />
+    <exec executable="${mvn.executable}">
+      <arg line="dependency:unpack-dependencies -Dactiviti.upgrade.version=${activiti.old.version}-ALWAYS-SNAPSHOT -DoutputDirectory=target/activiti-${activiti.old.version}-upgrade-before-classes -DexcludeTransitive=true" />
+    </exec>
+    <echo message="updating activiti cfg fir the tests before migration" />
+    <copy file="activiti.cfg.xml" todir="target/activiti-${activiti.old.version}-upgrade-before-classes" overwrite="true">
+      <filterset filtersfile="${user.home}/.activiti/upgrade/build.${database}.properties" />
+    </copy>
+    <mkdir dir="target/test-results-before" />
+		<junit>
+			<classpath>
+				<pathelement location="target/activiti-${activiti.old.version}-upgrade-before-classes" />
+				<fileset dir="target/activiti-${activiti.old.version}/workspace/activiti-engine-examples/libs-runtime" />
+        <fileset dir="target/activiti-${activiti.old.version}/workspace/activiti-engine-examples/libs-test" />
+			</classpath>
+			<batchtest todir="target/test-results-before" fork="yes">
+				<fileset dir="target/activiti-${activiti.old.version}-upgrade-before-classes">
+					<include name="**/*BeforeTest.class"/>
+			  </fileset>
+				<formatter type="xml" usefile="false" />
+			</batchtest>
+		</junit>
+    <echo message="##################################################" />
+    <echo message="### RUNNING AFTER-TESTS IN ACTIVITI ${activiti.version} ###" />
+    <echo message="##################################################" />
+    <condition property="optional.debug.property" value="-Dmaven.surefire.debug" else="">
+      <equals arg1="${debug}" arg2="true"/>
+    </condition>
+    <exec executable="${mvn.executable}" dir="../../modules/activiti-upgrade">
+      <arg line="-Ddatabase=${database} ${optional.debug.property} clean prepare-package" />
+    </exec>
+    <antcall target="internal.h2.stop" />
+	</target>
+	
+	<target name="internal.h2.start" if="is.database.h2">
+    <ant antfile="target/activiti-${activiti.old.version}/setup/build.xml" target="h2.start" inheritall="false">
+      <property name="db" value="${database}" />
+    </ant>
+	</target>
+
+	 <target name="internal.h2.stop" if="is.database.h2">
+ 	  <ant antfile="target/activiti-${activiti.old.version}/setup/build.xml" target="h2.stop" inheritall="false">
+	    <property name="db" value="${database}" />
+	  </ant>
+  </target>
+
+	<target name="get.old.distro">
+	  <available property="old.distro.available" file="${downloads.dir}/activiti-${activiti.old.version}.zip"/>
+    <antcall target="internal.get.old.distro" />
+  </target>
+	
+  <target name="internal.get.old.distro" unless="old.distro.available">
+  	<mkdir dir="${downloads.dir}" />
+		<get src="${download.old.distro.url}" dest="${downloads.dir}/activiti-${activiti.old.version}.zip" />
+	</target>
+
+  <target name="install.old.distro">
+    <available property="old.installation.available" file="target/activiti-${activiti.old.version}"/>
+  	<antcall target="internal.install.old.distro" />
+  </target>
+	
+  <target name="internal.install.old.distro" unless="old.installation.available">
+    <echo message="#############################" />
+    <echo message="### INSTALLING OLD DISTRO ###" />
+    <echo message="#############################" />
+  	<mkdir dir="target/activiti-${activiti.old.version}" />
+    <unzip src="${downloads.dir}/activiti-${activiti.old.version}.zip" dest="target" />
+  	<copy file="${user.home}/.activiti/upgrade/build.${database}.properties" todir="target/activiti-${activiti.old.version}/setup" overwrite="true" />
+    <ant antfile="target/activiti-${activiti.old.version}/setup/build.xml" target="inflate.examples" inheritall="false" />
+    <exec executable="${mvn.executable}">
+      <arg line="dependency:copy-dependencies -X -Dactiviti.upgrade.version=${activiti.old.version}-ALWAYS-SNAPSHOT -DincludeGroupIds=com.oracle.jdbc -DoutputDirectory=target/activiti-${activiti.old.version}/workspace/activiti-engine-examples/libs-test" />
+    </exec>
+    <copy todir="target/activiti-${activiti.old.version}/setup/files/dependencies/libs">
+      <fileset dir="target/activiti-${activiti.old.version}/workspace/activiti-engine-examples/libs-test">
+      	<include name="ojdbc5*.jar" />
+      </fileset>
+    </copy>
+    <ant antfile="target/activiti-${activiti.old.version}/setup/build.xml" target="h2.install" inheritall="false">
+      <property name="db" value="${database}" />
+    </ant>
+  </target>
+	
+	<target name="build.engine.module">
+    <echo message="##############################" />
+    <echo message="### BUILDING ENGINE MODULE ###" />
+    <echo message="##############################" />
+    <exec executable="${mvn.executable}" dir="../..">
+      <arg line="-DskipTests clean install" />
+    </exec>
+	</target>
+
+	<target name="clean.db" if="is.database.mysql" depends="install.old.distro">
+    <echo message="#########################" />
+    <echo message="### CLEANING MYSQL DB ###" />
+    <echo message="#########################" />
+	  <property file="${user.home}/.activiti/upgrade/build.${database}.properties" />
+		<echo message="cleaning db ${jdbc.url}" />
+	  <sql driver="${jdbc.driver}" password="${jdbc.password}" url="${jdbc.url}" userid="${jdbc.username}">
+      <classpath>
+        <fileset dir="target/activiti-${activiti.old.version}/workspace/activiti-engine-examples/libs-test" />
+      </classpath>
+	 	  <transaction src="clean.mysql.sql" />
+	 	</sql>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="activiti.userguide" default="build.userguide">
+
+	<!-- 
+	Special thanks to Las Vogel for his great online instructions
+	http://www.vogella.de/articles/DocBook/article.html
+	-->
+	
+  <property name="docbooktool.version" value="1.0" />
+  <property name="docbooktool.dir" value="target/docbook-tool-${docbooktool.version}" />
+  <property name="docbook.xsl.dir" value="${docbooktool.dir}/docbook-xsl" />
+	<property name="html.stylesheet" value="${docbook.xsl.dir}/html/docbook.xsl" />
+  <property name="fo.stylesheet" value="${docbook.xsl.dir}/fo/docbook.xsl" />
+  <condition property="mvn.executable" value="mvn.bat" else="mvn">
+     <os family="windows"/>
+  </condition>
+
+	<available file="${docbooktool.dir}" property="docbooktool.is.available" />
+
+	<condition property="is.windows">
+		<os family="windows"/>
+	</condition>
+
+	<property name="ant.libs" value="${user.home}/.ant/lib" />
+  <condition property="xalan.libs.installed">
+    <and>
+    	<available file="${ant.libs}/" property="one" />
+    	<available file="${docbooktool.dir}" property="two" />
+    </and>
+  </condition>
+
+	<target name="build.userguide" depends="install.docbooktool, build.html" />
+	
+  <path id="xslt.classpath">
+    <fileset dir="${docbooktool.dir}/xalan">
+        <include name="*.jar"/>
+    </fileset>
+  </path>
+
+  <path id="fop.classpath">
+    <fileset dir="${docbooktool.dir}/fop">
+        <include name="*.jar"/>
+    </fileset>
+  </path>
+
+	<target name="clean" description="Cleans up generated files.">
+    <delete dir="target/html" />
+    <delete dir="target/pdf" />
+    <delete dir="target/tmp" />
+	</target>
+
+  <target name="install.docbooktool" unless="docbooktool.is.available">
+  	<mkdir dir="target" />
+    <exec executable="${mvn.executable}">
+      <arg line="compile" />
+    </exec>
+  </target>
+	
+	<!-- 
+	     Fix for a known bug in ant:
+	     Normally, when executing XSLT with JAXP (eg for generating docbook), a JAXP implementation jar will have 
+	     precedence on the classes shipped in the JDK (com.sun.org.apache.xalan..., which is an old version of Xalan)
+	     However, providing such jars in the classpath element of the xslt task DOES NOT WORK,
+	     and hence the internal sun classes will ALWAYS be used (and they are crap).
+	     Therefore, the xalan libs must be installed in user.home/.ant/lib, which 
+	     will make the xslt task use these jars instead of the internal JDK ones.
+  -->
+	<target name="install.xalan.libs" depends="install.docbooktool">
+    <mkdir dir="${user.home}/.ant/lib"/>
+	  <copy todir="${user.home}/.ant/lib">
+	    <fileset dir="${docbooktool.dir}/xalan">
+	      <include name="*.jar" />
+	    </fileset>
+	  </copy>
+	</target>
+
+	<target name="prepare.src">
+		<mkdir dir="target/prepared-src" />
+		<copy todir="target/prepared-src" overwrite="true">
+			<fileset dir="src" />
+		</copy>
+		<antcall target="windows.convert.line.endings"/>
+		<replace value="" dir="target/prepared-src/en/chapters">
+			<include name="*.xml"/>
+			<replacetoken><![CDATA[<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE chapter PUBLIC "-//OASIS//DTD DocBook XML V4.5//EN" "../../../target/docbook-tool-1.0/docbook-xml/docbookx.dtd">]]></replacetoken>
+		</replace>
+	</target>
+
+	<target name="windows.convert.line.endings" if="is.windows">
+		<echo message="CONVERTING CRLF for windows"/>
+		<fixcrlf srcdir="target/prepared-src/en/chapters" includes="*.xml"
+         eol="crlf" eof="remove" />	
+	</target>
+
+	<target name="build.html"
+		      depends="prepare.src"
+		      description="Generates HTML files from DocBook XML">
+    <mkdir dir="target/html" />
+		<echo message="Executing docbook XSLT on userguide source files." />
+		<echo message="On failure, make sure that you have installed the Xalan libs by executing the 'install.xalan.libs' target in the 'userguide' folder."></echo>
+		<xslt style="${html.stylesheet}" extension=".html" basedir="target/prepared-src" destdir="target/html">
+			<include name="en/index.xml" />
+			<param name="html.stylesheet" expression="style.css" />
+			<!-- <classpath refid="xslt.classpath" /> 
+			      Does not work -> known bug!! 
+			      Will NEVER use the xalan libs, but always the com.sun.xslt stuff (==crap). 
+			      Call the 'install.xalan.libs' first to get it working.-->
+		</xslt>
+		<copy todir="target/html/en">
+			<fileset dir="target/prepared-src">
+				<include name="style.css" />
+			</fileset>
+      <fileset dir="src/en">
+        <include name="images/**" />
+      </fileset>
+			<fileset dir="src/en/js">
+		    <include name="**" />
+			</fileset>
+		</copy>
+		
+		<!-- post html generation prettifying -->
+		<!-- TODO: replace with something more intelligent -->
+		<replace file="target/html/en/index.html">
+		  <replacetoken><![CDATA[<link href="style.css" rel="stylesheet" type="text/css">]]></replacetoken>
+			<replacevalue><![CDATA[<link href="style.css" rel="stylesheet" type="text/css">
+				<script type="text/javascript" src="prettify.js"></script>]]></replacevalue>
+		</replace>
+		<replace file="target/html/en/index.html">
+		  <replacetoken><![CDATA[<body bgcolor="white"]]></replacetoken>
+		  <replacevalue><![CDATA[<body onload="prettyPrint()" bgcolor="white"]]></replacevalue>
+		</replace>
+		<replace file="target/html/en/index.html">
+		  <replacetoken><![CDATA[programlisting]]></replacetoken>
+		  <replacevalue><![CDATA[prettyprint]]></replacevalue>
+		</replace>
+		
+	</target>
+	
+	<target name="build.pdf">
+		<mkdir dir="target/tmp" />
+		<xslt style="${fo.stylesheet}" extension=".fo" basedir="src" destdir="target/tmp">
+      <include name="en/index.xml" />
+	    <param name="section.autolabel" expression="1" />
+	  </xslt>
+    <taskdef name="fop" 
+             classname="org.apache.fop.tools.anttasks.Fop" 
+             classpathref="fop.classpath"/>
+	  <fop format="application/pdf" outdir="target/pdf">
+	    <fileset dir="target/tmp">
+	      <include name="**/*.fo" />
+	    </fileset>
+	  </fop>
+	</target>
+
+</project>

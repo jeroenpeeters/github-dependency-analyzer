@@ -1,0 +1,543 @@
+<?xml version="1.0"?>
+<project name="sitemesh" default="jar">
+
+    <property name="build.compiler" value="modern" />
+    <property file="build.properties"/>
+
+    <!-- Classpath -->
+    <path id="cp">
+        <fileset dir="lib">
+            <include name="**/*.jar"/>
+        </fileset>
+    </path>
+
+    <target name="jflex" unless="lexer.uptodate" description="Generate Lexer class">
+        <echo message="Generating HTML lexer using JFlex"/>
+        <mkdir dir="build/java"/>
+        <java classpath="lib/jflex.jar" classname="JFlex.Main" fork="yes">
+            <arg value="-d"/>
+            <arg value="build/java/com/opensymphony/module/sitemesh/html/tokenizer"/>
+            <arg value="src/java/com/opensymphony/module/sitemesh/html/tokenizer/lexer.flex"/>
+        </java>
+        <delete file="build/java/com/opensymphony/module/sitemesh/html/tokenizer/Lexer.java~"/>
+    </target>
+
+    <target name="hostedqa" depends="example">
+        <taskdef resource="hostedqatasks" classpathref="cp"/>
+        <upload file="dist/${name}-example.war" account="sitemesh" email="${hostedqa.email}" password="${hostedqa.password}" resourceId="18"/>
+        <playsuite suiteId="16" clientConfigs="17" appConfigs="12" account="sitemesh" email="${hostedqa.email}" password="${hostedqa.password}"/>
+    </target>
+
+    <target name="compile" description="Compile Java">
+        <!-- Determine if lexer needs regenerating -->
+        <uptodate
+            property="lexer.uptodate"
+            srcfile="src/java/com/opensymphony/module/sitemesh/html/tokenizer/lexer.flex"
+            targetfile="build/java/com/opensymphony/module/sitemesh/html/tokenizer/Lexer.java"/>
+        <antcall target="jflex"/>
+
+        <mkdir dir="build/classes"/>
+
+        <javac destdir="build/classes"
+            classpathref="cp"
+            optimize="${compile.optimize}"
+            debug="${compile.debug}"
+            nowarn="${compile.nowarn}"
+            deprecation="${compile.deprecation}"
+            source="1.5"
+            target="1.5"
+            >
+            <src path="src/java"/>
+            <src path="build/java"/>
+        </javac>
+    </target>
+
+    <target name="test" depends="compile" description="Run all unit tests">
+        <mkdir dir="build/test-classes"/>
+        <mkdir dir="build/test-results"/>
+        <javac srcdir="src/test" destdir="build/test-classes" classpathref="cp" classpath="build/classes"/>
+        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpathref="cp"/>
+        <echo message="Running unit tests..."/>
+        <junit printsummary="no" haltonfailure="yes" fork="yes" forkmode="once" dir=".">
+            <classpath refid="cp"/>
+            <classpath>
+                <pathelement location="build/classes"/>
+                <pathelement location="build/test-classes"/>
+            </classpath>
+            <formatter type="brief" usefile="no"/>
+            <formatter type="xml"/>
+            <batchtest todir="build/test-results">
+                <fileset dir="src/test">
+                    <include name="**/*Test.java"/>
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <target name="javadocs" description="Generates JavaDoc">
+        <mkdir dir="dist/docs/api"/>
+
+        <javadoc sourcepath="src/java"
+            destdir="dist/docs/api"
+            stylesheetfile="docs/api.css"
+            packagenames="com.opensymphony.*"
+            classpathref="cp"
+            author="true"
+            version="true"
+            private="true"
+            use="true"
+            windowTitle="${Name} ${version} API"
+            doctitle="${Name} ${version} API"
+            footer="&lt;a href=&quot;http://www.opensymphony.com/sitemesh/&quot;&gt;www.opensymphony.com/sitemesh/&lt;/a&gt;">
+
+            <link href="http://java.sun.com/j2se/1.4.2/docs/api/"/>
+            <link href="http://java.sun.com/products/servlet/2.3/javadoc/"/>
+            <link href="http://jakarta.apache.org/velocity/api/"/>
+            <link href="http://jakarta.apache.org/velocity/tools/javadoc/"/>
+            <link href="http://freemarker.sourceforge.net/docs/api/"/>
+        </javadoc>
+    </target>
+
+    <target name="docs" depends="javadocs">
+        <copy todir="dist/docs">
+            <fileset dir="docs" excludes="*.css"/>
+        </copy>
+
+        <mkdir dir="dist/docs/dtd"/>
+        <copy todir="dist/docs" file="README.txt"/>
+        <copy todir="dist/docs" file="CHANGES.txt"/>
+        <copy todir="dist/docs/dtd">
+            <fileset dir="src/etc/dtd"/>
+        </copy>
+
+        <replace dir="dist/docs" token="@VERSION@" value="${version}"/>
+    </target>
+
+    <target name="jar" depends="compile">
+        <mkdir dir="dist"/>
+        <copy todir="build/classes">
+             <fileset dir="src/java" excludes="**/*.java,**/*.flex"/>
+        </copy>
+        <jar jarfile="dist/${name}-${version}.jar" basedir="build/classes" excludes="**/servlets/**">
+            <metainf dir="src/etc/tld/jsp1.2" includes="*.tld"/>
+        </jar>
+    </target>
+
+    <target name="sources" depends="compile">
+        <mkdir dir="dist"/>
+        <jar jarfile="dist/${name}-${version}-sources.jar">
+            <fileset dir="src/java"/>
+            <fileset dir="build/java"/>
+        </jar>
+    </target>
+
+    <target name="blank" depends="jar" description="Builds simple web-app to get started with SiteMesh">
+        <mkdir dir="dist"/>
+        <war warfile="dist/${name}-blank.war" webxml="src/etc/blank/WEB-INF/web.xml">
+            <fileset dir="src/etc/blank">
+                <exclude name="WEB-INF/web.xml"/>
+            </fileset>
+            <lib dir="dist">
+                <include name="${name}-${version}.jar"/>
+            </lib>
+            <lib dir="src/etc/tld">
+                <include name="sitemesh*.tld" />
+            </lib>
+        </war>
+    </target>
+
+    <target name="example" depends="jar" description="Builds sample web-app">
+        <mkdir dir="build/example-temp"/>
+        <copy todir="build/example-temp">
+            <fileset dir="src/example-webapp"/>
+        </copy>
+
+        <mkdir dir="dist"/>
+
+        <war warfile="dist/${name}-example.war" webxml="src/example-webapp/WEB-INF/web.xml">
+            <fileset dir="build/example-temp">
+                <exclude name="WEB-INF/web.xml"/>
+            </fileset>
+            <lib dir="dist">
+                <include name="${name}-${version}.jar"/>
+            </lib>
+            <lib dir="lib">
+                <include name="commons-*.jar"/>
+                <include name="velocity-*.jar"/>
+                <include name="freemarker.jar"/>
+                </lib>
+            <lib dir="src/etc/tld">
+                  <include name="sitemesh*.tld" />
+            </lib>
+        </war>
+    </target>
+
+    <target name="dist" depends="clean, test, jar, docs, blank, example" description="Builds distribution archives">
+        <zip zipfile="dist/${name}-${version}.zip">
+            <zipfileset dir=".">
+                <include name="build.xml"/>
+                <include name="build.properties"/>
+                <include name="LICENSE.txt"/>
+                <include name="CHANGES.txt"/>
+                <include name="README.txt"/>
+                <include name="src/**"/>
+                <include name="lib/**"/>
+            </zipfileset>
+            <zipfileset dir="build">
+                <include name="${name}-${version}.jar"/>
+                <include name="${name}-example.war"/>
+                <include name="${name}-blank.war"/>
+            </zipfileset>
+            <zipfileset dir="dist/docs" prefix="docs"/>
+        </zip>
+    </target>
+
+    <target name="clean" description="Removes all build artifacts">
+        <delete dir="build"/>
+        <delete dir="dist"/>
+    </target>
+
+</project>
+<project name="sitemesh-testsuite" default="tests-build" basedir=".">
+
+    <property name="test-results" value="test-results"/>
+
+    <path id="classpath">
+        <fileset dir="lib"/>
+        <fileset dir="../lib"/>
+        <fileset dir="../dist"/>
+        <fileset dir="embedded/tomcat/lib"/>
+    </path>
+
+
+    <property name="cargo-uberjar" value="lib/cargo-core-uberjar-0.8.jar"/>
+    <property name="cargo-antjar" value="lib/cargo-ant-0.8.jar"/>
+    <property name="mywarfile" value="${basedir}/dist/webapp"/>
+    <property name="containers.dir" value="${basedir}/containers"/>
+    <property name="container.port" value="9000" />
+
+
+    <taskdef resource="cargo.tasks">
+        <classpath>
+            <pathelement location="${cargo-uberjar}"/>
+            <pathelement location="${cargo-antjar}"/>
+        </classpath>
+    </taskdef>
+
+
+    <target name="cargo-all" depends="cargo-orion205, cargo-resin3019, cargo-resin2117, cargo-tomcat5528, cargo-tomcat4132, cargo-tomcat5030"
+            description="Run acceptance tests on multiple application servers using Cargo"/>
+
+    <target name="2.3-web.xml" depends="webapp-build">
+        <copy file="dist/webapp/WEB-INF/web-2.3.xml" tofile="dist/webapp/WEB-INF/web.xml" overwrite="true"/>
+    </target>
+    <target name="2.4-web.xml" depends="webapp-build">
+        <copy file="dist/webapp/WEB-INF/web-2.4.xml" tofile="dist/webapp/WEB-INF/web.xml" overwrite="true"/>
+    </target>
+
+    <target name="cargo-orion205" depends="webapp-build" description="Run acceptance tests on Orion 2.0.5">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.orionserver.com/distributions/orion2.0.5.zip"/>
+            <param name="container.uniquename" value="orion205"/>
+            <param name="container.type" value="orion2x"/>
+            <param name="container.port" value="9001"/>
+            <param name="web.xml" value="2.3-web.xml"/>
+        </antcall>
+    </target>
+
+    <target name="cargo-resin3019" depends="webapp-build" description="Run acceptance tests on Resin 3.0.19">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.caucho.com/download/resin-3.0.19.zip"/>
+            <param name="container.uniquename" value="resin3019"/>
+            <param name="container.type" value="resin3x"/>
+            <param name="container.port" value="9002"/>
+            <param name="web.xml" value="2.4-web.xml"/>
+        </antcall>
+    </target>
+
+    <target name="cargo-resin2117" depends="webapp-build" description="Run acceptance tests on Resin 2.1.17">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.caucho.com/download/resin-2.1.17.zip"/>
+            <param name="container.uniquename" value="resin2117"/>
+            <param name="container.type" value="resin2x"/>
+            <param name="container.port" value="9003"/>
+            <param name="web.xml" value="2.3-web.xml"/>
+        </antcall>
+    </target>
+
+<!--  can't get jboss to deploy the application.  May need to use a closed war instead
+    <target name="cargo-jboss405" depends="webapp-build">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://optusnet.dl.sourceforge.net/sourceforge/jboss/jboss-4.0.5.GA.zip"/>
+            <param name="container.uniquename" value="jboss405"/>
+            <param name="container.type" value="jboss4x"/>
+            <param name="container.port" value="9004"/>
+        </antcall>
+    </target>
+-->
+
+    <target name="cargo-jo11beta" depends="webapp-build" description="Run acceptance tests on Jo 1 Beta 1">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://optusnet.dl.sourceforge.net/sourceforge/tagtraum-jo/jo1.1beta1.zip"/>
+            <param name="container.uniquename" value="jo11beta"/>
+            <param name="container.type" value="jo1x"/>
+            <param name="container.port" value="9005"/>
+            <param name="web.xml" value="2.3-web.xml"/>
+        </antcall>
+    </target>
+
+<!--
+   <target name="cargo-jetty5112" depends="webapp-build">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://optusnet.dl.sourceforge.net/sourceforge/jetty/jetty-5.1.12.zip"/>
+            <param name="container.uniquename" value="jetty5112"/>
+            <param name="container.type" value="jetty5x"/>
+        </antcall>
+    </target>
+
+    <target name="cargo-jetty602" depends="webapp-build">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://optusnet.dl.sourceforge.net/sourceforge/jetty/jetty-6.0.2.zip"/>
+            <param name="container.uniquename" value="jetty602"/>
+            <param name="container.type" value="jetty6x"/>
+        </antcall>
+    </target>
+-->
+    <target name="cargo-tomcat5528" depends="webapp-build" description="Run acceptance tests on Tomcat 5.5.28">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.apache.org/dist/tomcat/tomcat-5/v5.5.28/bin/apache-tomcat-5.5.28.zip"/>
+            <param name="container.uniquename" value="tomcat5528"/>
+            <param name="container.type" value="tomcat5x"/>
+            <param name="container.port" value="9006"/>
+            <param name="web.xml" value="2.4-web.xml"/>
+        </antcall>
+    </target>
+
+    <target name="cargo-tomcat4132" depends="webapp-build" description="Run acceptance tests on Tomcat 4.1.34">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.apache.org/dist/tomcat/tomcat-4/v4.1.34/bin/apache-tomcat-4.1.34.zip"/>
+            <param name="container.uniquename" value="tomcat4132"/>
+            <param name="container.type" value="tomcat4x"/>
+            <param name="container.port" value="9007"/>
+            <param name="web.xml" value="2.3-web.xml"/>
+        </antcall>
+    </target>
+
+    <target name="cargo-tomcat5030" depends="webapp-build" description="Run acceptance tests on Tomcat 5.0.30">
+        <antcall target="test-cargo">
+            <param name="container.installurl" value="http://www.apache.org/dist/tomcat/tomcat-5/v5.0.30/bin/jakarta-tomcat-5.0.30.zip"/>
+            <param name="container.uniquename" value="tomcat5030"/>
+            <param name="container.type" value="tomcat5x"/>
+            <param name="container.port" value="9008"/>
+            <param name="web.xml" value="2.4-web.xml"/>
+        </antcall>
+    </target>
+
+
+    <target name="test-cargo" depends="webapp-build">
+        <property name="container.home.dir" value="${containers.dir}/home/${container.uniquename}" />
+        <property name="container.download.dir" value="${containers.dir}/download/${container.uniquename}" />
+        <property name="container.log.dir" value="${containers.dir}/logs/${container.uniquename}" />
+
+        <mkdir dir="${container.download.dir}"/>
+        <mkdir dir="${container.home.dir}"/>
+        <mkdir dir="${container.log.dir}"/>
+
+        <echo message="Starting Cargo..."/>
+        <echo message="Downloading container to = ${container.download.dir} "/>
+        <echo message="Using configuration directory = ${container.home.dir} "/>
+        <echo message="Using war = ${mywarfile} "/>
+        <echo message="Jars used = ${cargo-uberjar} , ${cargo-antjar}"/>
+        <echo message="Using web.xml ${web.xml}"/>
+
+        <antcall target="${web.xml}"/>
+
+        <antcall target="start-or-stop-cargo">
+            <param name="cargo.action" value="start"/>
+        </antcall>
+
+        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpathref="classpath"/>
+        <mkdir dir="${test-results}"/>
+        <junit haltonfailure="no" fork="yes" forkmode="once" dir=".">
+            <classpath>
+                <fileset dir="lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="dist">
+                    <include name="*.jar"/>
+                </fileset>
+            </classpath>
+            <formatter type="plain" usefile="false"/>
+            <formatter type="xml" />
+            <sysproperty key="testsuite.port" value="${container.port}" />
+            <test todir="${test-results}" name="testsuite.sitemesh.SiteMeshTestSuite$OnCargoServer" outfile="${container.uniquename}"/>
+        </junit>
+
+        <!--<sleep minutes="10"/>-->
+
+        <antcall target="start-or-stop-cargo">
+            <param name="cargo.action" value="stop"/>
+        </antcall>
+
+    </target>
+
+    <target name="start-or-stop-cargo">
+        <fail unless="cargo.action">You must pass the 'cargo.action' property to start-or-stop-cargo</fail>
+        <cargo containerId="${container.type}" output="${container.log.dir}/output.log" log="${container.log.dir}/cargo.log" action="${cargo.action}" wait="false">
+            <configuration home="${container.home.dir}">
+                <property name="cargo.servlet.port" value="${container.port}"/>
+                <property name="cargo.logging" value="high"/>
+                <!--Uncomment to run cargo in a debugger.  You will also need to set wait=true above. -->
+                <!--<property name="cargo.jvmargs" value="-Xdebug -Xnoagent -Djava.compiler=NONE -Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=5005"/>-->
+                <deployable type="war" file="${mywarfile}"/>
+            </configuration>
+            <zipUrlInstaller installUrl="${container.installurl}" installDir="${container.download.dir}" />
+        </cargo>
+    </target>
+
+    <target name="sitemesh-build" description="Build SiteMesh jar">
+        <ant dir=".." target="jar"/>
+    </target>
+
+    <target name="webapp-build" depends="sitemesh-build,tests-build" description="Build web-app .war file">
+        <mkdir dir="dist/webapp/WEB-INF/classes"/>
+        <javac srcdir="src/webapp/WEB-INF/src" destdir="dist/webapp/WEB-INF/classes" classpathref="classpath" source="1.3" target="1.3"/>
+        <javac srcdir="src/java" destdir="dist/webapp/WEB-INF/classes" classpathref="classpath" includes="testsuite/i18n/EncodingFilter.java" debug="on" source="1.3" target="1.3"/>
+        
+        <copy todir="dist/webapp">
+            <fileset dir="src/webapp"/>
+        </copy>
+
+        <copy todir="dist/webapp/WEB-INF/lib">
+            <fileset dir="../dist">
+                <include name="sitemesh-*.jar"/>
+            </fileset>
+            <fileset dir="../lib">
+                <include name="commons-*.jar"/>
+                <include name="velocity-*.jar"/>
+                <include name="freemarker.jar"/>
+            </fileset>
+            <fileset dir="../src/etc/tld/">
+                <include name="*.tld"/>
+            </fileset>
+        </copy>
+
+        <!-- use the 2.4 web.xml -->
+        <copy file="dist/webapp/WEB-INF/web-2.4.xml" tofile="dist/webapp/WEB-INF/web.xml"/>
+        <jar jarfile="dist/sitemesh-testsuite.war" basedir="dist/webapp"/>
+    </target>
+
+    <target name="dist" depends="webapp-build"/>
+
+    <target name="tests-build" depends="sitemesh-build" description="Build test suite">
+        <mkdir dir="tmp/tests"/>
+        <javac srcdir="src/java" destdir="tmp/tests" classpathref="classpath" debug="on"/>
+
+        <mkdir dir="dist"/>
+        <jar jarfile="dist/sitemesh-testsuite.jar">
+            <fileset dir="tmp/tests"/>
+        </jar>
+    </target>
+
+    <target name="deploy" depends="tests-build, webapp-build" description="Deploy web-app to servers">
+        <java classname="testsuite.deploy.DeployWebApps" classpathref="classpath" fork="yes" dir=".">
+            <classpath>
+                <fileset dir="dist"/>
+            </classpath>
+        </java>
+    </target>
+
+    <target name="test" depends="tests-build" description="Run acceptance tests on deployed web-app">
+        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpathref="classpath"/>
+        <mkdir dir="${test-results}"/>
+        <junit haltonfailure="no" fork="yes" forkmode="once" dir=".">
+            <classpath>
+                <fileset dir="lib"/>
+                <fileset dir="dist"/>
+                <fileset dir="../lib"/>
+                <fileset dir="../dist"/>
+            </classpath>
+            <formatter type="plain" usefile="false"/>
+            <formatter type="xml"/>
+            <test todir="${test-results}" name="testsuite.sitemesh.SiteMeshTestSuite$OnAllServers"/>
+        </junit>
+    </target>
+
+    <target name="test-embedded" depends="test-embedded-jetty, test-embedded-tomcat" description="Run acceptance tests using embedded jetty and tomcat server (needs JDK 1.5)"/>
+
+    <target name="test-embedded-jetty" depends="tests-build, webapp-build" description="Run acceptance tests using embedded jetty server">
+        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpathref="classpath"/>
+        <mkdir dir="${test-results}"/>
+        <junit haltonfailure="no" fork="yes" forkmode="once" dir=".">
+            <classpath>
+                <fileset dir="lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="dist">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="../lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="../dist">
+                    <include name="*.jar"/>
+                </fileset>
+            </classpath>
+            <formatter type="plain" usefile="false"/>
+            <formatter type="xml"/>
+            <test todir="${test-results}" name="testsuite.sitemesh.SiteMeshTestSuite$OnEmbeddedServer"/>
+        </junit>
+    </target>
+
+    <target name="test-embedded-tomcat" depends="tests-build, webapp-build" description="Run acceptance tests using embedded tomcat server (needs JDK 1.5)">
+        <taskdef name="junit" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" classpathref="classpath"/>
+        <mkdir dir="${test-results}"/>
+        <junit haltonfailure="no" fork="yes" forkmode="once" dir=".">
+            <classpath>
+                <fileset dir="embedded/tomcat/lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="dist">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="../lib">
+                    <include name="*.jar"/>
+                </fileset>
+                <fileset dir="../dist">
+                    <include name="*.jar"/>
+                </fileset>
+            </classpath>
+            <formatter type="plain" usefile="false"/>
+            <formatter type="xml"/>
+            <test todir="${test-results}" name="testsuite.sitemesh.SiteMeshTestSuite$OnEmbeddedTomcatServer"/>
+        </junit>
+    </target>
+
+    <target name="report">
+        <junitreport todir="${test-results}">
+            <fileset dir="${test-results}">
+                <include name="TEST-*.xml"/>
+            </fileset>
+            <report format="frames" todir="${test-results}"/>
+        </junitreport>
+    </target>
+
+    <target name="clean" description="Clean up all built files">
+        <ant dir=".." target="clean"/>
+        <delete dir="tmp"/>
+        <delete dir="dist"/>
+        <delete dir="${test-results}"/>
+        <delete dir="embedded/tomcat/work"/>
+        <delete file="results.html"/>
+        <delete file="${containers.dir}/home"/>
+        <delete file="${containers.dir}/logs"/>
+    </target>
+
+    <target name="clean-all" description="Clean project, but also delete downloaded containers" depends="clean">
+        <delete file="${containers.dir}"/>
+    </target>
+
+</project>

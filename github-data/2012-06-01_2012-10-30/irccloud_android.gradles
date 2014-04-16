@@ -1,0 +1,208 @@
+buildscript {
+    repositories {
+        mavenCentral()
+        maven { url 'http://download.crashlytics.com/maven' }
+
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.9.+'
+        classpath 'com.crashlytics.tools.gradle:crashlytics-gradle:1.+'
+
+    }
+}
+apply plugin: 'android'
+//apply plugin: 'crashlytics'
+
+tasks.withType(Compile) {
+    options.encoding = "UTF-8"
+}
+
+repositories {
+    mavenCentral()
+    maven { url 'http://download.crashlytics.com/maven' }
+}
+
+dependencies {
+    compile 'com.google.code.gson:gson:2.2.4'
+    compile 'com.jakewharton:notificationcompat2:1.1.2'
+    compile 'com.android.support:support-v4:19.0.+'
+    compile 'com.android.support:appcompat-v7:19.0.+'
+
+    compile 'com.google.android.gms:play-services:4.1.+'
+    compile 'com.google.android.apps.dashclock:dashclock-api:+'
+    compile 'com.vandalsoftware.android:dslv:+'
+    compile project(':android-websockets')
+    compile 'com.crashlytics.android:crashlytics:1.+'
+}
+
+def getRevision = { ->
+    def stdout = new ByteArrayOutputStream()
+    exec {
+        commandLine 'git', 'rev-parse', '--short', 'HEAD'
+        standardOutput = stdout
+    }
+    return stdout.toString().trim()
+}
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion "19.0.3"
+    aaptOptions.useAaptPngCruncher = true
+
+    defaultConfig {
+        minSdkVersion 8
+        targetSdkVersion 19
+        packageName "com.irccloud.android"
+        testPackageName "com.irccloud.android.test"
+        testInstrumentationRunner "android.test.InstrumentationTestRunner"
+    }
+
+    signingConfigs {
+        release {
+            if(rootProject.file('keystore.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(file('keystore.properties')))
+
+                storeFile = file(props['storeFile'])
+                storePassword = props['storePassword']
+                keyAlias = props['keyAlias']
+                keyPassword = props['keyPassword']
+            }
+        }
+    }
+
+    lintOptions {
+        abortOnError false
+    }
+
+    buildTypes {
+        debug {
+            buildConfigField "String", "HOST", "\"www.irccloud.com\""
+            versionNameSuffix "-" + getRevision()
+            buildConfigField "boolean", "ENTERPRISE", "false"
+            if(rootProject.file('private.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(file('private.properties')))
+                buildConfigField "String", "GCM_ID", "\"" + props['GCM_ID'] + "\""
+                resValue "string", "CRASHLYTICS_KEY", "\"" + props['CRASHLYTICS_KEY'] + "\""
+            } else {
+                buildConfigField "String", "GCM_ID", "\"\""
+                resValue "string", "CRASHLYTICS_KEY", "\"\""
+            }
+            buildConfigField "String", "SSL_CN", "\"CN=*.irccloud.com,\""
+            buildConfigField "String", "SSL_FP", "\"8D3BE1983F75F4A4546F42F5EC189BC65A9D3A42\""
+            resValue "string", "IMAGE_SCHEME", "irccloud-image"
+            resValue "string", "IMAGE_SCHEME_SECURE", "irccloud-image"
+            resValue "string", "DISMISS_NOTIFICATION", "com.irccloud.android.DISMISS_NOTIFICATION"
+            resValue "string", "app_name", "IRCCloud"
+        }
+        release {
+            buildConfigField "String", "HOST", "\"www.irccloud.com\""
+            buildConfigField "String", "SSL_FP", "\"8D3BE1983F75F4A4546F42F5EC189BC65A9D3A42\""
+            buildConfigField "boolean", "ENTERPRISE", "false"
+            if(rootProject.file('private.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(file('private.properties')))
+                buildConfigField "String", "GCM_ID", "\"" + props['GCM_ID'] + "\""
+                resValue "string", "CRASHLYTICS_KEY", "\"" + props['CRASHLYTICS_KEY'] + "\""
+            } else {
+                buildConfigField "String", "GCM_ID", "\"\""
+                resValue "string", "CRASHLYTICS_KEY", "\"\""
+            }
+            buildConfigField "String", "SSL_CN", "\"CN=*.irccloud.com,\""
+            resValue "string", "IMAGE_SCHEME", "irccloud-image"
+            resValue "string", "IMAGE_SCHEME_SECURE", "irccloud-images"
+            resValue "string", "DISMISS_NOTIFICATION", "com.irccloud.android.DISMISS_NOTIFICATION"
+            resValue "string", "app_name", "IRCCloud"
+
+            if(rootProject.file('keystore.properties').exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+        enterprisedebug {
+            packageNameSuffix ".enterprise"
+            versionNameSuffix "-" + getRevision()
+            buildConfigField "String", "HOST", "\"www.irccloud.com\""
+            buildConfigField "boolean", "ENTERPRISE", "true"
+            if(rootProject.file('enterprise.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(file('enterprise.properties')))
+                buildConfigField "String", "GCM_ID", "\"" + props['GCM_ID'] + "\""
+                resValue "string", "CRASHLYTICS_KEY", "\"" + props['CRASHLYTICS_KEY'] + "\""
+            } else {
+                buildConfigField "String", "GCM_ID", "\"\""
+                resValue "string", "CRASHLYTICS_KEY", "\"\""
+            }
+            buildConfigField "String", "SSL_CN", "\"\""
+            buildConfigField "String", "SSL_FP", "\"\""
+            resValue "string", "IMAGE_SCHEME", "irccloud-enterprise-image"
+            resValue "string", "IMAGE_SCHEME_SECURE", "irccloud-enterprise-image"
+            resValue "string", "DISMISS_NOTIFICATION", "com.irccloud.android.DISMISS_NOTIFICATION"
+            resValue "string", "app_name", "IRCEnterprise"
+
+            signingConfig signingConfigs.debug
+        }
+        enterpriserelease {
+            packageNameSuffix ".enterprise"
+            buildConfigField "String", "HOST", "\"www.irccloud.com\""
+            buildConfigField "boolean", "ENTERPRISE", "true"
+            if(rootProject.file('enterprise.properties').exists()) {
+                def props = new Properties()
+                props.load(new FileInputStream(file('enterprise.properties')))
+                buildConfigField "String", "GCM_ID", "\"" + props['GCM_ID'] + "\""
+                resValue "string", "CRASHLYTICS_KEY", "\"" + props['CRASHLYTICS_KEY'] + "\""
+            } else {
+                buildConfigField "String", "GCM_ID", "\"\""
+                resValue "string", "CRASHLYTICS_KEY", "\"\""
+            }
+            buildConfigField "String", "SSL_CN", "\"\""
+            buildConfigField "String", "SSL_FP", "\"\""
+            resValue "string", "IMAGE_SCHEME", "irccloud-enterprise-image"
+            resValue "string", "IMAGE_SCHEME_SECURE", "irccloud-enterprise-images"
+            resValue "string", "DISMISS_NOTIFICATION", "com.irccloud.android.DISMISS_NOTIFICATION"
+            resValue "string", "app_name", "IRCEnterprise"
+
+            if(rootProject.file('keystore.properties').exists()) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
+    sourceSets {
+        main.manifest.srcFile 'AndroidManifest.xml'
+        main.java.srcDirs = ['src']
+        main.resources.srcDirs = ['src']
+        main.aidl.srcDirs = ['src']
+        main.renderscript.srcDirs = ['src']
+        enterprisedebug.res.srcDirs = ['enterprise-res']
+        enterpriserelease.res.srcDirs = ['enterprise-res']
+        main.res.srcDirs = ['res']
+        main.assets.srcDirs = ['assets']
+
+        androidTest {
+            java.srcDirs = ['tests/src']
+            res.srcDirs = ['tests/res']
+            assets.srcDirs = ['tests/assets']
+            resources.srcDirs = ['tests/src']
+        }
+    }
+}
+
+task __filteredResources(type:Copy) {
+    from('res/') {
+        exclude 'drawable-xhdpi/splashlogo.png'
+        exclude 'drawable-mdpi/ic_launcher.png'
+        exclude 'drawable-hdpi/ic_launcher.png'
+        exclude 'drawable-xhdpi/ic_launcher.png'
+        exclude 'drawable-xxhdpi/ic_launcher.png'
+        exclude 'drawable-xxxhdpi/ic_launcher.png'
+    }
+    into 'build/filtered_resources'
+    includeEmptyDirs = true
+}
+
+tasks.whenTaskAdded { task ->
+    if (task.name == 'mergeEnterprisedebugResources' || task.name == 'mergeEnterprisereleaseResources') {
+        task.dependsOn __filteredResources
+    }
+}

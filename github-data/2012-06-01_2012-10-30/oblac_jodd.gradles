@@ -1,0 +1,810 @@
+description = '''
+
+	Jodd is an open-source Java utility library and set of micro frameworks.
+	Jodd tools enriches JDK with many powerful and feature rich utilities.
+	It helps with everyday task, makes code more robust and reliable.
+	Jodd frameworks is set of lightweight application frameworks, compact yet powerful.
+	Designed following the CoC, DRY and SCS principles, it makes development
+	simple, but not simpler.
+'''
+
+version = '3.5.2-SNAPSHOT'
+//version = '3.5.1'
+
+
+// --- properties -------------------------------------------------------------
+
+ext {
+	gradleScriptDir = "${rootProject.projectDir}/gradle"
+
+	// libraries
+
+	tomcatVersion = '7.0.47'
+	jacocoVersion = '0.7.0.201403182114'
+
+	lib = [
+		mail:			'javax.mail:mail:1.4.5',
+		activation:		'javax.activation:activation:1.1.1',
+		servlet:		'javax.servlet:javax.servlet-api:3.0.1',
+		jsp:			'javax.servlet.jsp:jsp-api:2.2',
+
+		log_slf4j:			'org.slf4j:slf4j-api:1.7.2',
+		log_slf4j_simple:	'org.slf4j:slf4j-simple:1.7.2',
+		log_jcl:        	'commons-logging:commons-logging:1.1.3',
+
+//		asm:			'org.ow2.asm:asm:4.1',
+
+		junit: 			'junit:junit:4.11',
+		mockito:		'org.mockito:mockito-all:1.9.5',
+		hsqldb:			'org.hsqldb:hsqldb:2.2.9',
+		h2db:			'com.h2database:h2:1.1.111',
+		postgresql:		'postgresql:postgresql:9.1-901-1.jdbc4',
+		mysql:			'mysql:mysql-connector-java:5.1.21',
+		winstone:		'net.sourceforge.winstone:winstone:0.9.10',
+		//el_api:		'javax.el:el-api:2.2',
+		el_api:			"org.apache.tomcat:tomcat-jasper:${tomcatVersion}",
+		tomcat_embed:	[
+							"org.apache.tomcat:tomcat-jasper:${tomcatVersion}",
+							"org.apache.tomcat:tomcat-jasper-el:${tomcatVersion}",
+							"org.apache.tomcat:tomcat-catalina:${tomcatVersion}",
+							"org.apache.tomcat.embed:tomcat-embed-core:${tomcatVersion}",
+							"org.apache.tomcat.embed:tomcat-embed-jasper:${tomcatVersion}",
+							"org.apache.tomcat.embed:tomcat-embed-logging-juli:${tomcatVersion}",
+							"org.apache.tomcat.embed:tomcat-embed-logging-log4j:${tomcatVersion}"],
+		jacoco_agent:	"org.jacoco:org.jacoco.agent:${jacocoVersion}:runtime@jar",
+		jacoco_ant:		"org.jacoco:org.jacoco.ant:${jacocoVersion}",
+
+		// Animal Sniffer Ant Task and Java 1.5 API signature file
+		// not using 1.9 for the time being due to MANIMALSNIFFER-34
+		animal_sniffer: 'org.codehaus.mojo:animal-sniffer-ant-tasks:1.11',
+		java15_signature: 'org.codehaus.mojo.signature:java15:1.0@signature',
+	]
+
+	commonManifest = [
+		'Debug-Info' : 'on',
+		'Built-By' : 'jodd.org',
+		'Bundle-License' : 'http://jodd.org/license.html',
+		'Bundle-Vendor' : 'Jodd',
+		'Bundle-DocURL' : 'http://jodd.org',
+		'Implementation-Version': version,
+		'Implementation-Vendor': 'Jodd Team'
+	]
+}
+
+
+
+// --- modules sets -----------------------------------------------------------
+
+allprojects {
+	version = rootProject.version
+
+	ext.isSnapshot = version.endsWith("-SNAPSHOT")
+	ext.isSubproject = project.parent != null
+
+	repositories {
+		mavenCentral()
+	}
+}
+
+subprojects {
+	// provided
+	configurations {
+		provided
+	}
+
+	tasks.withType(Compile) {
+		sourceSets {
+			main { compileClasspath += configurations.provided }
+		}
+	}
+}
+
+def javaModules() {
+	subprojects.findAll { it.name.contains('jodd-') }
+}
+
+def javaBundleModules() {
+	rootProject.subprojects.findAll {
+		it.name.contains('jodd-') &&
+		!it.name.equals('jodd-swingspy') &&
+		!it.name.equals('jodd-joy')
+	}
+}
+
+def javaMobileModules() {
+	rootProject.subprojects.findAll {
+		it.name.equals('jodd-core') ||
+		it.name.equals('jodd-bean') ||
+		it.name.equals('jodd-props')
+	}
+}
+
+
+
+// --- configuration ----------------------------------------------------------
+
+configure(javaModules()) {
+	apply plugin: 'java'
+	apply plugin: 'osgi'
+	apply plugin: 'maven'
+	apply plugin: 'signing'
+	apply plugin: 'idea'
+	apply plugin: 'eclipse'
+	apply from: "${gradleScriptDir}/publish-maven.gradle"
+
+	group = 'org.jodd'
+
+	// compile
+
+	sourceCompatibility = 1.5
+	targetCompatibility = 1.5
+
+	tasks.withType(Compile) {
+		options.encoding = 'UTF-8'
+		options.compilerArgs << "-Xlint:-options"
+		//configurations.compile.transitive = false
+	}
+	compileJava.options.debug = true
+	compileJava.options.fork = true
+
+	task sourcesJar(type: Jar, dependsOn: classes) {
+		classifier = 'sources'
+		from sourceSets.main.allSource
+	}
+	task javadocJar(type: Jar, dependsOn: javadoc) {
+		classifier = 'javadoc'
+		from javadoc.destinationDir
+	}
+
+	// integration tests
+
+	sourceSets {
+		testInt
+	}
+
+	// idea fix no more needed since 13.0.2
+//	idea {
+//		module {
+//			testSourceDirs += file('src/testInt/java')
+//			testSourceDirs += file('src/testInt/resources')
+//			scopes.TEST.plus += configurations.testIntCompile
+//		}
+//	}
+
+	dependencies {
+		testIntCompile sourceSets.main.output
+		testIntCompile configurations.testCompile
+		testIntCompile sourceSets.test.output
+		testIntRuntime configurations.testRuntime
+	}
+
+	task testIntegration(type: Test, dependsOn: jar) {
+		group 'verification'
+		description 'Runs the integration tests.'
+
+		testClassesDir = sourceSets.testInt.output.classesDir
+		classpath = sourceSets.testInt.runtimeClasspath
+		systemProperties['jar.path'] = jar.archivePath
+	}
+
+	// artifacts
+
+	artifacts {
+		archives jar
+		archives sourcesJar
+		archives javadocJar
+	}
+
+	jar {
+		afterEvaluate {
+			manifest.attributes << commonManifest
+			manifest {
+				name = project.moduleName
+				version = project.version
+				description = project.moduleDescription
+				attributes 'Implementation-Title': project.moduleName
+			}
+		}
+	}
+
+	javadoc {
+		exclude '**/asm4/**'
+		afterEvaluate {
+			configure(options) {
+				windowTitle 'Jodd API Documentation'
+				docTitle "$project.moduleName $project.version API Documentation"
+				bottom = 'Copyright &#169; 2003-2013 <a href="http://jodd.org">Jodd Team</a>'
+				breakIterator = true
+				author = false
+				encoding = 'UTF-8'
+				docEncoding = 'UTF-8'
+				stylesheetFile = file('src/main/javadoc/jodd.css')
+				source = '1.5'
+			}
+		}
+	}
+
+	// JaCoCo
+
+	configurations {
+		jacoco
+	}
+
+	dependencies {
+		jacoco lib.jacoco_agent
+	}
+
+
+	// Test: configure all tests, including integration
+
+	tasks.withType(Test) { testTask ->
+		configure(testTask) {
+			beforeTest { descriptor ->
+				logger.lifecycle("\t" + descriptor)
+			}
+
+			reports.html.enabled = true
+
+			systemProperties = System.properties
+
+			List<String> excludes = ['*Test', '*.?', '*Foo*', '*.data.*', '*.tst*', '*\$*']
+
+			jvmArgs "-javaagent:${configurations.jacoco.asPath}=destfile=${project.buildDir.path}/jacoco/${testTask.name}.exec," +
+					"sessionid=HSServ,append=false,excludes=${excludes.join(':')}",
+			 	'-Djacoco=true',
+			 	'-Xms128m',
+			 	'-Xmx512m',
+			 	'-XX:MaxPermSize=128m',
+			 	'-Duser.timezone=GMT'
+		}
+	}
+
+	// Animal Sniffer
+
+	configurations {
+		animalSniffer
+		javaApiSignature
+	}
+
+	dependencies {
+		animalSniffer(lib.animal_sniffer)
+    	javaApiSignature(lib.java15_signature)
+    }
+
+	// copy the resolved Animal Sniffer signature dependency artifact to a known location and name
+	task copyJavaApiSignature(type: Copy) {
+		from configurations.javaApiSignature
+		into "$buildDir/javaApiSignature/"
+		rename '.*signature', 'javaApi.signature'
+	}
+
+	// prepare the Animal Sniffer signature copy every time (before) we compile
+	compileJava.dependsOn copyJavaApiSignature
+
+	// and then after compilation, run the Animal Sniffer tool
+	compileJava << {
+		print "$buildDir/javaApiSignature/"
+		ant.taskdef(
+				name: 'animalSniffer',
+				classname: 'org.codehaus.mojo.animal_sniffer.ant.CheckSignatureTask',
+				classpath: configurations.animalSniffer.asPath
+		)
+
+		ant.animalSniffer(
+				signature: "$buildDir/javaApiSignature/javaApi.signature",
+				classpath: sourceSets.main.compileClasspath.asPath) {
+			path(path: sourceSets.main.output.classesDir)
+			ignore(className: "java.nio.CharBuffer")
+			ignore(className: "sun.misc.Unsafe")
+		}
+	}
+}
+
+// --- project ----------------------------------------------------------------
+
+apply plugin: 'project-report'
+
+def javaBundleModulesSources = javaBundleModules().sourceSets.main
+
+task buildModules {
+	dependsOn javaModules().build
+}
+
+task testAll {
+	group 'Verification'
+	description 'Runs all the tests.'
+
+	dependsOn javaModules().test
+	dependsOn javaModules().testIntegration
+}
+
+task clean(type: Delete) {
+	group 'Project'
+	description 'Cleans everything.'
+
+	delete buildDir
+}
+
+task javadocAll(type: Javadoc) {
+	group 'Documentation'
+	description 'Builds the aggregated Java docs for all modules.'
+	dependsOn buildModules
+
+	maxMemory '512m'
+
+	source javaBundleModulesSources.allJava
+	exclude '**/asm4/**'
+
+	destinationDir = file("$buildDir/reports/javadoc")
+	classpath = files(javaBundleModulesSources.compileClasspath)
+
+	configure(options) {
+		windowTitle 'Jodd API Documentation'
+		docTitle "Jodd Project $project.version API Documentation"
+		bottom = 'Copyright &#169; 2003-2014 <a href="http://jodd.org">Jodd Team</a>'
+		breakIterator = true
+		author = false
+		encoding = 'UTF-8'
+		docEncoding = 'UTF-8'
+		stylesheetFile = file('src/main/javadoc/jodd.css')
+		source = '1.5'
+	}
+
+	inputs.files(javaBundleModulesSources.allSource + javaBundleModulesSources.compileClasspath)
+	outputs.dir destinationDir
+}
+
+task testReport(type: TestReport) {
+	group 'Reporting'
+	description 'Generates tests report.'
+
+	destinationDir = file("$buildDir/reports/tests")
+	reportOn javaBundleModules()*.test
+	reportOn javaBundleModules()*.testIntegration
+}
+
+configurations {
+    jacoco {
+        description 'JARs required for aggregate JacocoReport task.'
+    }
+}
+dependencies {
+    jacoco lib.jacoco_ant
+}
+
+task jacocoReport() {
+	dependsOn testAll
+	group = 'Reporting'
+	description = 'Generates JaCoCo coverage reports for unit tests.'
+
+	ant.taskdef(
+			name:'jacocoreport',
+			classname: 'org.jacoco.ant.ReportTask',
+			classpath: configurations.jacoco.asPath
+	)
+
+	def coverageDir = "$buildDir/reports/coverage"
+	ant.mkdir dir: coverageDir
+
+	inputs.files(javaBundleModulesSources.allSource + javaBundleModulesSources.compileClasspath)
+	outputs.dir file(coverageDir)
+
+	doLast {
+		ant.jacocoreport {
+			executiondata {
+				javaBundleModules().each {submodule ->
+					fileset(dir: "${submodule.buildDir}/jacoco") {
+						include name: '*.exec'
+					}
+				}
+			}
+			structure(name: 'Jodd Coverage Report') {
+				javaBundleModules().each {submodule ->
+					group(name: submodule.name) {
+						classfiles {
+							fileset dir: "${submodule.sourceSets.main.output.classesDir}"
+						}
+					}
+				}
+			}
+			html destdir: coverageDir
+		}
+	}
+}
+
+dependencyReport {
+	projects = javaModules()
+}
+
+// --- release ----------------------------------------------------------------
+
+task release() {
+	group 'Project'
+	description 'Builds everything for the release.'
+
+	dependsOn buildModules
+	dependsOn testAll
+	dependsOn javadocAll
+	dependsOn testReport
+	dependsOn jacocoReport
+	dependsOn ':distribution:build'
+	dependsOn projectReport
+}
+
+// --- wrapper ----------------------------------------------------------------
+
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.10'
+}
+
+task clean(type: Delete) {
+	delete buildDir
+}
+
+task bundleJar(type: Jar) {
+	dependsOn rootProject.buildModules
+
+	baseName = 'jodd-' + project.version
+	destinationDir = new File(buildDir, 'lib')
+
+	javaBundleModules().each {submodule ->
+		from submodule.sourceSets.main.output
+	}
+
+	manifest.attributes << commonManifest
+	manifest {
+		attributes 'Implementation-Title': 'Jodd Bundle'
+		attributes 'Bundle-ManifestVersion' : 2
+		attributes 'Bundle-Name' : 'Jodd Bundle'
+		attributes 'Bundle-Version' : rootProject.version
+		attributes 'Bundle-SymbolicName' : 'org.jodd'
+		attributes 'Bundle-Description' : 'Jodd is an open-source Java utility library and set of micro frameworks.'
+		attributes 'Export-Package' : 'jodd.*'
+		attributes 'Import-Package' : '*;resolution:=optional'
+	}
+}
+
+task bundleSourcesJar(type: Jar, dependsOn: bundleJar) {
+
+	baseName = 'jodd-' + project.version
+	destinationDir = new File(buildDir, 'lib')
+
+	classifier = 'sources'
+	from javaBundleModules().sourceSets.main.allSource
+}
+
+task bundleMobileJar(type: Jar) {
+	dependsOn rootProject.buildModules
+
+	baseName = 'jodd-mobile-' + project.version
+	destinationDir = new File(buildDir, 'lib')
+
+	javaMobileModules().each {submodule ->
+		from submodule.sourceSets.main.output
+	}
+
+	exclude 'jodd/bean/loader/*'
+	exclude 'jodd/bean/BeanLoaderManager.class'
+
+	exclude 'jodd/cache/FileLFU*.class'
+	exclude 'jodd/cache/NoCache.class'
+	exclude 'jodd/compiler/*'
+	exclude 'jodd/format/*'
+	exclude 'jodd/io/DebugOutputStream.class'
+	exclude 'jodd/io/FileChangeListener.class'
+	exclude 'jodd/io/FileMonitor*'
+	exclude 'jodd/io/filter/*'
+	exclude 'jodd/io/findfile/*'
+	exclude 'jodd/util/BCrypt.class'
+	exclude 'jodd/util/Base32.class'
+	exclude 'jodd/util/BinarySearch*.class'
+	exclude 'jodd/util/ClipboardUtil.class'
+	exclude 'jodd/util/ComparableComparator.class'
+	exclude 'jodd/util/DateFormatSymbolsEx.class'
+	exclude 'jodd/util/cl/ExtendedClassLoader.class'
+	exclude 'jodd/util/HashCode.class'
+	exclude 'jodd/util/HtmlDecoder*'
+	exclude 'jodd/util/JmxClient.class'
+	exclude 'jodd/util/LoopIterator.class'
+	exclude 'jodd/util/MimeTypes.*'
+	exclude 'jodd/util/MultiComparator.class'
+	exclude 'jodd/util/ObjectXmlUtil.class'
+	exclude 'jodd/util/PrettyStringBuilder.class'
+	exclude 'jodd/util/ResourceBundleMessageResolver.class'
+	exclude 'jodd/util/TextUtil.class'
+	exclude 'jodd/util/buffer/FastShortBuffer.class'
+	exclude 'jodd/util/collection/Array*.class'
+	exclude 'jodd/util/collection/Bag.class'
+	exclude 'jodd/util/collection/ShortArrayList.class'
+	exclude 'jodd/util/collection/EnumerationIterator.class'
+	exclude 'jodd/util/collection/CompositeIterator.class'
+	exclude 'jodd/util/collection/HashBag*'
+	exclude 'jodd/util/collection/IntHashMap*.class'
+	exclude 'jodd/util/collection/Joined*'
+	exclude 'jodd/util/ref/*'
+	exclude 'jodd/util/sort/*'
+	exclude 'jodd/util/UnsafeUtil.class'
+
+	manifest.attributes << commonManifest
+	manifest {
+		attributes 'Implementation-Title': 'Jodd Mobile Bundle'
+		attributes 'Bundle-Description' : 'Jodd Mobile contains only selected tools from jodd-core, jodd-bean and jodd-props; keeping jar small.'
+		attributes 'Bundle-Version' : rootProject.version
+	}
+}
+
+task distroZip(type: Zip) {
+	dependsOn rootProject.buildModules
+	dependsOn bundleJar
+	dependsOn bundleMobileJar
+
+	baseName = 'jodd-' + project.version
+	destinationDir = new File(buildDir, 'zip')
+
+	this.tasks.withType(Jar).each { jar ->
+		from jar
+	}
+	from '../file_id.diz'
+	from '../README.md'
+	from '../LICENSE'
+
+	def addonModules = [':jodd-swingspy', ':jodd-joy']
+
+	addonModules.each{ addon->
+		rootProject.project(addon).tasks.withType(Jar).each { jar ->
+			if (!jar.name.contains('javadoc')) {
+				from jar
+			}
+		}
+	}
+}
+
+artifacts {
+	bundleJar
+	bundleSourcesJar
+	bundleMobileJar
+	distroZip
+}
+
+task build {
+	group 'Project'
+	description 'Builds bundle jars.'
+	dependsOn distroZip
+}
+ext.moduleName = 'Jodd BeanUtil'
+ext.moduleDescription = 'Jodd BeanUtil is fast and powerful bean manipulation library.'
+
+dependencies {
+	compile project(':jodd-core')
+	
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd Core'
+ext.moduleDescription = 'Jodd Core tools and utilities, including type converters, JDateTime, cache etc.'
+
+dependencies {
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd DbOom'
+ext.moduleDescription = 'Jodd DB is efficient and thin database facade; DbOom is convenient database object mapper.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-bean')
+	compile project(':jodd-jtx')
+	compile project(':jodd-proxetta')
+	compile project(':jodd-log')
+
+	testCompile lib.junit
+	testCompile lib.hsqldb
+	testCompile lib.h2db
+	testCompile lib.mysql
+	testCompile lib.postgresql
+}
+
+optional = ['jodd-jtx', 'jodd-proxetta']
+
+// run db integration tests only through the suite
+// so we can control the embedded web server
+
+testIntegration {
+	scanForTestClasses false
+	include 'jodd/db/oom/*Suite.class'
+}
+ext.moduleName = 'Jodd HTTP client'
+ext.moduleDescription = 'Jodd HTTP client is easy-to-use http client.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-upload')
+
+	testCompile lib.junit
+	testCompile lib.tomcat_embed
+}
+ext.moduleName = 'Jodd Joy'
+ext.moduleDescription = 'Jodd Joy is set of Jodd extensions that makes development of web applications even easier.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-petite')
+	compile project(':jodd-madvoc')
+	compile project(':jodd-vtor')
+	compile project(':jodd-jtx')
+	compile project(':jodd-db')
+	compile project(':jodd-proxetta')
+	compile project(':jodd-mail')
+	compile project(':jodd-log')
+
+	testCompile project(':jodd-http')
+	testCompile lib.junit
+	testCompile lib.hsqldb
+	testCompile lib.tomcat_embed
+	testCompile lib.mockito
+}
+
+// run joy integration tests only through the suite
+// so we can control the embedded web server
+
+testIntegration {
+	scanForTestClasses false
+	include 'jodd/joy/*Suite.class'
+}
+ext.moduleName = 'Jodd JTX'
+ext.moduleDescription = 'Jodd JTX manager.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-proxetta')
+	compile project(':jodd-log')
+	
+	testCompile lib.junit
+}
+optional = ['jodd-proxetta']
+ext.moduleName = 'Jodd Lagarto Web'
+ext.moduleDescription = 'Jodd Lagarto for Web is Lagarto addons for web environment: Decora, HtmlStapler and some filters.'
+
+dependencies {
+	compile project(':jodd-lagarto')
+	compile project(':jodd-servlet')
+	compile project(':jodd-log')
+
+	compile lib.servlet
+
+	testCompile lib.junit
+}
+provided = [lib.servlet]
+ext.moduleName = 'Jodd Lagarto'
+ext.moduleDescription = 'Jodd Lagarto is fast and versatile all purpose HTML parser. Includes Jerry and CSSelly.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-log')
+
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd Log'
+ext.moduleDescription = 'Jodd Log is simple logging facade.'
+
+dependencies {
+	provided(lib.log_slf4j)
+	provided(lib.log_jcl)
+
+	testCompile project(':jodd-core')
+	testCompile lib.junit
+	testCompile lib.log_slf4j_simple
+}
+provided = [lib.log_slf4j, lib.log_jcl]
+optional = [lib.log_slf4j, lib.log_jcl]
+ext.moduleName = 'Jodd Madvoc'
+ext.moduleDescription = 'Jodd Madvoc is elegant web MVC framework that uses CoC and annotations in a pragmatic way to simplify web application development.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-bean')
+	compile project(':jodd-props')
+	compile project(':jodd-upload')
+	compile project(':jodd-servlet')
+	compile project(':jodd-petite')
+	compile project(':jodd-log')
+	compile project(':jodd-proxetta')
+
+	compile lib.servlet
+	compile lib.jsp
+
+	testCompile project(':jodd-http')
+	testCompile lib.junit
+	testCompile lib.tomcat_embed
+	testCompile lib.mockito
+}
+provided = [lib.servlet, lib.jsp]
+optional = ['jodd-proxetta']
+
+
+// run madvoc integration tests only through the suite
+// so we can control the embedded web server
+
+testIntegration {
+	scanForTestClasses false
+	include 'jodd/madvoc/*Suite.class'
+}
+ext.moduleName = 'Jodd Mail'
+ext.moduleDescription = 'Jodd Mail is a little tool for sending and receiving emails.'
+
+dependencies {
+	compile project(':jodd-core')
+
+	compile lib.mail
+	compile lib.activation
+	
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd Petite'
+ext.moduleDescription = 'Jodd Petite is slick and lightweight DI container that uses annotations and supports sufficient most of features offered by other containers.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-bean')
+	compile project(':jodd-props')
+	compile project(':jodd-log')
+
+	compile project(':jodd-servlet')
+	compile project(':jodd-proxetta')
+
+	testCompile lib.junit
+	testCompile lib.mockito
+}
+optional = ['jodd-servlet', 'jodd-proxetta']
+ext.moduleName = 'Jodd Props'
+ext.moduleDescription = 'Jodd Props is super properties replacement, featuring: UTF8, sections, profiles, macros and more.'
+
+dependencies {
+	compile project(':jodd-core')
+
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd Proxetta'
+ext.moduleDescription = 'Jodd Proxetta is the fastest proxy creator with unique approach for defying pointcuts and advices.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-log')
+
+	testCompile project(':jodd-bean')
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd Servlet'
+ext.moduleDescription = 'Jodd Servlet is set of web tools, including the nice tag library, wrappers and some filters.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-bean')
+	compile project(':jodd-upload')
+
+	compile lib.servlet
+	compile lib.jsp
+	
+	testCompile lib.junit
+	testCompile lib.mockito
+	testCompile lib.el_api
+}
+provided = [lib.servlet, lib.jsp]
+ext.moduleName = 'Jodd SwingSpy'
+ext.moduleDescription = 'Jodd SwingSpy is standalone tool for exploring the swing UI components.'
+
+ext.moduleName = 'Jodd Upload'
+ext.moduleDescription = 'Jodd Upload is library for managing uploads.'
+
+dependencies {
+	compile project(':jodd-core')
+	
+	testCompile lib.junit
+}
+ext.moduleName = 'Jodd VTor'
+ext.moduleDescription = 'Jodd VTor is focused validation framework for any Java object.'
+
+dependencies {
+	compile project(':jodd-core')
+	compile project(':jodd-bean')
+	
+	testCompile lib.junit
+}

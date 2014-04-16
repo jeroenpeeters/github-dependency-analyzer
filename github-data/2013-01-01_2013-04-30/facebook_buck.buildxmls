@@ -1,0 +1,374 @@
+<project name="buck" default="default">
+
+  <property name="src.dir" value="${basedir}/src" />
+  <property name="aosp.src.dir" value="third-party/java/aosp/src" />
+  <property name="test.dir" value="${basedir}/test" />
+  <property name="plugin.dir" value="${basedir}/plugin" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="third-party.dir" value="${basedir}/third-party" />
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="testrunner.classes.dir" value="${build.dir}/testrunner/classes" />
+  <property name="abi_processor.src.dir" value="${src.dir}/com/facebook/buck/java/abi/" />
+  <property name="abi_processor.classes.dir" value="${build.dir}/abi_processor/classes" />
+  <property name="buck.path_to_buck_py" value="${basedir}/src/com/facebook/buck/parser/buck.py" />
+  <property name="buck.path_to_emma_jar"
+            value="${basedir}/third-party/java/emma-2.0.5312/out/emma-2.0.5312.jar"
+            />
+  <property name="classes.dir" value="${build.dir}/classes" />
+  <property name="testclasses.dir" value="${build.dir}/testclasses" />
+  <property name="javadoc.dir" value="${build.dir}/javadoc" />
+  <property name="client.dir" value="third-party/nailgun" />
+  <property name="test.class" value="Test" />
+  <property name="javacc.gensrc.dir" value="${build.dir}/javacc" />
+  <property name="javacc.test.dir" value="${build.dir}/testjavacc" />
+  <property name="lint.outputpath" value="${build.dir}/lint.output" />
+
+  <fileset dir="${lib.dir}" id="buck.jars">
+    <include name="args4j-2.0.26.jar" />
+    <include name="ddmlib-22.5.3.jar" />
+    <include name="guava-15.0.jar" />
+    <include name="ini4j-0.5.2.jar" />
+    <include name="jackson-annotations-2.0.5.jar" />
+    <include name="jackson-core-2.0.5.jar" />
+    <include name="jackson-databind-2.0.5.jar" />
+    <include name="jsr305.jar" />
+    <include name="sdklib.jar" />
+    <include name="nailgun-server-0.9.2-SNAPSHOT.jar" />
+  </fileset>
+
+  <fileset dir="${third-party.dir}" id="third-party.jars">
+    <include name="java/asm/asm-debug-all-4.1.jar" />
+    <include name="java/astyanax/astyanax-cassandra-1.56.38.jar" />
+    <include name="java/astyanax/astyanax-cassandra-1.56.38-javadoc.jar" />
+    <include name="java/astyanax/astyanax-cassandra-1.56.38-sources.jar" />
+    <include name="java/astyanax/astyanax-core-1.56.38.jar" />
+    <include name="java/astyanax/astyanax-thrift-1.56.38.jar" />
+    <include name="java/astyanax/cassandra-1.2.3.jar" />
+    <include name="java/astyanax/cassandra-thrift-1.2.3.jar" />
+    <include name="java/astyanax/commons-cli-1.1.jar" />
+    <include name="java/astyanax/commons-codec-1.2.jar" />
+    <include name="java/astyanax/commons-lang-2.6.jar" />
+    <include name="java/astyanax/high-scale-lib-1.1.2.jar" />
+    <include name="java/astyanax/joda-time-2.2.jar" />
+    <include name="java/astyanax/libthrift-0.7.0.jar" />
+    <include name="java/astyanax/log4j-1.2.16.jar" />
+    <include name="java/astyanax/slf4j-api-1.7.2.jar" />
+    <include name="java/astyanax/slf4j-log4j12-1.7.2.jar" />
+    <include name="java/closure-templates/soy-2012-12-21-no-guava.jar" />
+    <include name="java/dd-plist/dd-plist.jar" />
+    <include name="java/gson/gson-2.2.4.jar" />
+    <include name="java/jetty/jetty-all-9.0.4.v20130625.jar" />
+    <include name="java/jetty/servlet-api.jar" />
+    <include name="java/xz-java-1.3/xz-1.3.jar" />
+  </fileset>
+
+  <path id="classpath">
+    <fileset refid="buck.jars" />
+    <fileset refid="third-party.jars" />
+    <pathelement location="${classes.dir}" />
+    <pathelement location="${src.dir}" />
+  </path>
+
+  <path id="junit">
+    <pathelement location="${lib.dir}/junit-4.11.jar" />
+    <pathelement location="${lib.dir}/hamcrest-core-1.3.jar" />
+    <pathelement location="${lib.dir}/hamcrest-library-1.3.jar" />
+  </path>
+
+  <target name="clean" description="remove all generated files">
+    <ant inheritAll="false" antfile="third-party/java/emma-2.0.5312/build.xml" target="clean" />
+    <ant inheritAll="false" antfile="third-party/java/jacoco-0.6.4/build.xml" target="clean" />
+    <delete dir="${build.dir}" />
+  </target>
+
+  <!-- Default target so that a command line build can 
+       do more than one thing.  'success' must be the last dependency. -->
+  <target name="default" depends="compile, dx, client, javacc-tests, success" />
+
+  <target name="checkversion">
+    <!-- The nio Files class was only introduced in Java 7. -->
+    <available property="jdk7" classname="java.nio.file.Files"/> 
+    <fail message="Require JDK 7 or higher" unless="jdk7"/> 
+  </target>
+
+  <target name="compile-testrunner" depends="checkversion">
+    <mkdir dir="${testrunner.classes.dir}" />
+    <javac srcdir="${src.dir}"
+           includes="com/facebook/buck/junit/**,src/com/facebook/buck/util/concurrent/MoreExecutors.java"
+           destdir="${testrunner.classes.dir}"
+           classpathref="junit"
+           debug="on"
+           includeAntRuntime="no"
+           >
+      <compilerarg value="-Xlint:rawtypes" />
+      <compilerarg value="-Xlint:unchecked" />
+    </javac>
+  </target>
+
+  <target name="compile-abi-processor" depends="checkversion">
+    <mkdir dir="${abi_processor.classes.dir}" />
+    <javac srcdir="${abi_processor.src.dir}"
+           destdir="${abi_processor.classes.dir}"
+           debug="on"
+           includeAntRuntime="no"
+           >
+      <compilerarg value="-Xlint:rawtypes" />
+      <compilerarg value="-Xlint:unchecked" />
+    </javac>
+  </target>
+
+  <target name="javacc">
+    <mkdir dir="${javacc.gensrc.dir}/com/facebook/buck/apple/xcode/xcconfig" />
+    <javacc target="src/com/facebook/buck/apple/xcode/xcconfig/XcconfigParser.jj"
+            outputdirectory="${javacc.gensrc.dir}/com/facebook/buck/apple/xcode/xcconfig"
+            javacchome="third-party/java/javacc"
+            static="false"
+    />
+  </target>
+
+  <target name="javacc-tests">
+    <mkdir dir="${javacc.test.dir}/com/facebook/buck/javacc" />
+    <javacc target="test/com/facebook/buck/javacc/Simple1.jj"
+            outputdirectory="${javacc.test.dir}/com/facebook/buck/javacc"
+            javacchome="third-party/java/javacc"
+            static="false"
+        />
+  </target>
+
+  <target name="compile"
+          depends="compile-testrunner, compile-abi-processor, javacc"
+          description="compile Java source code">
+    <ant inheritAll="false" antfile="third-party/java/emma-2.0.5312/build.xml" target="core.package" />
+    <ant inheritAll="false" antfile="third-party/java/jacoco-0.6.4/build.xml" target="build" />
+    <mkdir dir="${classes.dir}" />
+    <javac destdir="${classes.dir}"
+           classpathref="classpath"
+           debug="on"
+           deprecation="on"
+           includeAntRuntime="no"
+           >
+      <src path="${src.dir}" />
+      <src path="${aosp.src.dir}" />
+      <src path="${javacc.gensrc.dir}" />
+      <exclude name="com/facebook/buck/cli/quickstart/**" />
+      <exclude name="com/facebook/buck/java/abi/**" />
+      <exclude name="com/facebook/buck/junit/**" />
+      <compilerarg value="-Xlint:rawtypes" />
+      <compilerarg value="-Xlint:unchecked" />
+      <!-- Suppress the warning from implicitly compiling files that are not
+           annotation processed. Not sure which files are the culprit -->
+      <compilerarg value="-implicit:class" />
+    </javac>
+  </target>
+
+
+  <target name="dx">
+  </target>
+
+  <target name="jar"
+          depends="compile"
+          description="build buck.jar"
+          >
+    <jar destfile="${build.dir}/buck.jar" update="true">
+      <zipfileset refid="buck.jars" />
+      <zipfileset refid="third-party.jars" />
+      <fileset dir="${src.dir}"
+               excludes="**/*.java, **/BUCK"
+               />
+      <fileset dir="${classes.dir}" />
+      <manifest>
+        <attribute name="Main-Class" value="com.facebook.buck.cli.Main" />
+      </manifest>
+    </jar>
+  </target>
+
+  <!-- The buck wrapper script checks the output file from this target
+       to determine whether Buck needs to be built. -->
+  <target name="success"
+          description="Run after a successful build to indicate that a rebuild is unnecessary.">
+    <touch file="${build.dir}/successful-build" />
+  </target>
+
+  <path id="tests.classpath">
+    <path refid="classpath" />
+    <fileset dir="${lib.dir}" >
+      <include name="cglib-nodep-2.2.jar" />
+      <include name="easymock-3.0.jar" />
+      <include name="junit-4.11.jar" />
+      <include name="hamcrest-core-1.3.jar" />
+      <include name="hamcrest-library-1.3.jar" />
+      <include name="objenesis-1.2.jar" />
+    </fileset>
+    <pathelement location="${testclasses.dir}" />
+    <pathelement location="${test.dir}" />
+    <pathelement location="${abi_processor.classes.dir}" />
+    <pathelement location="${testrunner.classes.dir}" />
+  </path>
+
+  <target name="compile-tests"
+          depends="compile, javacc-tests"
+          >
+    <mkdir dir="${testclasses.dir}" />
+    <javac excludes="**/testdata/**"
+           destdir="${testclasses.dir}"
+           classpathref="tests.classpath"
+           debug="on"
+           deprecation="on"
+           includeAntRuntime="no"
+           >
+      <src path="${test.dir}" />
+      <src path="${javacc.test.dir}" />
+      <compilerarg value="-Xlint:rawtypes" />
+      <compilerarg value="-Xlint:unchecked" />
+    </javac>
+  </target>
+
+  <target name="java-test"
+          depends="compile-tests"
+          description="runs the Java tests"
+          >
+    <junit failureproperty="hasFailingTests"
+           showoutput="true"
+           forkmode="perBatch">
+      <sysproperty key="buck.path_to_emma_jar" value="${buck.path_to_emma_jar}" />
+      <sysproperty key="buck.path_to_buck_py" value="${buck.path_to_buck_py}" />
+
+      <!-- See DEFS for details on why this property is needed. -->
+      <sysproperty key="sun.zip.disableMemoryMapping" value="true" />
+
+      <formatter type="plain" usefile="false" />
+
+      <batchtest fork="yes">
+        <fileset dir="${test.dir}">
+          <!--
+            Do not exclude tests that start with "Abstract", as there are some tests for abstract
+            classes.
+          -->
+          <include name="**/*${test.class}.java" />
+          <exclude name="**/testdata/**" />
+        </fileset>
+      </batchtest>
+      <classpath refid="tests.classpath" />
+    </junit>
+    <fail if="hasFailingTests" />
+  </target>
+
+  <target name="py-test" description="runs the Python tests">
+    <exec executable="python" failonerror="true">
+      <arg value="src/com/facebook/buck/parser/buck_test.py" />
+    </exec>
+  </target>
+
+  <path id="pmd-classpath">
+    <fileset dir="${basedir}/pmd" includes="*.jar" />
+  </path>
+
+  <!--
+  Runs pmd on the file(s) specified in the property "lint.files",
+  separated by commas. Writes output to ${lint.outputpath}.
+  -->
+  <target name="pmd-files-xml" if="lint.files">
+    <taskdef name="pmd"
+             classpathref="pmd-classpath"
+             classname="net.sourceforge.pmd.ant.PMDTask"
+             />
+    <pmd failOnRuleViolation="true" rulesetfiles="pmd/rules.xml">
+      <ruleset>buck</ruleset>
+      <formatter type="xml" toFile="${lint.outputpath}" />
+      <fileset dir="${basedir}" includes="${lint.files}" />
+    </pmd>
+  </target>
+
+  <!--
+  Runs pmd on all source, test, and plugin files.
+  -->
+  <target name="pmd">
+    <taskdef name="pmd"
+             classpathref="pmd-classpath"
+             classname="net.sourceforge.pmd.ant.PMDTask"
+             />
+    <pmd failOnRuleViolation="true" rulesetfiles="pmd/rules.xml">
+      <ruleset>buck</ruleset>
+      <fileset dir="${src.dir}">
+        <include name="**/*.java"/>
+      </fileset>
+      <fileset dir="${test.dir}">
+        <include name="**/*.java"/>
+        <exclude name="**/testdata/**"/>
+      </fileset>
+      <fileset dir="${plugin.dir}">
+        <include name="**/*.java"/>
+      </fileset>
+    </pmd>
+  </target>
+
+  <path id="checkstyle-classpath">
+    <fileset dir="${basedir}/third-party/java/checkstyle" includes="*.jar" />
+  </path>
+
+  <!--
+  Runs checkstyle on the file(s) specified in the property "lint.files",
+  separated by commas.
+  -->
+  <target name="checkstyle-files-xml" if="lint.files">
+    <taskdef resource="checkstyletask.properties"
+           classpathref="checkstyle-classpath"/>
+    <checkstyle config="checkstyle.xml">
+      <formatter type="xml" toFile="${lint.outputpath}" />
+      <fileset dir="${basedir}" includes="${lint.files}" />
+    </checkstyle>
+  </target>
+
+  <!--
+  Runs checkstyle on all source and test files.
+  -->
+  <target name="checkstyle">
+    <taskdef resource="checkstyletask.properties"
+           classpathref="checkstyle-classpath"/>
+    <checkstyle config="checkstyle.xml">
+      <fileset dir="${src.dir}">
+        <include name="**/*.java"/>
+      </fileset>
+      <fileset dir="${test.dir}">
+        <include name="**/*.java"/>
+        <exclude name="**/testdata/**"/>
+      </fileset>
+      <formatter type="plain"/>
+    </checkstyle>
+  </target>
+
+  <target name="lint" depends="pmd, checkstyle" />
+
+  <target name="test" depends="java-test, py-test" description="runs the unit tests" />
+
+  <target name="javadoc" description="generates HTML documentation for Java code"
+      depends="compile">
+    <mkdir dir="${javadoc.dir}" />
+    <javadoc destdir="${javadoc.dir}"
+             protected="true"
+             classpathref="tests.classpath"
+             windowtitle="Buck"
+             failonerror="true"
+             >
+      <fileset dir="${src.dir}">
+        <include name="**/*.java" />
+        <exclude name="com/facebook/buck/cli/quickstart/**" />
+      </fileset>
+      <fileset dir="${javacc.gensrc.dir}">
+      </fileset>
+      <link href="http://docs.oracle.com/javase/7/docs/api/" />
+      <link href="http://docs.guava-libraries.googlecode.com/git-history/v15.0/javadoc/" />
+      <!-- The latest version of the javadocs is only for 4.10 -->
+      <link href="http://junit-team.github.io/junit/javadoc/latest/" />
+    </javadoc>
+  </target>
+
+  <target name="client" description="install nailgun buckd c client">
+    <mkdir dir="${build.dir}" />
+    <exec dir="${basedir}" executable="gcc">
+      <arg line="-Wall -pedantic -O3 -o ${build.dir}/ng ${client.dir}/nailgun-client/ng.c" />
+    </exec> 
+  </target>
+
+  <target name="all" depends="jar, test, javadoc, client" />
+</project>

@@ -1,0 +1,199 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="Alkacon OpenCms Add-On Module Package" default="dist" basedir=".">
+
+	<property name="opencms.input" location="${basedir}/../OpenCms" />
+	<property name="opencms.output" location="${basedir}/../BuildOamp" />
+	<property name="excludes" value="**/CVS/*,**/.cvsignore,**/.nbattrs,**/.project,**/.classpath" />
+	<property name="opencms.output.distfiles" location="${opencms.output}/zip" />
+	<property name="opencms.output.jars-components" location="${opencms.output}/build/jars-components" />
+
+	<property file="alkacon.properties" />
+
+	<!--
+		Set/Override this property to one of the following values:
+		- interactive: interactive GUI based module selection.
+		- selection: module selection based on modules.common.selection property
+		- all: module selection based on modules.common.all property defined in the all-modules.properties file
+	-->
+	<property name="modules.selection.mode" value="interactive" />
+
+	<taskdef resource="net/sf/antcontrib/antlib.xml" loaderref="contrib">
+		<classpath>
+			<pathelement location="${opencms.input}/lib/compile/ant-contrib-1.0b1.jar" />
+		</classpath>
+	</taskdef>
+	
+	<target name="init-opencmstasks">
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="init-components" />
+		<taskdef resource="org/opencms/util/ant/taskdefs.properties" loaderref="opencms">
+			<classpath>
+				<pathelement location="${opencms.output.jars-components}/ant-opencms.jar" />
+				<fileset dir="${opencms.input}">
+					<include name="lib/runtime/commons-digester*.jar" />
+					<include name="lib/runtime/commons-collections*.jar" />
+					<include name="lib/runtime/commons-logging*.jar" />
+					<include name="lib/runtime/commons-beanutils*.jar" />
+					<include name="lib/runtime/mail*.jar" />
+				</fileset>
+			</classpath>
+		</taskdef>
+	</target>
+
+	<!-- internal target for modules.comman.all property initialization -->
+	<target name="init-all" depends="init-opencmstasks">
+
+		<property file="${basedir}/all-modules.properties" />
+		<if>
+			<not>
+				<isset property="modules.common.all" />
+			</not>
+			<then>
+				<fail>
+    			property modules.common.all undefined.
+    		</fail>
+			</then>
+			<else>
+				<echo message="all: ${modules.common.all}" />
+			</else>
+		</if>
+		<sortlist property="modules.common.all" value="${modules.common.all}" override="true" />
+
+	</target>
+
+	<!-- initializes the selection mode -->
+	<target name="init" depends="init-all">
+
+		<if>
+			<equals arg1="${modules.selection.mode}" arg2="interactive" />
+			<then>
+				<!-- interactive mode -->
+				<if>
+					<isset property="modules.selection" />
+					<then>
+						<selectionprompt property="modules.interactive" defaultvalue="${modules.selection}" allvalues="${modules.common.all}" prompt="Please select the modules to process:" title="Module Selection" columns="1" />
+						<!--
+						<selectiontreeprompt property="modules.interactive" defaultvalue="${modules.selection}" allvalues="${modules.common.all}" prompt="Please select the modules to process:" title="Module Selection" expansionLevels="2" />
+						-->
+					</then>
+					<else>
+						<selectionprompt property="modules.interactive" defaultvalue="" allvalues="${modules.common.all}" prompt="Please select the modules to process:" title="Module Selection" columns="1" />
+						<!--
+						<selectiontreeprompt property="modules.interactive" defaultvalue="" allvalues="${modules.common.all}" prompt="Please select the modules to process:" title="Module Selection" expansionLevels="2" />
+						-->
+					</else>
+				</if>
+				<if>
+					<equals arg1="${modules.interactive}" arg2="__ABORT__" />
+					<then>
+						<fail>aborted by User</fail>
+					</then>
+				</if>
+				<property name="modules.var" value="${modules.interactive}" />
+			</then>
+			<elseif>
+				<equals arg1="${modules.selection.mode}" arg2="selection" />
+				<then>
+					<!-- selection mode -->
+					<property name="modules.var" value="${modules.selection}" />
+				</then>
+			</elseif>
+			<else>
+				<!-- all mode -->
+				<property name="modules.var" value="${modules.common.all}" />
+			</else>
+		</if>
+	</target>
+
+	<!-- Build dependencies -->
+	<target name="dependencies">
+		<!-- just redirect back to the calling build-single script, for avoiding ant's recursive loop check -->
+		<ant antfile="${basedir}/build-single.xml" target="dist" inheritAll="false">
+			<property name="module.name" value="${module.name}" />
+		</ant>
+	</target>
+
+	<target name="clean" depends="init" description="Cleans the given module generation directories">
+
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="clean" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="compile" depends="init" description="Compile the given modules">
+
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="jar" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="compile" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="jar" depends="init" description="Generates the given .jar files">
+
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="jar" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="jar" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="dist" depends="init" description="Generates the given independent distros">
+
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="jar" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="dist" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="tomcat.copy" depends="init" description="Copies the given updated modules to Tomcat directory">
+
+		<ant antfile="${opencms.input}/modules/build.xml" dir="${opencms.input}/modules/" inheritall="false" target="tomcat.copy" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="tomcat.copy" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="tomcat.update" depends="init" description="Recompiles changes and installs them in Tomcat webapps directory">
+
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="tomcat.update" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="tomcat.update" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="tomcat.all" depends="init" description="Does a complete recompile of the module and installs it in Tomcat webapps directory">
+
+		<ant antfile="${opencms.input}/build.xml" dir="${opencms.input}" inheritall="false" target="tomcat.all" />
+		<for list="${modules.var}" param="module" trim="yes">
+			<sequential>
+				<ant antfile="${basedir}/build-single.xml" target="tomcat.all" inheritAll="false">
+					<property name="module.name" value="@{module}" />
+				</ant>
+			</sequential>
+		</for>
+	</target>
+
+</project>

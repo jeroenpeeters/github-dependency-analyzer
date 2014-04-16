@@ -1,0 +1,721 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.core" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.core</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+    <target name="quickstart-add-builddir">
+         <!-- additional docs for quickstart -->
+        <echo message="building quick start guide" />
+        <mkdir dir="build/classes/org/sleuthkit/autopsy/casemodule/docs" />
+        <copy overwrite="true" file="${basedir}/../docs/QuickStartGuide/index.html" tofile="build/classes/org/sleuthkit/autopsy/casemodule/docs/QuickStart.html"/>
+        <copy overwrite="true" file="${basedir}/../docs/QuickStartGuide/screenshot.png" tofile="build/classes/org/sleuthkit/autopsy/casemodule/docs/screenshot.png"/>
+         
+    </target>
+    
+      <target name="quickstart-add-src">
+         <!-- additional docs for quickstart -->
+        <echo message="building quick start guide 1" />
+        <mkdir dir="src/org/sleuthkit/autopsy/casemodule/docs" />
+        <copy overwrite="true" file="${basedir}/../docs/QuickStartGuide/index.html" tofile="src/org/sleuthkit/autopsy/casemodule/docs/QuickStart.html"/>
+        <copy overwrite="true" file="${basedir}/../docs/QuickStartGuide/screenshot.png" tofile="src/org/sleuthkit/autopsy/casemodule/docs/screenshot.png"/>
+         
+    </target>
+
+    <target name="quickstart-remove-src">
+         <!-- cleanup additional docs for quickstart -->
+        <echo message="building quick start guide 2" />
+        <delete file="src/org/sleuthkit/autopsy/casemodule/docs/QuickStart.html"/>
+        <delete file="src/org/sleuthkit/autopsy/casemodule/docs/screenshot.png"/>
+    </target>
+    
+    <target name="javahelp">
+         <antcall target="quickstart-remove-src" />
+    </target>
+     
+    <!-- Verify that the TSK_HOME env variable is set -->
+    <target name="findTSK">
+        <property environment="env"/>
+        <condition property="tskFound">
+            <isset property="env.TSK_HOME"/>
+        </condition>
+        <fail unless="tskFound" message="TSK_HOME must be set as an environment variable."/>
+        <echo> TSK_HOME: ${env.TSK_HOME}</echo>
+    </target>  
+    
+    <target name="getTSKJars" depends="findTSK">
+        <property environment="env"/>
+        <copy file="${env.TSK_HOME}/bindings/java/dist/Tsk_DataModel.jar" tofile="${basedir}/release/modules/ext/Tsk_DataModel.jar"/>
+        <copy file="${env.TSK_HOME}/bindings/java/lib/sqlite-jdbc-3.8.0-SNAPSHOT.jar" tofile="${basedir}/release/modules/ext/sqlite-jdbc-3.8.0-SNAPSHOT.jar"/>
+    </target>
+
+  
+    <target name="init" depends="basic-init,files-init,build-init,-javac-init">
+
+        <!-- get additional deps -->
+        <antcall target="getTSKJars" />
+        
+        <antcall target="quickstart-add-src" />
+    </target>
+    
+ 
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.corelibs" default="netbeans" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.corelibs.</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+    <property name="thirdparty.dir" value="${basedir}/../thirdparty" />
+    <property name="lib.dir" value="release/modules/lib" />
+    
+    
+    <property name="ivy.install.version" value="2.3.0-rc2" />
+    <condition property="ivy.home" value="${env.IVY_HOME}">
+        <isset property="env.IVY_HOME" />
+    </condition>
+    <property name="ivy.home" value="${user.home}/.ant" />
+    <property name="ivy.jar.dir" value="${ivy.home}/lib" />
+    <property name="ivy.jar.file" value="${ivy.jar.dir}/ivy.jar" />
+    
+    <condition property="os.family" value="unix">  
+        <os family="unix"/>  
+    </condition> 
+    <condition property="os.family" value="mac">  
+        <os family="mac"/>  
+    </condition> 
+    <condition property="os.family" value="windows">  
+        <os family="windows"/>  
+    </condition>  
+    <import file="build-${os.family}.xml"/> 
+
+    <target name="download-ivy" unless="offline">
+        <available file="${ivy.jar.file}" property="ivy.available"/>
+        <antcall target="-download-ivy" />
+    </target>
+    
+    <target name="-download-ivy" unless="ivy.available">
+        <mkdir dir="${ivy.jar.dir}"/>
+        <get src="http://repo2.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar" 
+             dest="${ivy.jar.file}" usetimestamp="true"/>
+    </target>
+
+    <!-- init-ivy will bootstrap Ivy if the user doesn't have it already -->
+    <target name="init-ivy" depends="download-ivy" unless="ivy.lib.path">
+        <path id="ivy.lib.path">
+            <fileset dir="${ivy.jar.dir}" includes="*.jar"/>
+        </path>
+        <taskdef resource="org/apache/ivy/ant/antlib.xml"
+                 uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+    </target>
+        
+    
+    <target name="retrieve-deps-local" description="build library dependencies that are stored local-only"> 
+        <!-- javafx: note: this a workaround, needs to match the one from jre/jdk and ideally be automatically included -->
+        <!-- javafx native libs are always on runtime classpath from jre -->
+        <copy file="${thirdparty.dir}/jfxrt/1.7.21/jfxrt.jar" todir="release/modules/ext/" />
+    </target>
+    
+    <target name="retrieve-deps" description="retrieve dependencies using ivy" depends="init-ivy,build-native-libs">
+        <ivy:settings file="ivysettings.xml" />
+        <ivy:resolve/>
+        <ivy:retrieve sync="false" pattern="release/modules/ext/[artifact]-[revision](-[classifier]).[ext]" />
+        
+         <antcall target="retrieve-deps-local" />
+	</target>
+    
+    <target name="init" depends="basic-init,files-init,build-init,-javac-init,init-ivy,retrieve-deps">
+        <!-- overrode depends attribute -->
+        
+    </target>
+    
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.exifparser" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.exifextract.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project><?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.hashdatabase" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.hashdatabase.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.keywordsearch" default="netbeans" basedir="." xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.keywordsearch.</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+    
+    <property name="ivy.install.version" value="2.3.0-rc2" />
+    <condition property="ivy.home" value="${env.IVY_HOME}">
+        <isset property="env.IVY_HOME" />
+    </condition>
+    <property name="ivy.home" value="${user.home}/.ant" />
+    <property name="ivy.jar.dir" value="${ivy.home}/lib" />
+    <property name="ivy.jar.file" value="${ivy.jar.dir}/ivy.jar" />
+
+    <target name="download-ivy" unless="offline">
+        <available file="${ivy.jar.file}" property="ivy.available"/>
+        <antcall target="-download-ivy" />
+    </target>
+    
+    <target name="-download-ivy" unless="ivy.available">
+        <mkdir dir="${ivy.jar.dir}"/>
+        <get src="http://repo2.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar" 
+         dest="${ivy.jar.file}" usetimestamp="true"/>
+    </target>
+
+    <!-- init-ivy will bootstrap Ivy if the user doesn't have it already -->
+    <target name="init-ivy" depends="download-ivy" unless="ivy.lib.path">
+        <path id="ivy.lib.path">
+            <fileset dir="${ivy.jar.dir}" includes="*.jar"/>
+        </path>
+        <taskdef resource="org/apache/ivy/ant/antlib.xml"
+             uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+    </target>
+ 
+
+    <target name="init" depends="basic-init,files-init,build-init,-javac-init,init-ivy">
+        
+        <!-- fetch all the dependencies from Ivy and stick them in the right places -->
+        <ivy:resolve/>
+        <ivy:retrieve conf="autopsy" sync="true" pattern="release/modules/ext/[artifact]-[revision](-[classifier]).[ext]" />
+        <ivy:retrieve conf="solr-war" sync="true" pattern="release/solr/webapps/solr.war" />
+        <ivy:retrieve conf="start-solr" sync="true" pattern="release/solr/start.jar" />
+        <ivy:retrieve conf="jetty-libs" sync="true" pattern="release/solr/lib/[artifact]-[revision](-[classifier]).[ext]" />
+        <ivy:retrieve conf="solr-libs" sync="true" pattern="release/solr/solr/lib/[artifact]-[revision](-[classifier]).[ext]" />
+
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.recentactivity" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.recentactivity.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.scalpel" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.scalpel.</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+    <property name="thirdparty.dir" value="${basedir}/../thirdparty" />
+    <property name="lib.dir" value="release/modules/lib" />
+    
+     <target name="get-native-libs" description="get native library dependencies"> 
+        <mkdir dir="${lib.dir}"/>
+        <unzip src="${thirdparty.dir}/libscalpel_jni/current/libscalpel_jni.zip" dest="${lib.dir}" >
+           <!-- get all, rely on jna to locate <patternset>
+                <include name="**/*.dll"/>
+            </patternset> -->
+        </unzip>
+    </target>
+    
+    
+     <target name="init" depends="basic-init,files-init,build-init,-javac-init,get-native-libs">
+        <!-- overrode depends attribute -->
+        
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.sevenzip" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.sevenzip.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.testing" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.testing.</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+
+    
+    <target name="check-args"> 
+        <fail message="Missing required argument: img_path" unless="img_path"/>
+        <fail message="Missing required argument: gold_path" unless="gold_path"/>
+        <fail message="Missing required argument: out_path" unless="out_path"/>
+        <fail message="Missing required argument: known_bad_path" unless="known_bad_path"/>
+        <fail message="Missing required argument: nsrl_path" unless="nsrl_path"/>
+        <fail message="Missing required argument: keyword_path" unless="keyword_path"/>
+    </target>
+    
+    <target name="regression-test" depends="check-args,init,test-init,test-build" if="exists.test.qa-functional.src.dir">
+        <test test.type="qa-functional"/>
+    </target>
+    
+    <macrodef name="test">
+        <attribute name="test.type"/>
+        <attribute name="disable.apple.ui" default="false"/>
+        <sequential>
+            <property name="test.config" value="default"/>
+            <property name="test.config.default.includes" value="**/*Test.class"/>
+            <property name="test.config.${test.config}.includes" value="NOTHING"/>
+            <metaproperty name="test.includes" value="test.config.${test.config}.includes"/>
+            <property name="test.config.${test.config}.excludes" value=""/>
+            <metaproperty name="test.excludes" value="test.config.${test.config}.excludes"/>
+            <mkdir dir="${build.test.@{test.type}.results.dir}"/>
+            <junit fork="true" failureproperty="tests.failed" errorproperty="tests.failed" filtertrace="${test.filter.trace}" tempdir="${build.test.@{test.type}.results.dir}">
+                <batchtest todir="${build.test.@{test.type}.results.dir}">
+                    <fileset dir="${build.test.@{test.type}.classes.dir}" includes="${test.includes}" excludes="${test.excludes}"/>
+                </batchtest>
+                <classpath refid="test.@{test.type}.run.cp"/>
+                <syspropertyset refid="test.@{test.type}.properties"/>
+                <jvmarg line="${test.bootclasspath.prepend.args}"/>
+                <jvmarg line="${test.run.args}"/>
+                <!--  should be in sync with project.properties and build.xml of autopsy main project -->
+                <!-- disable for now, causes issues with Java 7 -->
+                <!-- <jvmarg line="-J-Xms24m -J-Xmx512m -J-XX:MaxPermSize=128M -J-Xverify:none"/>  -->
+                <sysproperty key="img_path" value="${img_path}"/>
+                <sysproperty key="gold_path" value="${gold_path}"/>
+                <sysproperty key="out_path" value="${out_path}"/>
+                <sysproperty key="known_bad_path" value="${known_bad_path}"/>
+                <sysproperty key="nsrl_path" value="${nsrl_path}"/>
+                <sysproperty key="keyword_path" value="${keyword_path}"/>
+                <!--needed to have tests NOT to steal focus when running, works in latest apple jdk update only.-->
+                <sysproperty key="apple.awt.UIElement" value="@{disable.apple.ui}"/>
+                <formatter type="brief" usefile="false"/>
+                <formatter type="xml"/>
+            </junit>
+            <fail message="Some tests failed; see details above.">
+                <condition>
+                    <and>
+                        <isset property="tests.failed"/>
+                        <isfalse value="${continue.after.failing.tests}"/>
+                    </and>
+                </condition>
+            </fail>
+        </sequential>
+    </macrodef>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.timeline" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.timeline.</description>
+    <import file="nbproject/build-impl.xml"/>
+    
+    <condition property="os.family.unix">
+        <os family="unix"/>
+    </condition>
+    
+    <!-- Verify that the TSK_HOME env variable is set -->
+    <target name="findTSK">
+        <property environment="env"/>
+        <condition property="tskFound">
+            <isset property="env.TSK_HOME"/>
+        </condition>
+        <fail unless="tskFound" message="TSK_HOME must be set as an environment variable."/>
+        <echo> TSK_HOME: ${env.TSK_HOME}</echo>
+    </target>  
+    
+    <target name="getMacTime" depends="findTSK" if="os.family.unix">
+        <property environment="env"/>
+        <copy file="${env.TSK_HOME}/tools/timeline/mactime" tofile="${basedir}/release/mactime/mactime.pl"/>
+    </target>
+    
+    
+    <target name="init" depends="basic-init,files-init,build-init,-javac-init">
+        <!-- get additional deps -->
+        <!-- This should only be done on non-Windows systems. <antcall target="getMacTime" /> -->
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="Autopsy3" basedir=".">
+    <description>Builds the module suite Autopsy3.</description>
+	
+    <import file="nbproject/build-impl.xml"/>
+    
+    <property name="netbeans-plat-version" value="7.3" />
+    <property name="nbplatform.active.dir" value="${basedir}/netbeans-plat/${netbeans-plat-version}" />
+
+    <condition property="os.family" value="unix">  
+        <os family="unix"/>  
+    </condition>  
+    <condition property="os.family" value="windows">  
+        <os family="windows"/>  
+    </condition>  
+    <import file="build-${os.family}.xml"/> 
+    <property name="test-input" location="Test/input"/>
+    <property name="thirdparty.dir" value="${basedir}/thirdparty" />
+
+    <!-- import ant-contrib tools -->
+    <property name="ant-contrib.dir" value="${thirdparty.dir}/ant-contrib/1.0b3" />
+    <property name="ant.contrib.jar" value="${ant-contrib.dir}/ant-contrib.jar" />
+    <taskdef resource="net/sf/antcontrib/antlib.xml">
+        <classpath>
+            <pathelement location="${ant.contrib.jar}"/>
+        </classpath>
+    </taskdef>
+    
+
+    <!-- This seems really bad to be hard coded, but I couldn't find a better solution -->
+    <path id="jni-path">
+        <pathelement location="${basedir}/build/cluster/modules/org-sleuthkit-datamodel.jar"/>
+        <path refid="cluster.path.id" />
+    </path>
+
+    <!-- Verify that the TSK_HOME env variable is set -->
+    <target name="findTSK">
+        <property environment="env"/>
+        <condition property="tskFound">
+            <isset property="env.TSK_HOME"/>
+        </condition>
+        <fail unless="tskFound" message="TSK_HOME must be set as an environment variable."/>
+        <echo> TSK_HOME: ${env.TSK_HOME}</echo>
+    </target>
+    
+     <target name="getJunit">
+        <property name="junit.dir" value="${thirdparty.dir}/junit/${netbeans-plat-version}" />
+         <unzip src="${junit.dir}/junit.zip" dest="${nbplatform.active.dir}"/>
+    </target>
+    
+    <!-- This target will create a custom ZIP file for us.  It first uses the general
+      ZIP target and then opens it up and adds in any files that we want.  This is where we customize the
+      version number. -->
+    <target name="build-zip" depends="suite.build-zip"> <!--,findJRE" -->
+        <property name="nbdist.dir" value="dist"/>
+        <property name="release.dir" value="${nbdist.dir}/${app.name}"/>
+
+        <!-- step (2) unzip the result  -->
+        <property name="zip-tmp" value="${nbdist.dir}/tmp"/>
+        <delete dir="${zip-tmp}"/>
+        <mkdir dir="${zip-tmp}"/>
+        <unzip src="${nbdist.dir}/${app.name}.zip" dest="${zip-tmp}"/>
+
+        <!-- step (3) do your copying stuff here, check the ant doc for copy, move, etc file -->
+        <copy file="${basedir}/README.txt" tofile="${zip-tmp}/${app.name}/README.txt"/>
+        <copy file="${basedir}/LICENSE-2.0.txt" tofile="${zip-tmp}/${app.name}/LICENSE-2.0.txt"/>
+        <copy file="${basedir}/NEWS.txt" tofile="${zip-tmp}/${app.name}/NEWS.txt"/>
+        <copy file="${basedir}/KNOWN_ISSUES.txt" tofile="${zip-tmp}/${app.name}/KNOWN_ISSUES.txt"/>
+         
+        <unzip src="${thirdparty.dir}/gstreamer/${os.family}/i386/0.10.7/gstreamer.zip" dest="${zip-tmp}/${app.name}/gstreamer"/>
+        <copy file="${basedir}/branding_${app.name}/icon.ico" tofile="${zip-tmp}/${app.name}/icon.ico" overwrite="true"/>
+        <if>
+            <equals arg1="${os.family}" arg2="windows"/>
+            <then>
+                <antcall target="copyExternalLibsToZip"/>
+            </then>
+        </if>
+        
+        <property name="app.property.file" value="${zip-tmp}/${app.name}/etc/${app.name}.conf" />
+        <property name="jvm.options" value="&quot;--branding ${app.name} -J-Xms24m -J-XX:MaxPermSize=128M -J-Xverify:none &quot;" />
+        <propertyfile file="${app.property.file}">
+            <!-- Note: can be higher on 64 bit systems, should be in sync with project.properties -->
+            <entry key="default_options" value="@JVM_OPTIONS" />
+        </propertyfile>
+        <!-- workaround for ant escaping : and = when setting properties -->
+        <replace file="${app.property.file}" token="@JVM_OPTIONS" value="${jvm.options}" />
+        
+        <!-- We want to remove the dlls in autopsy/modules/lib because they will
+             shadow the files in the autopsy/modules/lib/ARCHITECTURE folder in the JAR.
+             These files are legacy from when we used to copy the dlls to this location. 
+             This check should do away in the future. Added Sept '13-->
+        <delete failonerror="false">
+            <fileset dir="${zip-tmp}/${app.name}/autopsy/modules/lib">
+                <include name="libtsk_jni.dll" />
+                <include name="libewf.dll" />
+                <include name="zlib.dll" />
+            </fileset>
+        </delete>
+        
+        <!-- step (4) zip again, but with the version numbers in the dir -->
+        <zip destfile="${nbdist.dir}/${app.name}-${app.version}.zip">
+            <zipfileset dir="${zip-tmp}/${app.name}"/>
+        </zip>
+
+        <delete dir="${zip-tmp}"/>
+        <!-- <delete file="${nbdist.dir}/${app.name}.zip"/> -->
+        
+        <echo message=" "/>
+        <echo message="cleaning and finalizing release" />
+        <delete dir="${release.dir}"/>
+    </target>
+    
+    <target name="getProps" depends="prop-files,input-build-type,input-version"></target>
+    
+    <target name="prop-files">
+        <property file="nbproject/private/private.properties"/>
+        <property file="nbproject/project.properties"/>
+    </target>
+    
+    <target name="input-build-type" unless="build.type">
+        <input addProperty="build.type"
+            message="Enter the desired build type:"
+                validargs="DEVELOPMENT,RELEASE"
+                defaultvalue="DEVELOPMENT"/>
+    </target>
+    
+    <target name="input-version" unless="app.version">
+        <tstamp/>
+        <property name="app.version" value="${DSTAMP}"/>
+    </target>
+    
+    <target name="getExternals">
+       <if>
+            <equals arg1="${os.family}" arg2="windows"/>
+            <then>
+                <antcall target="copyLibs"/>
+            </then>
+        </if>
+    </target>
+    
+    <target name="-init" depends="-taskdefs,-convert-old-project,getProps,getJunit,getExternals">
+        <convertclusterpath from="${cluster.path.evaluated}" to="cluster.path.final" id="cluster.path.id"/>
+        <sortsuitemodules unsortedmodules="${modules}" sortedmodulesproperty="modules.sorted"/>
+        <property name="cluster" location="build/cluster"/>
+        <echo level="verbose">Suite in ${basedir} with clusters ${cluster.path.final}, build cluster ${cluster}, and sorted modules ${modules.sorted}</echo>
+        <!-- synchronize with SuiteProject -->
+        <property name="disabled.modules" value=""/>
+        <property name="enabled.clusters" value=""/>
+        <property name="disabled.clusters" value=""/>
+        <condition property="branding.dir" value="branding_${app.name}">
+            <not>
+                <equals arg1="${app.name}" arg2="autopsy"/> 
+            </not>
+        </condition>
+        <property name="branding.dir" location="branding"/>
+        <property name="dist.dir" location="dist"/>
+        <!-- MOVE THE .DLL FILES TO THE NETBEANS DIRECTORY -->
+
+        <condition property="run.branding"> <!-- #84689 -->
+            <and>
+                <available file="${branding.dir}" type="dir"/>
+                <isset property="branding.token"/>
+            </and>
+        </condition>
+    </target>
+    
+    <!-- override build to add branding -->
+    <target name="build" depends="build-brand,suite.build" description="Compiles autopsy and produces a basic branded build that can run on a dev. system" />
+ 
+    <target name="build-brand" depends="-init">
+        
+        <echo>${app.name} branding</echo>
+        
+        <copy file="${basedir}/branding_${app.name}/welcome_logo.png" tofile="${basedir}/Core/src/org/sleuthkit/autopsy/casemodule/welcome_logo.png" overwrite="true"/>
+        
+        <propertyfile
+        file="${branding.dir}/core/core.jar/org/netbeans/core/startup/Bundle.properties" 
+        comment="Updated by build script">
+            <entry key="currentVersion" value="${app.title} ${app.version}" />
+        </propertyfile>
+ 
+        <propertyfile
+        file="${branding.dir}/modules/org-netbeans-core-windows.jar/org/netbeans/core/windows/view/ui/Bundle.properties"
+        comment="Updated by build script">
+            <entry key="CTL_MainWindow_Title" value="${app.title} ${app.version}" />
+            <entry key="CTL_MainWindow_Title_No_Project" value="${app.title} ${app.version}" />
+        </propertyfile>
+        
+        <propertyfile
+        file="${basedir}/Core/src/org/sleuthkit/autopsy/coreutils/Version.properties"
+        comment="Updated by build script">
+            <entry key="app.name" value="${app.title}" />
+            <entry key="app.version" value="${app.version}" />
+            <entry key="build.type" value="${build.type}" />
+        </propertyfile>
+        
+        <copy todir="${basedir}" failonerror="false">
+            <fileset dir="${branding.dir}/bundles"
+                    includes="**/*"/>
+        </copy>
+    </target>
+    
+    <target name="jni" depends="build,findTSK">
+        <javah verbose="yes" outputFile="${env.TSK_HOME}/bindings/java/tsk_jni/tsk_jni/dataModel_SleuthkitJNI.h">
+            <class name="org.sleuthkit.datamodel.SleuthkitJNI" />
+            <classpath  refid="jni-path"/>
+        </javah>
+    </target>
+    
+    
+    <target name="doxygen" description="build doxygen docs, requires doxygen in PATH" depends="-init,-hide-excluded-modules">
+        <exec executable="doxygen" dir="${basedir}/docs/doxygen">
+            <arg value="Doxyfile"/>
+        </exec>
+    </target>
+    
+    <target name="check-release">
+        <condition property="is-release">
+            <and>
+                <equals arg1="${build.type}" arg2="RELEASE"/>
+                <isset property="update_versions"/>
+                <equals arg1="${update_versions}" arg2="true"/>
+            </and>
+        </condition>
+    </target>
+    
+    <target name="versioning-script-if-release" if="is-release">
+        <exec dir="${basedir}" executable="python" failonerror="true">
+            <arg line="update_versions.py -a" />
+        </exec>
+    </target>
+    
+    <target name="versioning-script-if-not-release" unless="is-release">
+        <exec dir="${basedir}" executable="python" failonerror="true">
+            <arg value="update_versions.py" />
+        </exec>
+    </target>
+    
+    <target name="versioning-script" depends="check-release, versioning-script-if-release, versioning-script-if-not-release"/>
+     
+    <target name="build-installer-dir" depends="getProps, build-zip" description="Builds Autopsy with branding and all dependencies" >
+        <unzip src="${nbdist.dir}/${app.name}-${app.version}.zip" dest="${nbdist.dir}/${app.name}-installer"/>
+    </target>
+    
+    <target name="build-installer" depends="build-installer-dir" description="Builds Autopsy installer.">
+        <antcall target="build-installer-${os.family}" />
+    </target>
+    <target name="test-download-imgs" description="Get test images and store them in the path represented by the test-input variable.">
+         <available file="${test-input}/nps-2008-jean.E01" property="img-present-1"/>
+         <available file="${test-input}/nps-2008-jean.E02" property="img-present-2"/>
+         <if>
+             <equals arg1="${img-present-1}" arg2="true"/>
+             <then>
+                <echo message = "nps-2008-jean.E01 already present."/>
+             </then>
+             <else>
+                <mkdir dir="${test-input}" />
+                <get src="http://digitalcorpora.org/corp/nps/drives/nps-2008-jean/nps-2008-jean.E01" dest="${test-input}"/>                
+             </else>
+         </if>
+         <if>
+             <equals arg1="${img-present-2}" arg2="true"/>
+             <then>
+                <echo message = "nps-2008-jean.E02 already present."/>
+             </then>
+             <else>
+                <mkdir dir="${test-input}" />
+                <get src="http://digitalcorpora.org/corp/nps/drives/nps-2008-jean/nps-2008-jean.E02" dest="${test-input}"/>                
+             </else>
+         </if>
+    </target>
+</project>
+<project name="pasco2" default="jar" basedir=".">
+
+	<!-- paths -->
+	<property file="${basedir}/build.properties"/>
+  	<property name="src.dir" location="${basedir}/src"/>
+  	<property name="java.src.dir" location="${basedir}/src"/>
+  	<property name="java.test.dir" location="${basedir}/src/test"/>
+  	<property name="doc.dir" location="${basedir}/doc"/>
+
+  	<property name="bin.dir" location="${basedir}/bin"/>
+  	<property name="dist.dir"  location="${basedir}/dist"/>
+    <property name="lib.dir"  value="${basedir}/lib"/>
+    <property name="build.dir"  location="${basedir}/build"/>
+    <property name="build.lib.dir"  location="${basedir}/lib/build"/>
+
+
+	<!-- build / compile properties -->
+    <property name="debug" value="off"/>
+    <property name="optimize" value="on"/>
+    <property name="deprecation" value="off"/>
+    <property name="compress.jars" value="true"/>
+	<property name="link" value="static"/>
+
+
+    <path id="project.class.path">
+        <pathelement path="${java.class.path}" />
+        <fileset dir="${lib.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <path id="build.class.path">
+        <pathelement path="${java.class.path}" />
+        <fileset dir="${lib.dir}">
+            <include name="*.jar" />
+        </fileset>
+   </path>	
+
+	<target name="init">
+	    <tstamp/>
+	    <mkdir dir="${build.dir}"/>
+	    <mkdir dir="${dist.dir}"/>
+	</target>
+	
+  <target name="compile" depends="init"
+        description="compile the source " >
+        <javac srcdir="${java.src.dir}"
+            destdir="${build.dir}"
+            debug="${debug}"
+            optimize="${optimize}"
+            deprecation="${deprecation}"
+            target="1.5"
+        	source="1.5"
+        	includeantruntime="false">
+                <classpath refid="project.class.path" />
+            <compilerarg value="-Xlint:unchecked,-options"/>
+ 		</javac>
+  </target>
+  
+ 
+	
+	<target name="jar" depends="compile">
+		<jar jarfile="${dist.dir}/pasco2.jar" 
+				basedir="${build.dir}" 
+				includes="**/*.class,**/*.properties,**/*.bmp,**/*.gif,${lib.dir}/*.jar">  
+			<manifest>
+		      <attribute name="Main-Class"
+		            value="isi.pasco2.Main"/>
+		    </manifest>
+		</jar>
+	</target>
+
+	<target name="dist" depends="jar">
+		<zip destfile="${dist.dir}/pasco2-0.1.zip">
+			<zipfileset prefix="lib" dir="${lib.dir}" />
+			<zipfileset prefix="src" dir="${src.dir}" />
+			<zipfileset dir="${dist.dir}">
+				<include name="*.jar"/>
+			</zipfileset>
+			<zipfileset file="LICENSE.txt" />
+			<zipfileset file="LICENSE-jawin.txt" />
+			<zipfileset file="README.txt" />
+			<zipfileset file="build.xml" />
+		</zip>
+	</target>	
+
+		
+  <target name="clean"
+        description="clean up" >
+    <delete dir="${build.dir}"/>
+    <delete dir="${dist.dir}"/>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- You may freely edit this file. See harness/README in the NetBeans platform -->
+<!-- for some information on what you could do (e.g. targets to override). -->
+<!-- If you delete this file and reopen the project it will be recreated. -->
+<project name="org.sleuthkit.autopsy.thunderbirdparser" default="netbeans" basedir=".">
+    <description>Builds, tests, and runs the project org.sleuthkit.autopsy.thunderbirdparser.</description>
+    <import file="nbproject/build-impl.xml"/>
+</project>

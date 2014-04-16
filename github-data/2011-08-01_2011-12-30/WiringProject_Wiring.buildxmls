@@ -1,0 +1,581 @@
+<!--
+    Top-level TODO:
+
+     - get rid of unnecessary copying and work (e.g., apple.jar is copied
+       to out/dist/ under Linux).  This can likely be handled by only fetching
+       the JARs needed for the current platform.
+
+     - align these files more with Ant build file conventions:
+
+           http://wiki.apache.org/ant/TheElementsOfAntStyle
+
+       In particular, the names of our main targets could probably use some work.
+-->
+
+<project name="wiring" default="make" basedir=".">
+  <description>Wiring IDE build file.</description>
+
+  <!-- ====================
+       Common Configuration
+       ==================== -->
+
+  <!-- Current wiring version (FIXME: this is just a stub) -->
+  <property name="release.version" value="v1.0.0-dev"/>
+
+  <!-- out.dir: the parent directory for all build-generated files. -->
+  <property name="out.dir" location="${basedir}/out"/>
+
+  <!-- dist.dir: a staging area for the Wiring IDE distribution. -->
+  <property name="dist.dir" location="${out.dir}/dist"/>
+
+  <!-- deps.dir: dependencies fetched from the network. -->
+  <property name="deps.dir" location="${out.dir}/deps"/>
+  <property name="deps.archive" location="${deps.dir}/archive"/>
+  <property name="deps.extract" location="${deps.dir}/extract"/>
+
+  <!-- build.dir: IDE build artifacts (like .class files and pde.jar). -->
+  <property name="build.dir" location="${out.dir}/ide"/>
+  <property name="build.classes" location="${build.dir}/classes"/>
+  <property name="build.jar" location="${build.dir}/pde.jar"/>
+
+  <!-- javadoc.dir: Contains javadoc output -->
+  <property name="javadoc.dir" location="${out.dir}/javadoc"/>
+
+  <!-- * -->
+
+  <!-- framework.dir: the Wiring Framework. -->
+  <property name="framework.dir" location="${basedir}/framework"/>
+
+  <!-- build.rsrc: Build resources. -->
+  <property name="build.rsrc.dir" location="${basedir}/build"/>
+  <property name="build.rsrc.shared" location="${build.rsrc.dir}/shared"/>
+  <property name="build.rsrc.ide-deps" location="${build.rsrc.shared}/lib"/>
+
+  <!-- ide.dir: the IDE sources. -->
+  <property name="ide.dir" location="${basedir}/IDE"/>
+  <property name="ide.src" location="${ide.dir}"/>
+
+  <!-- * -->
+
+  <!-- lib.class.path: the IDE's classpath dependencies. -->
+  <!-- TODO: turn these into external dependencies. -->
+  <path id="lib.class.path">
+    <pathelement location="${build.rsrc.ide-deps}/antlr.jar"/>
+    <pathelement location="${build.rsrc.ide-deps}/apple.jar"/>
+    <pathelement location="${build.rsrc.ide-deps}/jna.jar"/>
+    <pathelement location="${build.rsrc.ide-deps}/serial/serial.jar"/>
+    <pathelement location="${build.rsrc.ide-deps}/serial/RXTXcomm.jar"/>
+    <pathelement location="${build.rsrc.ide-deps}/processing.jar"/>
+
+    <!-- TODO: do we really still depend on ECJ? -->
+    <pathelement location="${build.rsrc.ide-deps}/ecj.jar"/>
+  </path>
+
+  <!-- ide.main.class is the class which provides the IDE's main() method. -->
+  <property name="ide.main.class" value="processing.app.Base"/>
+
+  <!-- * -->
+
+  <!-- External dependency configuration.
+
+       TODO use a real dependency management tool (e.g. Apache Ivy).
+       TODO sort out what to do about already-generated ANTLR java sources.
+
+       Notes:
+       * dep.foo.remote is the URL dependency foo's archive from.
+       * dep.foo.local is the local path to save foo's archive in.
+       * Remote URLs not given here are specified in the
+         platform-specific build.xml. -->
+
+  <property name="dep.toolchain.avr.local"
+            location="${deps.archive}/tools-avr.tgz"/>
+
+  <property name="dep.reference.remote"
+            value="http://wiring.googlecode.com/files/reference.zip"/>
+  <property name="dep.reference.local"
+            location="${deps.archive}/reference.zip"/>
+
+  <!-- ==================================
+       Platform Configuration and Targets
+       ================================== -->
+
+  <!-- Detect platform, setting the "plat.name" property to "macosx",
+       "linux", or "windows". -->
+  <condition property="plat.name" value="macosx">
+    <os family="mac"/>
+  </condition>
+  <condition property="plat.name" value="linux">
+    <!-- NB: this is true on all non-OS X Unices, not just Linux. -->
+    <and>
+      <os family="unix"/>
+      <not><os family="mac"/></not> <!-- Ant considers OS X a Unix -->
+    </and>
+  </condition>
+  <condition property="plat.name" value="windows">
+    <os family="windows"/>
+  </condition>
+
+  <!-- build.rsrc.plat: Platform-specific build resources -->
+  <property name="build.rsrc.plat" location="${build.rsrc.dir}/${plat.name}"/>
+
+  <import file="${build.rsrc.plat}/plat-build.xml"/>
+
+  <!-- ==============
+       Common Targets
+       ==============
+
+       Note that several of these are currently just aliases for
+       platform-specific targets (defined in the platform
+       plat-build.xml). Keep it this way; it will let us insert any
+       portable functionality easily in the future.
+
+  -->
+
+
+  <!-- dist -->
+
+  <target name="dist" depends="platform.-dist"
+          description="Build the Wiring IDE distributable"/>
+
+  <!-- make -->
+
+  <target name="make" depends="platform.-make"
+          description="Build Wiring IDE for local use"/>
+
+  <!-- run -->
+
+  <target name="run" depends="make,platform.-run"
+          description="Build and run Wiring IDE"/>
+
+  <!-- build -->
+
+  <target name="build" depends="init,resolve.deps"
+          description="Build Wiring IDE's Java source code">
+    <javac srcdir="${ide.src}"
+           destdir="${build.classes}"
+           includeAntRuntime="false"
+           source="1.5" target="1.5"
+           bootclasspath="${platform.bootclasspath}" extdirs=""
+           classpathref="lib.class.path"/>
+    <jar destfile="${build.jar}" basedir="${build.classes}" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="processing.app.Base"/>
+      </manifest>
+    </jar>
+  </target>
+
+  <!-- JavaDoc -->
+
+  <target name="javadoc" depends="init"
+          description="Generate JavaDoc HTML output">
+    <javadoc sourcepath="${ide.src}" destdir="${javadoc.dir}"
+             packagenames="processing.app.*" classpathref="lib.class.path"
+             Bootclasspath="${platform.bootclasspath}"/>
+  </target>
+
+  <!-- Dependency resolution -->
+  <!-- FIXME: Symlinks and permissions are not handled properly. We
+       currently resort to platform-specific workaround hacks. -->
+
+  <target name="resolve.deps"
+          depends="-resolve.dep.avr,-resolve.dep.reference,platform.-resolve.deps"
+          description="Handle dependency resolution and retrieval">
+  </target>
+
+  <!-- The following if="dep.avr.default.ok" is an ugly hack to allow
+       individual platforms to override AVR toolchain retrieval. Sigh. -->
+  <target name="-resolve.dep.avr"
+          depends="-check.dep.avr"
+          if="dep.avr.default.ok"
+          unless="exists.dep.avr">
+    <get src="${dep.toolchain.avr.remote}" dest="${dep.toolchain.avr.local}"/>
+    <untar src="${dep.toolchain.avr.local}"
+           dest="${deps.extract}" compression="gzip"/>
+  </target>
+
+  <target name="-check.dep.avr" depends="init">
+    <available property="exists.dep.avr" file="${dep.toolchain.avr.local}"/>
+  </target>
+
+  <target name="-resolve.dep.reference"
+          depends="-check.dep.reference"
+          unless="exists.dep.reference">
+    <get src="${dep.reference.remote}" dest="${dep.reference.local}"/>
+    <unzip src="${dep.reference.local}" dest="${deps.extract}"/>
+  </target>
+
+  <target name="-check.dep.reference" depends="init">
+    <available property="exists.dep.reference" file="${dep.reference.local}"/>
+  </target>
+
+  <!-- Cleanup -->
+
+  <target name="clean"
+          description="Remove built IDE files">
+    <delete dir="${build.dir}" quiet="true"/>
+    <delete dir="${dist.dir}" quiet="true"/>
+  </target>
+
+  <target name="clean.all"
+          description="Remove build files and downloaded dependencies">
+    <delete dir="${out.dir}" quiet="true"/>
+  </target>
+
+  <!-- Initialization -->
+
+  <target name="init" depends="platform.-init"
+          description="Initialize output directories">
+    <mkdir dir="${out.dir}"/>
+
+    <mkdir dir="${dist.dir}"/>
+
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${build.classes}"/>
+
+    <mkdir dir="${deps.dir}"/>
+    <mkdir dir="${deps.archive}"/>
+    <mkdir dir="${deps.extract}"/>
+
+    <mkdir dir="${javadoc.dir}"/>
+  </target>
+</project>
+<project name="platform">
+  <description>Wiring IDE build sub-project for Linux</description>
+
+  <!-- =============
+       Configuration
+       ============= -->
+
+  <!-- platform.basedir: Directory containing this file -->
+  <dirname property="platform.basedir" file="${ant.file.platform}"/>
+
+  <!-- dist.wiring.dir: The Wiring directory, for .tgz'ing. -->
+  <property name="dist.wiring" value="wiring-${release.version}"/>
+  <property name="dist.wiring.dir" location="${dist.dir}/${dist.wiring}"/>
+  <property name="dist.wiring.lib" location="${dist.wiring.dir}/lib"/>
+  <!-- dist.wiring.script: path to script used to run Wiring -->
+  <property name="dist.wiring.script" location="${dist.wiring.dir}/wiring"/>
+
+  <!-- dist.archive: Archive for wiring distribution. -->
+  <property name="dist.archive"
+            location="${dist.dir}/wiring-${release.version}.tgz"/>
+
+  <!-- platform.bootclasspath: Location of bootstrap class files.
+       Linux builds use the system JDK/JRE, so use its rt.jar. -->
+  <property environment="env"/>
+  <property name="platform.bootclasspath"
+            value="${env.JAVA_HOME}/jre/lib/rt.jar"/>
+
+  <!-- Dependencies -->
+  <property name="dep.toolchain.avr.remote"
+            value="http://wiring.googlecode.com/files/tools-avr-linux-i586.tar.gz"/>
+
+  <!-- =======
+       Targets
+       ======= -->
+
+  <!-- dist -->
+
+  <target name="-dist" depends="make">
+    <!-- Make the dist tarball -->
+    <echo message="Creating dist tarball..."/>
+    <exec executable="tar" dir="${dist.dir}">
+      <arg value="czf"/>
+      <arg value="${dist.archive}"/>
+      <arg value="${dist.wiring}"/>
+    </exec>
+    <echo message="Done. Dist archive is in ${dist.archive}"/>
+  </target>
+
+  <!-- make -->
+
+  <target name="-make" depends="init,resolve.deps,build">
+    <!-- Copy everything into dist.wiring.dir -->
+    <copy todir="${dist.wiring.dir}">
+      <fileset dir="${deps.extract}"/>
+      <fileset dir="${framework.dir}"/>
+      <fileset dir="${build.rsrc.shared}"/>
+      <path refid="lib.class.path"/>
+    </copy>
+    <copy todir="${dist.wiring.lib}" file="${build.jar}"/>
+
+    <!-- Hacks to get things to (mostly) work -->
+    <copy todir="${dist.wiring.dir}" file="${platform.basedir}/dist/wiring"/>
+    <chmod perm="ugo+x">
+      <fileset dir="${dist.wiring.dir}/tools"
+               includes="**/bin/*,**/libexec/gcc/avr/4.3.5/c*"/>
+    </chmod>
+    <chmod perm="ugo+x" file="${dist.wiring.script}"/>
+  </target>
+
+  <!-- run -->
+
+  <target name="-run" depends="make">
+    <exec executable="${dist.wiring.script}"/>
+  </target>
+
+  <!-- Dependency resolution -->
+
+  <target name="-resolve.deps"
+          depends="platform.-resolve.dep.avr">
+  </target>
+
+  <!-- Override AVR toolchain using a real tar, so symlinks work. -->
+  <target name="-resolve.dep.avr"
+          depends="init,-check.dep.avr"
+          unless="exists.dep.avr">
+    <get src="${dep.toolchain.avr.remote}" dest="${dep.toolchain.avr.local}"/>
+    <exec executable="tar" dir="${deps.extract}">
+      <arg value="xzf"/>
+      <arg value="${dep.toolchain.avr.local}"/>
+    </exec>
+  </target>
+
+  <!-- Initializiation -->
+
+  <target name="-init">
+    <mkdir dir="${dist.wiring.dir}"/>
+    <mkdir dir="${dist.wiring.lib}"/>
+  </target>
+
+</project>
+<project name="platform">
+  <description>Wiring IDE build sub-project for OS X</description>
+
+  <!-- =============
+       Configuration
+       ============= -->
+
+  <!-- app.name: Name of the .app we build -->
+  <property name="app.name" value="Wiring.app"/>
+
+  <!-- dist.app: The .app we build for distribution. -->
+  <property name="dist.app" location="${dist.dir}/${app.name}"/>
+  <property name="dist.app.resources"
+            location="${dist.app}/Contents/Resources/Java"/>
+
+  <!-- dist.rsrc.plat: Platform dist resources. -->
+  <property name="dist.rsrc.plat" location="${build.rsrc.plat}/dist"/>
+  <!-- TODO make this file an external dependency. -->
+  <property name="dist.rsrc.dmg.template"
+            location="${build.rsrc.plat}/template.dmg.gz"/>
+
+  <!-- platform.bootclasspath: Location of bootstrap class files.
+       OS X builds defer to the Apple JDK, so use its rt.jar. -->
+  <property environment="env"/>
+  <property name="platform.bootclasspath"
+            value="${env.JAVA_HOME}/jre/lib/rt.jar"/>
+
+  <!-- dist.rsrc.app: The "naked" .app we start with. -->
+  <property name="dist.rsrc.app" location="${dist.rsrc.plat}/${app.name}"/>
+
+  <!-- Dependencies -->
+  <property name="dep.toolchain.avr.remote"
+            value="http://wiring.googlecode.com/files/tools-avr-macosx-10.6.tar.gz"/>
+  <property name="dep.avr.default.ok" value="true"/>
+
+  <!-- =======
+       Targets
+       ======= -->
+
+  <!-- dist -->
+
+  <target name="-dist" depends="make">
+    <!-- TODO port the relevant pieces out of the old build scripts
+         over to Ant here -->
+    <fail message="Unimplemented"/>
+  </target>
+
+  <!-- make -->
+
+  <target name="-make" depends="init,resolve.deps,build">
+    <exec executable="cp">
+      <arg value="-pRX"/>
+      <arg value="${dist.rsrc.app}"/>
+      <arg value="${dist.app}"/>
+    </exec>
+
+    <copy todir="${dist.app.resources}">
+      <fileset dir="${build.rsrc.shared}"/>
+      <fileset dir="${deps.extract}"/>
+      <fileset dir="${framework.dir}"/>
+    </copy>
+    <copy todir="${dist.app.resources}" file="${build.jar}"/>
+
+    <!-- Platform hacks -->
+    <echo message="${release.version}${line.separator}"
+          file="${dist.app.resources}/lib/version.txt"/>
+    <chmod perm="ugo+x">
+      <fileset dir="${dist.app.resources}/tools"
+               includes="**/bin/*,**/libexec/gcc/avr/4.3.5/c*"/>
+    </chmod>
+    <!-- It seems that OS X adds Contents/Resources/Java to
+         java.library.path (which is the search path for .jnilib
+         files). Rather than mess with java.library.path elsewhere,
+         we'll just hack it like this for now. -->
+    <!-- TODO set java.library.path appropriately elsewhere. -->
+    <copy file="${dist.app.resources}/lib/serial/librxtxSerial.jnilib"
+          todir="${dist.app.resources}"/>
+
+    <echo message="Done. ${app.name} is in ${dist.app}."/>
+  </target>
+
+  <!-- run -->
+
+  <target name="-run" depends="make">
+    <exec executable="open">
+      <arg value="${dist.app}"/>
+    </exec>
+  </target>
+
+  <!-- Dependency resolution -->
+
+  <target name="-resolve.deps">
+    <!-- No extra dependencies on OS X at this time. -->
+  </target>
+
+  <!-- init -->
+
+  <target name="-init"/> <!-- Nothing extra to do -->
+
+</project>
+<project name="platform">
+  <description>Wiring IDE build sub-project for Windows</description>
+
+  <!-- =============
+       Configuration
+       ============= -->
+
+  <!-- dist.wiring.dir: The Wiring directory for .zip'ing. -->
+  <property name="dist.wiring" value="wiring-${release.version}"/>
+  <property name="dist.wiring.dir" location="${dist.dir}/${dist.wiring}"/>
+  <property name="dist.wiring.lib" location="${dist.wiring.dir}/lib"/>
+  <!-- dist.wiring.exe: The launch4j-generated wiring.exe -->
+  <property name="dist.wiring.exe" location="${dist.wiring.dir}/wiring.exe"/>
+  <!-- dist.wiring.zip: the distributable zipfile -->
+  <property name="dist.wiring.zip"
+	    location="${dist.dir}/${dist.wiring}.zip"/>
+  <!-- dist.wiring.expert.zip: the distributable zipfile with no JRE -->
+  <property name="dist.wiring.expert.zip"
+	    location="${dist.dir}/${dist.wiring}-expert.zip"/>
+
+  <!-- build.rsrc.launch4j: launch4j resources. -->
+  <property name="dist.rsrc.launch4j" location="${build.rsrc.plat}/launcher"/>
+
+  <!-- platform.bootclasspath: Location of bootstrap class files.
+       Windows builds bundle a JRE, so hand-hack a path to its rt.jar. -->
+  <property environment="env"/>
+  <property name="platform.bootclasspath"
+            value="${deps.extract}/java/lib/rt.jar"/>
+
+  <!-- Dependencies -->
+
+  <property name="dep.toolchain.avr.remote"
+            value="http://wiring.googlecode.com/files/tools-avr-windows-i586-ant.tgz"/>
+  <property name="dep.avr.default.ok" value="true"/>
+
+  <property name="dep.jre.remote"
+            value="http://wiring.googlecode.com/files/jre-tools-6u26-windows-i586.zip"/>
+  <property name="dep.jre.local"
+            location="${deps.archive}/jre.tgz"/>
+
+  <property name="dep.cygwindlls.remote"
+            value="http://wiring.googlecode.com/files/cygwin-dlls.zip"/>
+  <property name="dep.cygwindlls.local"
+            location="${deps.archive}/cygwin-dlls.zip"/>
+
+  <!-- =======
+       Targets
+       ======= -->
+
+  <!-- dist -->
+
+  <target name="-dist" depends="make">
+    <!-- This is the normal distributable, which includes a JRE: -->
+    <zip destfile="${dist.wiring.zip}">
+      <zipfileset dir="${dist.wiring.dir}" prefix="${dist.wiring}"/>
+    </zip>
+    <!-- This is the expert distributable, which does not: -->
+    <zip destfile="${dist.wiring.expert.zip}">
+      <zipfileset dir="${dist.wiring.dir}" prefix="${dist.wiring}"
+		  excludes="java/**"/>
+    </zip>
+  </target>
+
+  <!-- make -->
+
+  <target name="-make" depends="init,resolve.deps,build">
+    <!-- Dirty hacks; TODO: clean this up. -->
+
+    <!-- Get wiring.exe under ${dist.wiring.dir}. The launch4j config
+         wants to put this in ${dist.rsrc.launch4j}/wiring.exe, and I
+         haven't figure out how to dissuade it from doing so, so just
+         move it to the right place for now. [mbolivar] -->
+    <exec executable="launch4jc.exe">
+      <arg value="${dist.rsrc.launch4j}/config.xml"/>
+    </exec>
+    <move file="${dist.rsrc.launch4j}/wiring.exe" todir="${dist.wiring.dir}"/>
+
+    <!-- Make sure rxtxSerial.dll gets picked up by JNI -->
+    <copy file="${build.rsrc.ide-deps}/serial/rxtxSerial.dll"
+          todir="${dist.wiring.dir}"/>
+
+    <!-- Copy everything into dist.wiring.dir. -->
+    <copy todir="${dist.wiring.dir}"><fileset dir="${build.rsrc.shared}"/></copy>
+    <copy todir="${dist.wiring.dir}"><fileset dir="${deps.extract}"/></copy>
+    <copy todir="${dist.wiring.dir}"><fileset dir="${framework.dir}"/></copy>
+    <copy todir="${dist.wiring.lib}"><path refid="lib.class.path"/></copy>
+    <copy todir="${dist.wiring.lib}" file="${build.jar}"/>
+
+    <!-- Create version.txt. -->
+    <echo message="${release.version}${line.separator}"
+          file="${dist.wiring.lib}/version.txt"/>
+
+    <echo message="--------------------------------------------------"/>
+    <echo message="Done. Release is in ${dist.wiring.dir}"/>
+    <echo message="--------------------------------------------------"/>
+  </target>
+
+  <!-- run -->
+
+  <target name="-run" depends="make">
+    <exec executable="${dist.wiring.exe}" spawn="true"/>
+  </target>
+
+  <!-- Dependency resolution -->
+
+  <target name="-resolve.deps"
+          depends="platform.-resolve.dep.jre,platform.-resolve.dep.cygwindlls">
+  </target>
+
+  <target name="-resolve.dep.jre"
+          depends="-check.dep.jre"
+          unless="exists.dep.jre">
+    <get src="${dep.jre.remote}" dest="${dep.jre.local}"/>
+    <unzip src="${dep.jre.local}" dest="${deps.extract}"/>
+  </target>
+
+  <target name="-check.dep.jre" depends="init">
+    <available property="exists.dep.jre" file="${dep.jre.local}"/>
+  </target>
+
+  <target name="-resolve.dep.cygwindlls"
+          depends="-check.dep.cygwindlls"
+          unless="exists.dep.cygwindlls">
+    <get src="${dep.cygwindlls.remote}" dest="${dep.cygwindlls.local}"/>
+    <unzip src="${dep.cygwindlls.local}" dest="${deps.extract}"/>
+  </target>
+
+  <target name="-check.dep.cygwindlls" depends="init">
+    <available property="exists.dep.cygwindlls"
+               file="${dep.cygwindlls.local}"/>
+  </target>
+
+  <!-- Initializiation -->
+
+  <target name="-init">
+    <mkdir dir="${dist.wiring.dir}"/>
+    <mkdir dir="${dist.wiring.lib}"/>
+  </target>
+
+</project>

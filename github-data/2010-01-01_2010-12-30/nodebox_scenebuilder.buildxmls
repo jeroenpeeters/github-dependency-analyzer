@@ -1,0 +1,380 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Application" default="dist">
+
+    <property name="src" value="src"/>
+    <property name="res" value="res"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/jna.jar"/>
+        <path path="${lib}/miglayout.jar"/>
+        <path path="${lib}/equinox.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="embed-resources" depends="init">
+        <copy todir="${build}">
+            <fileset dir="res"/>
+        </copy>
+    </target>
+
+    <target name="embed-dependencies" depends="init">
+        <copy file="${lib}/miglayout.jar" todir="${build}"/>
+        <copy file="${lib}/jna.jar" todir="${build}"/>
+    </target>
+
+    <target name="dist" depends="compile,embed-resources,embed-dependencies">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-app.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="SceneBuilder" default="dist">
+
+    <property file="version.properties"/>
+    <fail unless="app.version" message="File version.properties should specify app.version."/>
+
+    <property name="module.core" value="core"/>
+    <property name="module.builtins" value="builtins"/>
+    <property name="module.graphics" value="graphics"/>
+    <property name="module.pixie" value="pixie"/>
+    <property name="module.video" value="video"/>
+    <property name="module.toxiclibscore" value="toxiclibscore"/>
+    <property name="module.app" value="app"/>
+    <property name="app.res.mac" value="app/platform/mac/res"/>
+    <property name="dist.mac.dir" value="dist/mac"/>
+    <property name="dist.mac" value="dist/mac/${ant.project.name}"/>
+    <property name="dist.mac.examples" value="${dist.mac}/Examples"/>
+    <property name="dist.mac.app" value="${dist.mac}/${ant.project.name}.app"/>
+    <property name="dist.mac.stub" location="${dist.mac.app}/Contents/MacOS/${ant.project.name}"/>
+    <property name="dist.mac.contents" location="${dist.mac.app}/Contents"/>
+    <property name="dist.mac.res" location="${dist.mac.contents}/Resources"/>
+    <property name="dist.mac.java" location="${dist.mac.res}"/>
+    <property name="apple.appstub"
+              location="/System/Library/Frameworks/JavaVM.framework/Resources/MacOS/JavaApplicationStub"/>
+
+    <target name="dist">
+        <copy file="lib/mvel2.jar" todir="dist"/>
+        <ant dir="${module.core}" antfile="build.xml" target="dist"/>
+        <ant dir="${module.builtins}" antfile="build.xml" target="dist"/>
+        <ant dir="${module.graphics}" antfile="build.xml" target="dist"/>
+        <ant dir="${module.pixie}" antfile="build.xml" target="dist"/>
+        <ant dir="${module.video}" antfile="build.xml" target="dist"/>
+        <!-- <ant dir="${module.toxiclibscore}" antfile="build.xml" target="dist"/> -->
+        <ant dir="${module.app}" antfile="build.xml" target="dist"/>
+        <mkdir dir="dist/configuration"/>
+        <copy todir="dist/configuration">
+            <fileset dir="app/res/configuration"/>
+        </copy>
+        <copy todir="dist" file="lib/equinox.jar"/>
+        <copy todir="dist" file="version.properties"/>
+    </target>
+
+    <target name="clean">
+        <ant dir="${module.core}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.builtins}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.graphics}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.pixie}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.video}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.toxiclibscore}" antfile="build.xml" target="clean"/>
+        <ant dir="${module.app}" antfile="build.xml" target="clean"/>
+        <delete dir="dist"/>
+    </target>
+
+    <target name="run" depends="dist">
+        <java fork="true" dir="dist" classpath="dist/equinox.jar"
+              classname="org.eclipse.core.runtime.adaptor.EclipseStarter">
+            <arg value="-console"/>
+            <arg value="-clean"/>
+            <jvmarg value="-d32"/>
+        </java>
+    </target>
+
+    <target name="dist-mac" depends="dist" description="Make a double-clickable Mac OS X application">
+        <mkdir dir="${dist.mac.app}"/>
+        <mkdir dir="${dist.mac.java}"/>
+        <mkdir dir="${dist.mac.examples}"/>
+        <!-- Copy library and program archives-->
+        <copy todir="${dist.mac.java}">
+            <fileset dir="lib">
+                <include name="*.jar"/>
+                <include name="*.zip"/>
+            </fileset>
+            <fileset dir="dist">
+                <include name="*.jar"/>
+                <include name="*.zip"/>
+            </fileset>
+        </copy>
+        <!-- Copy resources-->
+        <copy todir="${dist.mac.res}">
+            <fileset dir="app/res"/>
+        </copy>
+        <!-- Copy application stub -->
+        <copy file="${apple.appstub}" toFile="${dist.mac.stub}"/>
+        <!-- Fix stub permissions -->
+        <chmod file="${dist.mac.stub}" perm="755"/>
+        <!-- Copy additional Mac contents -->
+        <copy todir="${dist.mac.contents}">
+            <fileset dir="${app.res.mac}"/>
+        </copy>
+        <mkdir dir="${dist.mac.java}/configuration"/>
+        <copy todir="${dist.mac.java}/configuration">
+            <fileset dir="app/res/configuration"/>
+        </copy>
+        <!-- Replace version number -->
+        <replace file="${dist.mac.contents}/Info.plist" token="@@VERSION@@" value="${app.version}"/>
+        <!-- Copy version number -->
+        <copy file="version.properties" todir="${dist.mac.res}"/>
+        <!-- Make directory into a bundle -->
+        <exec executable="/Developer/Tools/SetFile">
+            <arg line="-a B ${dist.mac.app}"/>
+        </exec>
+        <!-- Copy examples -->
+        <copy todir="${dist.mac.examples}">
+            <fileset dir="examples"/>
+        </copy>
+        <!-- Bundle into DMG -->
+        <exec executable="hdiutil">
+            <arg line="create -srcfolder ${dist.mac}  ${dist.mac.dir}/${ant.project.name}-${app.version}.dmg"/>
+        </exec>
+        <!-- Internet-enable DMG -->
+        <exec executable="hdiutil">
+            <arg line="internet-enable ${dist.mac.dir}/${ant.project.name}-${app.version}.dmg"/>
+        </exec>
+    </target>
+
+    <target name="run-mac" depends="dist-mac" description="Run the double-clickable application">
+        <!-- Use the exec task to open the application -->
+        <exec executable="/usr/bin/open" os="Mac OS X">
+            <arg line="${dist.mac.app}"/>
+        </exec>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Builtins" default="dist">
+
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/equinox.jar"/>
+        <path path="${lib}/ecj.jar"/>
+        <path path="${lib}/mvel2.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="dist" depends="compile">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-builtins.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Core" default="dist">
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="jdk.version" value="1.5"/>
+
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${lib}/equinox.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="embed-dependencies" depends="init">
+        <copy file="${lib}/processing-core.jar" todir="${build}"/>
+    </target>
+
+    <target name="dist" depends="compile,embed-dependencies">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-core.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Graphics" default="dist">
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/equinox.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="dist" depends="compile">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-graphics.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Pixie" default="dist">
+
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/equinox.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="dist" depends="compile">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-pixie.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Toxiclibs Core" default="dist">
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${dist}/nodebox-builtins.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/equinox.jar"/>
+        <path path="${lib}/toxiclibscore.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="embed-dependencies" depends="init">
+        <copy file="${lib}/toxiclibscore.jar" todir="${build}"/>
+    </target>
+
+    <target name="dist" depends="compile,embed-dependencies">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-toxiclibscore.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="NodeBox Pixie" default="dist">
+
+    <property name="src" value="src"/>
+    <property name="lib" value="../lib"/>
+    <property name="build" value="build"/>
+    <property name="dist" value="../dist"/>
+
+    <path id="build.classpath">
+        <path path="${dist}/nodebox-core.jar"/>
+        <path path="${lib}/processing-core.jar"/>
+        <path path="${lib}/processing-video.jar"/>
+        <path path="${lib}/equinox.jar"/>
+    </path>
+
+    <target name="init">
+        <mkdir dir="${build}"/>
+    </target>
+
+    <target name="compile" depends="init">
+        <javac srcdir="${src}" destdir="${build}" classpathref="build.classpath" source="1.5" target="1.5"/>
+    </target>
+
+    <target name="embed-dependencies" depends="init">
+        <!-- QTJava.zip in this location only exists on Mac. Ignore errors. -->
+        <copy file="/System/Library/Java/Extensions/QTJava.zip" todir="${build}" failonerror="false"/>
+        <copy file="${lib}/processing-video.jar" todir="${build}"/>
+    </target>
+
+    <target name="dist" depends="compile,embed-dependencies">
+        <mkdir dir="${dist}"/>
+        <jar jarfile="${dist}/nodebox-video.jar" basedir="${build}" manifest="manifest.mf"/>
+    </target>
+
+    <target name="clean">
+        <delete dir="${build}"/>
+        <delete dir="${dist}"/>
+    </target>
+
+</project>

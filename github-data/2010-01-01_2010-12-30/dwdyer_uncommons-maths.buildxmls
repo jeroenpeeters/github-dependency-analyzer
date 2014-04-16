@@ -1,0 +1,292 @@
+<!-- =========================================================================
+  Copyright 2006-2012 Daniel W. Dyer
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+========================================================================== -->
+<project name="uncommons-maths"
+         default="dist"
+         basedir="."
+         xmlns:uncommons="antlib:org.uncommons.antlib">
+  <description>Ant build file for Uncommons Maths library.</description>
+
+<!-- ==================================================================
+     GLOBAL BUILD PROPERTIES
+=================================================================== -->
+
+  <!-- Project-global locations. -->
+  <property name="conf.dir" value="etc" />
+  <property name="lib.dir" value="lib" />
+  <property name="lib.compiletime" value="${lib.dir}/compiletime" />
+  <property name="lib.runtime" value="${lib.dir}/runtime" />
+  <property name="dist.dir" value="./dist" />
+  <property name="docs.dir" value="./docs" />
+  <property name="coverage.dir" value="${docs.dir}/coverage" />
+  <property name="test-results.dir" value="${docs.dir}/test-results" />
+  <property name="release.dir" value="release" />
+  <property name="web.dir" value="website" />
+  <property name="temp.dir" value="temp" />
+
+  <!-- Classpath for compilation and tests. -->
+  <path id="base.path">
+    <fileset dir="${lib.dir}">
+      <include name="**/*.jar" />
+    </fileset>
+  </path>
+
+  <property name="version" value="1.2.3"/>
+  <property name="artifact.identifier" value="uncommons-maths-${version}"/>
+
+  <!-- This is the minimum coverage percentage (for both lines and
+       branches) that will be tolerated.  This is used to prevent
+       regressions in coverage.  The threshold will be raised as
+       test coverage improves. -->
+  <property name="minimum.coverage" value="95" />
+
+  <taskdef uri="antlib:org.uncommons.antlib"
+           resource="org/uncommons/antlib/antlib.xml"
+           classpathref="base.path"/>
+
+
+  <!-- ==================================================================
+       MACROS
+  =================================================================== -->
+
+  <macrodef name="diehard">
+    <attribute name="rng.class"/>
+    <attribute name="results.file"/>
+    <sequential>
+      <mkdir dir="${temp.dir}" />
+      <delete file="${temp.dir}/random.dat" />
+      <java classname="org.uncommons.maths.random.DiehardInputGenerator" classpath="core/build/classes/main">
+        <arg value="@{rng.class}"/>
+        <arg value="${temp.dir}/random.dat"/>
+      </java>
+      <exec dir="${lib.compiletime}/diehard"
+            executable="${lib.compiletime}/diehard/diehard"
+            output="@{results.file}"
+            input="${lib.compiletime}/diehard/input.txt"/>
+    </sequential>
+  </macrodef>
+
+
+<!-- ==================================================================
+     TARGETS FOR BUILDING THE SOFTWARE
+=================================================================== -->
+
+  <!-- Builds everything from scratch. -->
+  <target name="all"
+          depends="clean, dist, test, docs"
+          description="Builds everything, excluding docs, from scratch."/>
+
+
+  <!-- Deletes all directories and files created by the build process. -->
+  <target name="clean"
+          description="Remove all files created by the build process." >
+    <uncommons:clean module="core" />
+    <uncommons:clean module="demo" />
+    <delete dir="${docs.dir}" />
+    <delete dir="${dist.dir}" />
+    <delete dir="${release.dir}" />
+    <delete dir="${temp.dir}" />
+    <delete file="velocity.log" />
+  </target>
+
+
+  <target name="core"
+          description="Builds Uncommons Maths module.">
+    <uncommons:compile module="core" />
+    <uncommons:jar module="core" jarfile="${artifact.identifier}-temp.jar"/>
+    <typedef resource="aQute/bnd/ant/taskdef.properties" classpathref="base.path" />
+    <bnd classpath="core/${build.dir}/${artifact.identifier}-temp.jar"
+         eclipse="false"
+         failok="false"
+         exceptions="true"
+         files="uncommons-maths.bnd"
+         output="core/${build.dir}/${artifact.identifier}.jar"/>
+    <!-- Only need one JAR, so delete the non-OSGi version. -->
+    <delete file="core/${build.dir}/${artifact.identifier}-temp.jar" />
+  </target>
+
+
+  <target name="demo"
+          depends="core"
+          description="Builds the demo module.">
+    <uncommons:compile module="demo" />
+    <uncommons:jar module="demo"
+                   jarfile="uncommons-maths-demo-${version}.jar"
+                   classpath="${artifact.identifier}.jar jfreechart-1.0.8.jar jcommon-1.0.12.jar"
+                   mainclass="org.uncommons.maths.demo.RandomDemo" />
+  </target>
+
+  
+  <!-- Copy all necessary files to distribution directory. -->
+  <target name="dist"
+          depends="core, demo"
+          description="Generate the project distribution." >
+    <uncommons:dist />
+
+    <mkdir dir="${dist.dir}/src" />
+    <copy todir="${dist.dir}/src" flatten="true">
+      <fileset dir="." includes="**/${build.dir}/*-src.jar"/>
+    </copy>
+  </target>
+
+
+  <!-- Build source JAR files for inclusion in the release. -->
+  <target name="source" description="Build source JARs.">
+    <uncommons:source module="core" jarfile="${artifact.identifier}-src.jar" />
+  </target>
+
+
+  <!-- Create the release artifacts. -->
+  <target name="release"
+          depends="clean, source, dist, test, docs"
+          description="Creates the release archives.">
+    <uncommons:release name="${artifact.identifier}" />
+  </target>
+
+
+  <target name="release-maven"
+          depends="clean, dist"
+          description="Deploys the core Maths module to the Java.net Maven repository.">
+    <uncommons:maven-deploy module="core"
+                            version="${version}"
+                            username="${maven.user}"
+                            password="${maven.password}"/>
+  </target>
+
+<!-- ==================================================================
+      TARGETS FOR GENERATING TEST REPORTS & DOCUMENTATION
+ =================================================================== -->
+
+  <!-- Runs unit tests for all modules. -->
+  <target name="test"
+          depends="dist"
+          description="Run the unit test suite.">
+    <mkdir dir="${temp.dir}" />
+
+    <!-- Bytecode instrumentation to enable collection of test coverage data. -->
+    <taskdef resource="tasks.properties" classpathref="base.path" />
+    <cobertura-instrument todir="${temp.dir}"
+                          datafile="${temp.dir}/cobertura.ser">
+      <fileset dir="${dist.dir}" includes="${artifact.identifier}.jar"/>
+    </cobertura-instrument>
+
+    <!-- Run the unit tests on the instrumented classes. -->
+    <taskdef resource="testngtasks" classpathref="base.path"/>
+    <path id="test.path">
+      <dirset dir=".">
+        <include name="core/${classes.dir}/test" />
+      </dirset>
+      <fileset dir="${temp.dir}" includes="*.jar"/>
+      <path refid="base.path" />
+    </path>
+    <mkdir dir="${test-results.dir}" />
+    <testng classpathref="test.path"
+            outputdir="${test-results.dir}"
+            haltonfailure="false"
+            useDefaultListeners="false"
+            listeners="org.uncommons.reportng.HTMLReporter,
+                       org.uncommons.reportng.JUnitXMLReporter">
+      <xmlfileset dir="${conf.dir}" includes="testng.xml"/>
+      <sysproperty key="org.uncommons.maths.random.debug"
+                   value="true" />
+      <sysproperty key="net.sourceforge.cobertura.datafile"
+                   file="${temp.dir}/cobertura.ser" />
+      <sysproperty key="org.uncommons.reportng.title"
+                   value="Uncommons Maths Unit Test Report" />
+      <sysproperty key="org.uncommons.reportng.coverage-report"
+                   value="../../coverage/index.html" />
+    </testng>
+
+    <!-- Generate the HTML coverage report. -->
+    <mkdir dir="${coverage.dir}" />
+    <cobertura-report format="html"
+                      destdir="${coverage.dir}"
+                      datafile="${temp.dir}/cobertura.ser">
+      <fileset dir="core/${java.dir}/main">
+        <include name="**/*.java" />
+      </fileset>
+    </cobertura-report>
+    <!-- Generate an XML report for Hudson. -->
+    <cobertura-report format="xml"
+                      destdir="${coverage.dir}"
+                      datafile="${temp.dir}/cobertura.ser">
+      <fileset dir="core/${java.dir}/main">
+        <include name="**/*.java" />
+      </fileset>
+    </cobertura-report>
+
+    <!-- If the coverage is poor, fail. -->
+    <cobertura-check totallinerate="${minimum.coverage}"
+                     totalbranchrate="${minimum.coverage}"
+                     datafile="${temp.dir}/cobertura.ser"/>
+
+    <!-- Clean up afterwards. -->
+    <delete dir="${temp.dir}" />
+    <delete file="velocity.log" />
+  </target>
+
+
+  <target name="diehard"
+          description="Run DIEHARD test suite against each RNG."
+          depends="core">
+    <delete dir="${docs.dir}/diehard" />
+    <mkdir dir="${docs.dir}/diehard" />
+    <diehard rng.class="org.uncommons.maths.random.AESCounterRNG"
+             results.file="${docs.dir}/diehard/aes.txt" />
+    <diehard rng.class="org.uncommons.maths.random.CellularAutomatonRNG"
+             results.file="${docs.dir}/diehard/automaton.txt" />
+    <diehard rng.class="org.uncommons.maths.random.CMWC4096RNG"
+             results.file="${docs.dir}/diehard/cmwc.txt" />
+    <diehard rng.class="org.uncommons.maths.random.MersenneTwisterRNG"
+             results.file="${docs.dir}/diehard/mersenne.txt" />
+    <diehard rng.class="org.uncommons.maths.random.XORShiftRNG"
+             results.file="${docs.dir}/diehard/xor.txt" />
+    <!-- Test java.util.Random for comparison. -->
+    <diehard rng.class="org.uncommons.maths.random.JavaRNG"
+             results.file="${docs.dir}/diehard/java.txt" />
+  </target>
+
+
+  <!-- Generates API documentation for all modules. -->
+  <target name="docs"
+          description="Generates Javadoc API documentation.">
+    <uncommons:javadoc title="Uncommons Maths API"
+                       version="${version}"
+                       excludes="demo/**/*.java" />
+  </target>
+
+
+<!-- ==================================================================
+      TARGETS FOR UPDATING THE PROJECT WEBSITE
+ =================================================================== -->
+
+  <!-- Refresh the API documentation tree for the project website. -->
+  <target name="website-docs"
+          description="Re-builds the website Javadocs."
+          depends="dist">
+    <!-- Delete all existing HTML files and then regenerate the docs over the top. -->
+    <delete>
+      <fileset dir="${web.dir}/api">
+        <include name="**/*.html" />
+      </fileset>
+    </delete>
+    <uncommons:javadoc dir="${web.dir}/api"
+                       title="Uncommons Maths API"
+                       version="${version}"
+                       excludes="demo/**/*.java" />
+    <copy todir="${web.dir}" file="./CHANGELOG.txt" />
+  </target>
+
+</project>

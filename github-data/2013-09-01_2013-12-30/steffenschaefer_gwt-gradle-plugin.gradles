@@ -1,0 +1,340 @@
+task publish
+
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.10'
+	distributionUrl = 'http://services.gradle.org/distributions/gradle-1.10-all.zip'
+}
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	
+	dependencies {
+		classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.6.0'
+	}
+}
+
+ext {
+	encoding = 'UTF-8'
+}
+
+allprojects {
+	apply plugin: 'eclipse'
+	tasks.eclipse << {
+		File prefs = project.file('.settings/org.eclipse.core.resources.prefs');
+		if(!prefs.exists()) {
+			prefs.parentFile.mkdirs()
+			project.file('.settings/org.eclipse.core.resources.prefs')<< "eclipse.preferences.version=1\nencoding/<project>=$encoding\n";
+		}
+	}
+}
+
+subprojects {
+	apply plugin: 'java'
+	apply plugin: 'maven-publish'
+	apply plugin: 'license'
+	
+	sourceCompatibility = 1.6
+	targetCompatibility = 1.6
+	
+	license {
+		ext.year = Calendar.getInstance().get(Calendar.YEAR)
+		ext.name = 'Steffen Schaefer'
+		header rootProject.file('LICENSE')
+	}
+
+	repositories { mavenCentral() }
+
+	dependencies {
+		compile gradleApi()
+		testCompile group: 'junit', name: 'junit', version: '[4.11,5.0['
+	}
+	
+	tasks.withType(Compile) {
+		options.encoding = rootProject.encoding
+	}
+	
+	task sourceJar(type: Jar) {
+		from sourceSets.main.allJava
+	}
+	
+	task javadocJar (type: Jar, dependsOn: javadoc) {
+		from javadoc.destinationDir
+	}
+	
+	javadoc {
+		options {
+			links 'http://www.gradle.org/docs/current/javadoc/', 'http://docs.oracle.com/javase/6/docs/api/'
+		}
+	}
+
+	group='de.richsource.gradle.plugins'
+	version='0.5-SNAPSHOT'
+	publishing {
+		publications {
+			mavenJava(MavenPublication) {
+				from components.java
+				artifact javadocJar { classifier = 'javadoc' }
+				artifact sourceJar { classifier = 'sources' }
+				pom.withXml {
+					def root = asNode()
+	                root.appendNode('name', 'Gradle GWT plugin')
+	                root.appendNode('description', 'Gradle plugin to support GWT related tasks.')
+	                root.appendNode('inceptionYear', '2013')
+					def license = root.appendNode('licenses').appendNode('license')
+					license.appendNode('name', 'Apache License, Version 2.0')
+					license.appendNode('url', 'http://www.apache.org/licenses/LICENSE-2.0.txt')
+				}
+			}
+		}
+		repositories {
+			maven {
+				url new File(rootProject.projectDir, 'repo').toURI()
+			}
+		}
+	}
+
+	rootProject.tasks.publish.dependsOn project.tasks.publish
+}
+task licenseFormat
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	
+	dependencies {
+		classpath 'nl.javadude.gradle.plugins:license-gradle-plugin:0.6.0'
+	}
+}
+
+subprojects {
+	apply plugin: 'java'
+	
+	buildscript {
+		repositories {
+			maven {
+				url new File(rootProject.projectDir.parentFile, 'repo').toURI()
+			}
+			mavenCentral()
+		}
+		dependencies {
+			classpath 'de.richsource.gradle.plugins:gwt-gradle-plugin:0.5-SNAPSHOT'
+		}
+	}
+	
+	apply plugin: 'license'
+	
+	sourceCompatibility = 1.7
+	targetCompatibility = 1.7
+	
+	license {
+		ext.year = Calendar.getInstance().get(Calendar.YEAR)
+		ext.name = 'Steffen Schaefer'
+		header rootProject.file('LICENSE')
+	}
+	
+	afterEvaluate {
+		rootProject.tasks.licenseFormat.dependsOn project.tasks.licenseFormatMain
+		rootProject.tasks.licenseFormat.dependsOn project.tasks.licenseFormatTest
+	}
+}
+apply plugin: 'gwt-compiler'
+apply plugin: 'eclipse'
+
+repositories { mavenCentral() }
+
+gwt {
+	gwtVersion='2.6.0'
+
+	modules 'de.richsource.gradle.plugins.gwt.example.Example'
+
+	compiler {
+		strict = true;
+		enableClosureCompiler = true;
+		disableClassMetadata = true;
+		disableCastChecking = true;
+	}
+}
+apply plugin: 'gwt-compiler'
+apply plugin: 'eclipse'
+apply plugin: 'maven-publish'
+
+repositories { mavenCentral() }
+
+gwt {
+	gwtVersion='2.6.0'
+	modules 'de.richsource.gradle.plugins.gwt.example.Example'
+}
+
+task gwtZip(type: Zip) {
+	from tasks.compileGwt.outputs
+}
+
+group='de.richsource.example'
+version='1.3.37'
+publishing {
+	publications {
+		mavenJava(MavenPublication) {
+			artifact gwtZip {
+				extension = 'zip'
+				classifier = 'gwt'
+			}
+		}
+	}
+	repositories {
+		maven {
+			url project.file('repo').toURI()
+		}
+	}
+}
+apply plugin: 'java'
+apply plugin: 'gwt-base'
+apply plugin: 'eclipse'
+
+repositories { mavenCentral() }
+
+gwt {
+	gwtVersion='2.6.0'
+}
+apply plugin: 'war'
+apply plugin: 'gwt'
+apply plugin: 'eclipse'
+
+repositories { mavenCentral() }
+
+gwt {
+	gwtVersion='2.6.0'
+
+	modules 'de.richsource.gradle.plugins.gwt.example.Example'
+
+	compiler {
+		strict = true;
+		enableClosureCompiler = true;
+		disableClassMetadata = true;
+		disableCastChecking = true;
+	}
+}
+apply plugin: 'war'
+apply plugin: 'cargo'
+apply plugin: 'jetty'
+apply plugin: 'gwt'
+apply plugin: 'eclipse'
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+
+	dependencies {
+		classpath 'org.gradle.api.plugins:gradle-cargo-plugin:0.6.1'
+	}
+}
+
+repositories { mavenCentral() }
+
+dependencies {
+	def cargoVersion = '1.4.4'
+	cargo "org.codehaus.cargo:cargo-core-uberjar:$cargoVersion",
+		  "org.codehaus.cargo:cargo-ant:$cargoVersion"
+}
+
+gwt {
+	gwtVersion='2.6.0'
+
+	modules 'de.richsource.gradle.plugins.gwt.example.Example'
+	devModules 'de.richsource.gradle.plugins.gwt.example.ExampleDev'
+	
+	superDev {
+		noPrecompile=true
+	}
+}
+
+cargo {
+	containerId = 'jetty9x'
+	port = 8080
+
+	deployable {
+		file = tasks.draftWar.archivePath
+		context = 'app'
+	}
+
+	local {
+		installer {
+            installUrl = file("$projectDir/etc/jetty-distribution-9.0.5.v20130815.zip").toURI()
+            downloadDir = file("$buildDir/download")
+            extractDir = file("$buildDir/extract")
+        }
+	}
+}
+
+task jettyDraftWar(type: JettyRunWar) {
+	dependsOn draftWar
+	dependsOn.remove('war')
+	webApp=draftWar.archivePath
+}
+
+afterEvaluate {
+	tasks.cargoStartLocal.dependsOn(tasks.draftWar)
+	tasks.cargoRunLocal.dependsOn(tasks.draftWar)
+}
+apply plugin: 'java'
+apply plugin: 'gwt'
+apply plugin: 'eclipse'
+
+sourceCompatibility = '1.6'
+targetCompatibility = '1.6'
+
+repositories { mavenCentral() }
+
+dependencies {
+	testCompile group: 'junit', name: 'junit', version: '[4.11,5.0['
+}
+
+gwt {
+	gwtVersion='2.6.0'
+}
+apply plugin: 'war'
+apply plugin: 'eclipse'
+apply plugin: 'jetty'
+
+repositories { mavenCentral() }
+
+war {
+	from project(':example-compile-only').tasks.compileGwt.outputs
+}
+apply plugin: 'war'
+apply plugin: 'gwt'
+apply plugin: 'eclipse'
+
+repositories { mavenCentral() }
+
+dependencies {
+	compile project(':example-library')
+}
+
+gwt {
+	gwtVersion='2.6.0'
+
+	modules 'de.richsource.gradle.plugins.gwt.example.Example'
+	
+	src += files(project(':example-library').sourceSets.main.allJava.srcDirs) + files(project(':example-library').sourceSets.main.output.resourcesDir)
+}
+import org.gradle.plugins.ide.eclipse.model.*
+
+eclipse {
+	classpath {
+		file {
+			whenMerged {Classpath cp ->
+				String gradleHome = gradle.getGradleHomeDir().absolutePath.replace(File.separator, '/')
+				String gradleSrc = "${gradleHome}/src"
+				cp.entries.each {ClasspathEntry entry ->
+					if ((entry in AbstractLibrary) && (entry.library.file.name.startsWith('gradle-'))) {
+						entry.sourcePath = new org.gradle.plugins.ide.eclipse.model.internal.FileReferenceFactory().fromPath(gradleSrc)
+					}
+				}
+			}
+		}
+	}
+}

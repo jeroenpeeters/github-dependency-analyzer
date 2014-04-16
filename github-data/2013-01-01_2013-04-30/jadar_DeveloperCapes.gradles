@@ -1,0 +1,147 @@
+// Gradle build script which uses the ForgeGradle plugin.
+
+// add ForgeGradle plugin repo
+buildscript {
+    repositories {
+        mavenCentral()
+        maven {
+            name = "forge"
+            url = "http://files.minecraftforge.net/maven"
+        }
+		maven {
+            name = "sonatype"
+            url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:1.1-SNAPSHOT'
+    }
+}
+
+// apply plugin to this project
+apply plugin: 'forge'
+apply plugin: 'maven'
+
+configurations {
+    deployerJars
+}
+
+dependencies {
+    deployerJars "org.apache.maven.wagon:wagon-ssh:2.2"
+}
+
+// minecraft properteis
+minecraft {
+	version = "1.7.2-10.12.0.995"
+}
+
+//buildNumber is deprecated
+def buildnumber = 0
+if(System.getenv().BUILD_NUMBER != null)
+{
+	buildnumber = System.getenv().BUILD_NUMBER
+}
+
+// version and stuff
+version = "3.3.1.${buildnumber}"
+group= "com.jadarstudios.developercapes"
+archivesBaseName = "DeveloperCapes"
+
+// jar naming
+jar
+{
+    appendix = "${minecraft.version}"
+}
+
+// add a source jar
+task sourceJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+	appendix = "${minecraft.version}"
+}
+
+// add a javadoc jar
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    from 'build/docs/javadoc'
+	classifier = 'javadoc'  
+	appendix = "${minecraft.version}"
+}
+
+// because the normal output has been made to be obfuscated
+task deobfJar(type: Jar) {
+    from sourceSets.main.output
+    classifier = 'deobf'
+	appendix = "${minecraft.version}"
+}
+
+// fix mcmod.info and include resources
+processResources
+{
+//    // replace stuff in mcmod.info, nothing else
+//    from(sourceSets.main.resources.srcDirs) {
+//        include 'mcmod.info'
+//                
+//        // replace version and mcversion
+//        expand 'version':project.version, 'mcversion':project.minecraft.version
+//    }
+//        
+//    // copy everything else, thats not the mcmod.info
+//    from(sourceSets.main.resources.srcDirs) {
+//       exclude 'mcmod.info'
+//    }
+}
+
+artifacts
+{
+	archives sourceJar
+    archives deobfJar
+    archives javadocJar
+}
+
+uploadArchives
+{
+	repositories.mavenDeployer 
+	{
+		configuration = configurations.deployerJars
+		repository(url: "sftp://repo.jadarstudios.com/maven") {
+			//
+			//
+			authentication(userName: System.getenv().username, password: System.getenv().password)
+		}
+		
+		pom.project {
+            name project.archivesBaseName
+			artifactId project.archivesBaseName
+            packaging 'jar'
+            description 'DeveloperCapes is a library for Minecraft that allows developers to give capes to select people.'
+            url 'https://github.com/jadar/DeveloperCapes/'
+
+            scm {
+                url 'https://github.com/jadar/DeveloperCapes/'
+                connection 'scm:git:git://github.com/jadar/DeveloperCapes.git'
+                developerConnection 'scm:git:git@github.com:jadar/DeveloperCapes.git'
+            }
+
+            issueManagement {
+                system 'github'
+                url 'https://github.com/jadar/DeveloperCapes/issues'
+            }
+
+            licenses {
+                license {
+                    name 'MIT License'
+                    url 'https://raw.github.com/jadar/DeveloperCapes/master/LICENSE'
+                    distribution 'repo'
+                }
+            }
+
+            developers {
+                developer {
+                    id 'jadar'
+                    name 'Jadar'
+                    roles { role 'developer' }
+                }
+            }
+        }
+	}
+}

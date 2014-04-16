@@ -1,0 +1,402 @@
+<?xml version="1.0"?>
+<project name="groovy-astbuilder-usage-example" default="compile-transform">
+
+    <!-- groovy-all .jar is assumed to be on your classpath. -->
+    <taskdef name="groovyc" classname="org.codehaus.groovy.ant.Groovyc" />
+    
+    
+    <target name="init" description="cleanup old class files">
+        <delete dir="examples"/>
+    </target>
+
+    <target name="compile-transform" depends="init" description="Compiles the AST Transformation">
+    
+        <groovyc destdir="."
+                srcdir="."
+                includes="Main.groovy,MainTransformation.groovy" 
+                listfiles="true">
+        </groovyc>
+        
+        <echo>You can now run "groovy MainExample.groovy", "groovyc MainExample.groovy", or "groovy MainIntegrationTest.groovy" to see that the transformation worked.</echo>
+    </target>
+
+</project>
+
+<?xml version="1.0"?>
+<project name="groovy-osgi-sample" default="print-results">
+
+  <property name="build.dir" value="build"/>
+  <property file="build.properties"/>
+  <property name="groovy.jar" value="groovy-all-${groovy.version}.jar" />
+  <property name="hello.bundle" value="hello-bundle-imports-groovy.jar" />
+  <property name="hello.bundle.contains" value="hello-bundle-contains-groovy.jar" />
+  <property name="harness.bundle" value="hello-groovy-test-harness.jar" />
+    
+  <taskdef name="groovyc"
+	   classname="org.codehaus.groovy.ant.Groovyc"
+	   classpathref="project.classpath"/>
+  
+  <target name="init" description="cleanup and reinitialize">
+	  <path id="project.classpath">
+		  <pathelement location="${osgi.jar}"/>
+		  <pathelement location="${groovy.bin.dir}${file.separator}${groovy.jar}"/>
+		  <pathelement location="${build.dir}${file.separator}${hello.bundle}"/>
+	  </path>
+	  
+	  <delete dir="${build.dir}" />
+	  <mkdir dir="${build.dir}${file.separator}hello-groovy-bundle" />
+	  <mkdir dir="${build.dir}${file.separator}hello-groovy-test-harness" />
+  </target>
+  
+  <target name="make-hello-groovy-bundle" description="compile and build the Hello Groovy bundles">
+  
+    <groovyc destdir="${build.dir}${file.separator}hello-groovy-bundle"
+	     srcdir=".${file.separator}hello-groovy-bundle"
+              listfiles="true">
+              <classpath refid="project.classpath"/>
+    </groovyc>
+    
+    <!-- This jar file imports Groovy from the container -->
+    <jar destfile="${build.dir}${file.separator}${hello.bundle}">
+	    <fileset dir="${build.dir}${file.separator}hello-groovy-bundle"/>
+	    <manifest>
+		    <attribute name="Built-By" value="${user.name}"/>
+		    <attribute name="provider" value="org.codehaus.groovy.osgi"/>
+		    <attribute name="Bundle-ManifestVersion" value="2"/>
+		    <attribute name="Bundle-Name" value="Groovy OSGi Example Bundle"/>
+		    <attribute name="Bundle-SymbolicName" value="org.codehaus.groovy.osgi.hello-groovy-bundle"/>
+		    <attribute name="Bundle-Version" value="1.0.0"/>
+		    <attribute name="Bundle-Activator" value="org.codehaus.groovy.osgi.Activator"/>
+		    <attribute name="Bundle-Vendor" value="Groovy"/>
+		    <attribute name="Bundle-Localization" value="plugin"/>
+		    <attribute name="Import-Package" value="groovy.lang;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.reflection;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.runtime;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.runtime.callsite;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.w3c.dom,org.osgi.framework;version=&quot;1.3.0&quot;"/> 
+		    <attribute name="Export-Package" value="org.codehaus.groovy.osgi;version=&quot;1.0.0&quot;"/> 
+		    <attribute name="Bundle-ClassPath" value="."/>
+	    </manifest>
+    </jar>
+    
+    <!-- This jar includes the Groovy jar within itself-->
+    <jar destfile="${build.dir}${file.separator}${hello.bundle.contains}">
+	    <fileset dir="${build.dir}${file.separator}hello-groovy-bundle"/>
+	    <fileset file="${groovy.bin.dir}${file.separator}${groovy.jar}" casesensitive="no" />
+	    <manifest>
+		    <attribute name="Built-By" value="${user.name}"/>
+		    <attribute name="provider" value="org.codehaus.groovy.osgi"/>
+		    <attribute name="Bundle-ManifestVersion" value="2"/>
+		    <attribute name="Bundle-Name" value="Groovy OSGi Example Bundle"/>
+		    <attribute name="Bundle-SymbolicName" value="org.codehaus.groovy.osgi.hello-groovy-bundle"/>
+		    <attribute name="Bundle-Version" value="1.0.0"/>
+		    <attribute name="Bundle-Activator" value="org.codehaus.groovy.osgi.Activator"/>
+		    <attribute name="Bundle-Vendor" value="Groovy"/>
+		    <attribute name="Bundle-Localization" value="plugin"/>
+		    <attribute name="Import-Package" value="org.w3c.dom,org.osgi.framework;version=&quot;1.3.0&quot;"/> 
+		    <attribute name="Export-Package" value="org.codehaus.groovy.osgi;version=&quot;1.0.0&quot;"/> 
+		    <attribute name="Bundle-ClassPath" value=".,${groovy.jar}"/>
+	    </manifest>
+    </jar> 
+  </target>
+
+  <target name="make-harness-bundle" description="Makes the test harness bundle">
+	  
+	  <groovyc destdir="${build.dir}${file.separator}hello-groovy-test-harness"
+		   srcdir=".${file.separator}hello-groovy-test-harness"
+		   listfiles="true">
+		  <classpath refid="project.classpath"/>
+	  </groovyc>
+	  
+	  <jar destfile="${build.dir}${file.separator}${harness.bundle}">
+		  <fileset dir="${build.dir}${file.separator}hello-groovy-test-harness"/>
+		  <manifest>
+			  <attribute name="Built-By" value="${user.name}"/>
+			  <attribute name="provider" value="org.codehaus.groovy.osgi.harness"/>
+			  <attribute name="Bundle-ManifestVersion" value="2"/>
+			  <attribute name="Bundle-Name" value="Groovy OSGi Test Harness"/>
+			  <attribute name="Bundle-SymbolicName" value="org.codehaus.groovy.osgi.harness.hello-groovy-test-harness"/>
+			  <attribute name="Bundle-Version" value="1.0.0"/>
+			  <attribute name="Bundle-Activator" value="org.codehaus.groovy.osgi.harness.HarnessActivator"/>
+			  <attribute name="Bundle-Vendor" value="Groovy"/>
+			  <attribute name="Bundle-Localization" value="plugin"/>
+			  <attribute name="Import-Package" value="org.codehaus.groovy.runtime.typehandling;version=&quot;1.0.0&quot;,org.codehaus.groovy.osgi;version=&quot;1.0.0&quot;,groovy.lang;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.reflection;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.runtime;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.codehaus.groovy.runtime.callsite;version=&quot;1.7.0.beta-1-SNAPSHOT&quot;,org.w3c.dom,org.osgi.framework;version=&quot;1.3.0&quot;"/> 
+			  <attribute name="Bundle-ClassPath" value="."/>
+		  </manifest>
+	  </jar>
+	  
+  </target>
+
+  <target name="print-results" depends="init,make-hello-groovy-bundle,make-harness-bundle" description="compile and build everything">
+	<makeurl file="${basedir}/${groovy.bin.dir}/${groovy.jar}" property="groovy.jar.url"/>
+	<makeurl file="${basedir}/${build.dir}/${hello.bundle}" property="hello.jar1.url"/>
+	<makeurl file="${basedir}/${build.dir}/${hello.bundle.contains}" property="hello.jar2.url"/>
+	<makeurl file="${basedir}/${build.dir}/${harness.bundle}" property="harness.jar.url"/>
+	
+	<echo>To run the OSGi console, run the following command: 
+ java -jar ${osgi.jar} -console 
+To install these applications in the container, run the following commands in the OSGi container: 
+ install ${groovy.jar.url}
+ install ${hello.jar1.url}
+ install ${hello.jar2.url}
+ install ${harness.jar.url}
+To start the applications in the container, run the following commands in the OSGi container: 
+ start [bundle1] [bundle2]
+Where [bundle1] and [bundle] are the bundle IDs printed by the console in the previous step.</echo>  
+  </target>
+</project>
+
+<?xml version="1.0"?>
+<project name="groovy-global-ast-transformation-example" default="jar-transform">
+
+    <!-- groovy-all .jar is assumed to be on your classpath. -->
+    <taskdef name="groovyc" classname="org.codehaus.groovy.ant.Groovyc" />
+    
+    <target name="init" description="cleanup old class files">
+        <delete dir="examples"/>
+        <delete>
+            <fileset dir="." includes="**/*.jar"/>
+        </delete>        
+    </target>
+
+    <target name="compile-transform" depends="init" description="Compiles the AST Transformation">
+    
+        <groovyc destdir="."
+                srcdir="."
+                includes="*Transformation.groovy" 
+                listfiles="true">
+        </groovyc>
+        
+    </target>
+
+    <target name="jar-transform" depends="compile-transform" description="Creates a .jar file for the global transform" >
+        <jar destfile="LoggingTransform.jar"
+            basedir="."
+            includes="**/*.class,META-INF/**" />
+
+        <echo>You can now run "groovy -cp LoggingTransform.jar LoggingExample.groovy" or "groovy -cp LoggingTransform.jar CompiledAtExample.groovy" to see that the transformation worked.</echo>
+    </target>
+</project>
+
+<?xml version="1.0"?>
+<project name="groovy-local-ast-transformation-example" default="compile-transform">
+
+    <!-- groovy-all .jar is assumed to be on your classpath. -->
+    <taskdef name="groovyc" classname="org.codehaus.groovy.ant.Groovyc" />
+    
+    
+    <target name="init" description="cleanup old class files">
+        <delete dir="examples"/>
+    </target>
+
+    <target name="compile-transform" depends="init" description="Compiles the AST Transformation">
+    
+        <groovyc destdir="."
+                srcdir="."
+                includes="LoggingASTTransformation.groovy,WithLogging.groovy" 
+                listfiles="true">
+        </groovyc>
+        
+        <echo>You can now run "groovy LoggingExample.groovy" to see that the transformation worked.</echo>
+    </target>
+
+</project>
+
+<?xml version="1.0"?>
+<project name="tck" default="default">
+
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <!--                   compile settings                -->
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <property name="build.debug" value="on"/>
+  
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <!--                   directories                     -->
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <property name="src.dir" value="src"/>
+  <property name="build.dir" value="build"/>
+  <property name="build.classes.dir" value="${build.dir}/classes"/>
+  <property name="dist.dir" value="dist"/>
+
+  <!-- javadoc properties -->
+  <property name="javadoc.dir" value="doc"/>
+  <property name="javadoc.packages" value="org.codehaus.groovy.*"/>
+
+  <!-- junit properties -->
+  <property name="junit.style.dir" value="styles"/>
+  <property name="testcase.src.dir" value="test"/>
+  <property name="generated.test.src.dir" value="gentest"/>
+  
+  <property name="test.classes.dir" value="${build.dir}/test/classes"/>
+
+  <!-- TODO: here you specify where the classes to test reside -->
+  <property name="items.under.test.dir" value="../../target/install/lib"/>
+  
+  <property name="test.reports.dir" value="reports"/>
+  
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <!--                  targets                          -->
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <target name="default" 
+          depends="clean,test-compile" 
+          description="default: run the groovy test suite"
+  />
+  
+  <target name="all" 
+          depends="test,dist" 
+          description="build and test everything"
+  />
+
+  <target name="clean" description="remove all built files">
+    <delete dir="${javadoc.dir}" />
+    <delete dir="${build.dir}" />
+    <delete dir="${dist.dir}" />
+    <delete dir="${generated.test.src.dir}" />
+  </target>
+
+  <target name="dist" 
+          depends="compile" 
+          description="create distributables (jars etc)">
+    <mkdir dir="${dist.dir}" />
+    <jar jarfile="${dist.dir}/tck.jar" 
+         manifest="${src.dir}/manifest.txt">
+      <fileset dir="${build.classes.dir}"/>
+    </jar>
+  </target>
+
+  <target name="docs" depends="init" description="generate documentation">
+    <mkdir dir="${javadoc.dir}" />
+    <javadoc sourcepath="${src.dir}" 
+             destdir="${javadoc.dir}" 
+             packagenames="${javadoc.packages}"
+             use="true"
+             windowtitle="tck"
+             private="true"/>
+  </target>
+
+  <target name="run" depends="compile" description="compile and run">
+    <java classname="org.codehaus.groovy.tck.GenerateTestCases" 
+          fork="yes" 
+          classpathref="project.classpath"/>
+  </target>
+
+  <target name="plain-test"
+          depends="test-compile" 
+          description="run all test cases">
+    <junit haltonfailure="true" fork="no">
+      <classpath refid="project.classpath"/>
+      <formatter type="plain" usefile="false"/>
+      <formatter type="xml" usefile="true"/>
+      <batchtest todir="${test.reports.dir}">
+        <fileset dir="${test.classes.dir}">
+          <include name="**/*Test.class" />
+        </fileset>
+      </batchtest>
+    </junit>
+  </target>
+        
+  <target name="test" 
+          depends="test-compile" 
+          description="HTML output of test cases">
+    <mkdir dir="${test.reports.dir}"/>
+    <junit haltonfailure="false" fork="no">
+      <classpath refid="project.classpath"/>
+      <formatter type="xml" usefile="true"/>
+
+      <batchtest todir="${test.reports.dir}">
+        <fileset dir="${test.classes.dir}">
+            <include name="**/*Test.class" /> 
+        </fileset>
+      </batchtest>
+
+    </junit>
+
+    <junitreport todir="${test.reports.dir}">
+      <fileset dir="${test.reports.dir}">
+        <include name="TEST-*.xml"/>
+      </fileset>
+      <report format="frames" styledir="${junit.style.dir}" todir="${test.reports.dir}"/>
+    </junitreport>
+    <echo>
++-------------------------+
+| open reports/index.html |
++-------------------------+
+</echo>
+  </target>
+
+
+
+  <target name="compile" depends="init" description="compile java and groovy sources">
+    <mkdir dir="${build.classes.dir}" />
+
+    <groovyc destdir="${build.classes.dir}"
+             srcdir="${src.dir}"
+             listfiles="true">
+        <classpath refid="project.classpath"/>
+    </groovyc>
+
+    <javac srcdir="${src.dir}"
+           destdir="${build.classes.dir}"
+           classpathref="project.classpath"
+           debug="${build.debug}"
+           deprecation="on"/>
+  </target>
+
+    <target name="generate" depends="dist" description="generate test cases">
+      <mkdir dir="${generated.test.src.dir}" />
+      <taskdef name="gentests" classname="org.codehaus.groovy.tck.GenerateTestCases" classpathref="project.classpath"/>
+
+      <gentests destdir="${generated.test.src.dir}"
+                srcdir="${testcase.src.dir}"
+                listfiles="true"/>
+    </target>
+
+  <target name="test-compile" depends="generate" description="compile tests">
+    <mkdir dir="${test.classes.dir}" />
+    <javac srcdir="${generated.test.src.dir}"
+           destdir="${test.classes.dir}" 
+           classpathref="project.classpath" 
+           debug="${build.debug}" 
+           deprecation="on">
+    </javac>
+  </target>
+
+  <target name="independent-test-compile" depends="generate" description="compile tests">
+    <mkdir dir="${test.classes.dir}" />
+    <javac srcdir="${generated.test.src.dir}"
+           destdir="${test.classes.dir}" 
+           classpathref="project.classpath" 
+           debug="${build.debug}" 
+           deprecation="on">
+    </javac>
+  </target>
+
+  <target name="init" depends="init.sub.build,init.independent.build">
+    <tstamp/>
+  </target>
+
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+  <!--                     Datatypes                     -->
+  <!-- -=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=- -->
+
+  <!-- this target is performed we are within a maven build -->
+  <target name="init.sub.build" if="maven.compile.source">
+
+    <path id="project.classpath">
+      <pathelement location="${test.classes.dir}"/>
+      <path refid="passed.classpath"/>
+      <pathelement location="${build.classes.dir}"/>
+    </path>
+  
+  </target>
+
+  <!-- this target is performed when ant is called from command line -->
+  <target name="init.independent.build" unless="maven.compile.source">
+
+    <path id="project.classpath">
+      <pathelement location="${test.classes.dir}"/>
+      <pathelement location="${build.classes.dir}"/>
+      <fileset dir="${items.under.test.dir}">
+        <include name="**/*.jar" />
+      </fileset>
+    </path>
+
+  </target>
+       
+</project>

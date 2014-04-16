@@ -1,0 +1,251 @@
+import org.gradle.api.artifacts.maven.MavenDeployment
+import org.gradle.api.artifacts.maven.MavenPom
+import org.gradle.api.tasks.wrapper.Wrapper
+
+apply from: "https://launchpad.net/gradle-release/trunk/latest/+download/apply.groovy"
+
+release {
+  includeProjectNameInTag = true
+}
+
+def isReleaseVersion() {
+  return !version.endsWith("SNAPSHOT")
+}
+
+allprojects {
+  apply plugin: "maven"
+  apply plugin: "signing"
+  apply plugin: "idea"
+
+  ext.sonatypeUsername = rootProject.hasProperty("sonatypeUsername") ? rootProject.property("sonatypeUsername") : ""
+  ext.sonatypePassword = rootProject.hasProperty("sonatypePassword") ? rootProject.property("sonatypePassword") : ""
+  ext.authenticationDetails = { authentication(userName: sonatypeUsername, password: sonatypePassword) }
+  ext.releaseRepositoryUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+  ext.snapshotRepositoryUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+
+  group = "org.javafunk.funk"
+
+  repositories {
+    mavenCentral()
+    maven {
+      url 'https://oss.sonatype.org/content/repositories/releases/'
+    }
+  }
+}
+
+subprojects {
+  apply plugin: "java"
+
+  dependencies {
+    testCompile "org.mockito:mockito-core:1.9.0"
+    testCompile "junit:junit-dep:4.10"
+  }
+
+  def compilerOptions = {
+    options.fork = true
+    options.forkOptions.memoryMaximumSize = "1024M"
+  }
+
+  compileJava(compilerOptions)
+  compileTestJava(compilerOptions)
+
+  task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+  }
+
+  task sourcesJar(type: Jar) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+  }
+
+  signing {
+    required { isReleaseVersion() && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+  }
+
+  artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+  }
+}
+
+configurations {
+  compile
+  archives
+}
+
+dependencies {
+  compile project(":funk-core")
+  compile project(":funk-matchers")
+}
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.2'
+}
+
+task emptyPom {
+  ext.outputFile = file("$buildDir/poms/pom-default.xml")
+  doLast {
+    outputFile.getParentFile().mkdirs()
+    outputFile.createNewFile()
+  }
+}
+
+artifacts {
+  archives(file: emptyPom.outputFile) {
+    name 'default'
+    type 'pom'
+    builtBy emptyPom
+  }
+}
+
+createReleaseTag.dependsOn([":uploadArchives", subprojects.collect { it.name + ":uploadArchives"}].flatten().toSet())
+
+uploadArchives {
+  configuration = configurations.archives
+  repositories {
+    mavenDeployer {
+      beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+      repository(url: releaseRepositoryUrl, authenticationDetails)
+      snapshotRepository(url: snapshotRepositoryUrl, authenticationDetails)
+
+      pom {
+        project {
+          name 'Funk'
+          description 'Functional utilities for Java'
+          artifactId 'funk'
+          packaging 'pom'
+          url 'http://www.javafunk.org'
+
+          modules {
+            subprojects.each {
+              owner.module(it.name)
+            }
+          }
+
+          scm {
+            url 'scm:git:https://github.com/javafunk/funk.git'
+            connection 'scm:git:https://github.com/javafunk/funk.git'
+            developerConnection 'http://github.com/javafunk/funk'
+          }
+
+          licenses {
+            license {
+              name 'BSD License'
+              url 'http://www.opensource.org/licenses/bsd-license.php'
+            }
+          }
+
+          developers {
+            developer {
+              id 'toby'
+              name 'Toby Clemson'
+              email 'tobyclemson@gmail.com'
+            }
+            developer {
+              id 'andrew'
+              name 'Andrew Kiellor'
+              email 'akiellor@gmail.com'
+            }
+            developer {
+              id 'simon'
+              name 'Simon Brunning'
+              email 'simon@brunningonline.net'
+            }
+          }
+        }
+      }
+
+      pom.whenConfigured { pom ->
+        pom.project {
+          dependencies {
+            rootProject.configurations.compile.dependencies.all { dep ->
+              owner.dependency {
+                artifactId dep.name
+                groupId dep.group
+                version dep.version
+                scope 'compile'
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+def addAsParentFor(MavenPom pom) {
+  pom.project {
+    parent {
+      artifactId 'funk'
+      groupId rootProject.group
+      version rootProject.version
+      relativePath '../../../build/poms/pom-default.xml'
+    }
+  }
+}
+import org.gradle.api.artifacts.maven.MavenDeployment
+
+dependencies {
+  compile "commons-lang:commons-lang:2.6"
+  compile "org.hamcrest:hamcrest-core:1.2.1"
+  compile "org.hamcrest:hamcrest-library:1.2.1"
+  compile "com.google.guava:guava:11.0.2"
+
+  testCompile "org.javafunk.matchbox:matchbox:0.1.4"
+}
+
+uploadArchives {
+  repositories {
+    mavenDeployer {
+      beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+      repository(url: releaseRepositoryUrl, authenticationDetails)
+      snapshotRepository(url: snapshotRepositoryUrl, authenticationDetails)
+
+      pom.project {
+        name 'Funk Core'
+        description 'Functional utilities for Java: core APIs'
+        packaging 'jar'
+      }
+
+      pom.whenConfigured { pom ->
+        rootProject.addAsParentFor(pom)
+      }
+    }
+  }
+}
+import org.gradle.api.artifacts.maven.MavenDeployment
+
+dependencies {
+  compile project(':funk-core')
+
+  compile "org.hamcrest:hamcrest-core:1.2.1"
+  compile "org.hamcrest:hamcrest-library:1.2.1"
+
+  testCompile "org.javafunk.matchbox:matchbox:0.1.4"
+}
+
+uploadArchives {
+  repositories {
+    mavenDeployer {
+      beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+      repository(url: releaseRepositoryUrl, authenticationDetails)
+      snapshotRepository(url: snapshotRepositoryUrl, authenticationDetails)
+
+      pom.project {
+        name 'Funk Matchers'
+        description 'Functional utilities for Java: hamcrest matchers for types in core APIs'
+        packaging 'jar'
+      }
+
+      pom.whenConfigured { pom ->
+        rootProject.addAsParentFor(pom)
+      }
+    }
+  }
+}

@@ -1,0 +1,2101 @@
+<project name="base-build" basedir=".">
+
+    <!--
+        REQUIRED properties to leverage targets in this file :
+            1)  jboss.home
+            2)  development.base    :   absolute path to directory where this base-build.xml is found
+    -->
+
+    <property file="${development.base}/build.properties" />
+    <property file="${development.base}/target/openshiftAccount.properties" />
+    <property file="${development.base}/openshift.properties" />
+
+    <!-- now using for the use of 'var' tasks in subprojects where MUTABLE properties would be nice -->
+    <taskdef resource="net/sf/antcontrib/antlib.xml">
+        <classpath>
+            <pathelement location="${development.base}/lib/ant/ant-contrib-1.0b3.jar"/>
+        </classpath>
+    </taskdef>
+
+
+    <path id="initial.classpath" >
+        <fileset dir="${temp.pfp.lib.dir}" />
+        <fileset dir="${temp.pfp.services.dir}" >
+            <include name="processFlow*.jar" />
+        </fileset>
+        <fileset dir="${jboss.home}/modules/system/layers/base" >
+            <include name="**/*.jar" />
+        </fileset>
+        <fileset dir="${pfp.module.path}" >
+            <include name="**/*.jar" />
+        </fileset>
+        <fileset dir="${jboss.home}/modules/system/layers/${organization.name}" >
+            <include name="**/*.jar" />
+        </fileset>
+        <pathelement location="${build.dir}" />
+        <fileset dir="${development.base}/lib" />
+    </path>
+
+    <!--
+          parameters to pass to this target:
+            1) project.path.property        :   optional
+    -->
+    <target name="setClasspath">
+        <!-- check if project.path.property is set and if not then set to empty -->
+        <echo message="setClasspath project.path.property = ${project.path.property} " />
+        <condition property="project.path.is.set" else="false"><isset property="project.path.property" /></condition>
+        <if>
+            <equals arg1="${project.path.is.set}" arg2="false" />
+            <then><var name="project.path.property" value="${development.base}/lib/ant" /></then>
+        </if>
+        <path id="project.classpath" ><fileset dir="${project.path.property}" /></path>
+        <path id="supported.classpath">
+            <path refid="initial.classpath" />
+            <path refid="project.classpath" />
+            <fileset dir="${temp.brms.unzip.dir}/binaries" />
+            <fileset dir="${temp.brms.unzip.dir}" >
+                <include name="*.jar" />
+            </fileset>
+            <fileset dir="${temp.brms.unzip.dir}/${console.sub.domain}-server.war/WEB-INF/lib/" >
+                <include name="jbpm-gwt-*.jar" />
+                <include name="gwt-console-*.jar" />
+            	<include name="gson-1.2.2.jar" />
+           </fileset>
+        </path>
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.switchyard}" arg2="true" />
+            <then>
+                <path id="classpath">
+                <path refid="supported.classpath" />
+                <fileset dir="${sy.module.path}" ><include name="org/switchyard/**/*.jar" /></fileset></path>
+            </then>
+            <else><path id="classpath"><path refid="supported.classpath" /></path></else>
+        </if>
+    </target>
+
+    <!-- http://pub.admc.com/howtos/junit4x/ant-chapt.html -->
+    <target name="setTestClasspath" depends="setClasspath" >
+        <if>
+            <available file="${junit.lib.path}" />
+            <then>
+                <path id="test.classpath">
+                    <path refid="classpath" />
+                </path>
+            </then>
+            <else>
+                <fail message="${junit.lib.path} not found" />
+            </else>
+        </if>
+    </target>
+
+
+
+    <target name="pfp.print.classpath" description="" depends="setClasspath" >
+        <pathconvert pathsep="${line.separator}|   |-- "
+             property="echo.classpath"
+             refid="classpath">
+        </pathconvert>
+        <echo message="classpath = ${echo.classpath}" />
+    </target>
+
+    <!--
+        purpose:  compile java source and create jar archive
+          - filters and replaces all variables from files found in src/main/resources  (recursively)
+          - places those filtered copies into root directory of jar archive
+        usage
+          parameters to pass to this target:
+            1) jar.name
+            2) generate.java.doc (optional: defaults to false)
+            3) include.resources (optional: defaults to true)
+            4) project.path.property (optional: defaults to empty)
+            4) src.path (optional: defaults to src/main/java)
+    -->
+    <target name="jar" depends="setClasspath">
+        <fail unless="jar.name" message="jar:  need to pass 'jar.name' property" />
+        <mkdir dir="${build.dir}/META-INF" />
+        <if><not><isset property="src.path"/></not>
+        <then><property name="src.path" value="src/main/java" /></then></if>
+        <javac debug="true" srcdir="${src.path}" destdir="${build.dir}" >
+            <classpath refid="classpath" />
+        </javac>
+        <if>
+            <available file="src/main/resources" />
+            <then>
+                <if>
+                    <not><equals arg1="${include.resources}" arg2="false" /></not>
+                    <then>
+                        <antcall target="filter">
+                            <param name="source.dir" value="src/main/resources"/>
+                            <param name="dest.dir" value="${build.dir}"/>
+                        </antcall>
+                    </then>
+                </if>
+            </then>
+        </if>
+        <jar jarfile="${build.dir}/${jar.name}.jar" >
+            <fileset dir="${build.dir}" />
+            <manifest>
+                <attribute name="Built-By" value="${os.user}"/>
+                <attribute name="Implementation-Vendor" value="${vendor.name}"/>
+            </manifest>
+        </jar>
+        <if>
+            <equals arg1="${generate.java.doc}" arg2="true" />
+            <then>
+                <javadoc sourcepath="src/main/java" destdir="${build.dir}" >
+                    <classpath refid="classpath" />
+                </javadoc>
+                <jar jarfile="${build.dir}/${jar.name}-javadoc.jar" basedir="${build.dir}" includes="**/*.html, **/*.css, **/*.gif" />
+            </then>
+        </if>
+    </target>
+
+    <!--
+        purpose:  compile java source and create war archive
+          - filters and replaces all variables from files found in src/main/webapp  (recursively)
+          - places those filtered copies into root directory of war archive
+        usage
+          parameters to pass to this target:
+            1) war.name
+            2) project.path.property (optional: defaults to empty)
+
+        note:  jboss-deployment-structure.xml belongs directly in WEB-INF
+    -->
+    <!-- 3 May 2012:  wars and jars can't have the same name in EAP6.  will add '-war' to name to all web archives to avoid possible name confliction -->
+    <target name="war" depends="setClasspath">
+        <fail unless="war.name" message="war:  need to pass 'war.name' property" />
+        <mkdir dir="${build.dir}/webapp/WEB-INF/classes" />
+        <antcall target="filter">
+            <param name="source.dir" value="src/main/webapp"/>
+            <param name="dest.dir" value="${build.dir}/webapp"/>
+        </antcall>
+        <javac debug="true" srcdir="src/main/webapp/WEB-INF/classes" destdir="${build.dir}/webapp/WEB-INF/classes" >
+            <classpath refid="classpath" />
+        </javac>
+        <jar jarfile="${build.dir}/${war.name}.war" >
+            <fileset dir="${build.dir}/webapp" />
+            <manifest>
+                <attribute name="Built-By" value="${os.user}"/>
+                <attribute name="Implementation-Vendor" value="${vendor.name}"/>
+            </manifest>
+        </jar>
+    </target>
+
+
+    <!--
+        purpose:  execute a single cli command on a running EAP 6 server
+        pass following parameters to this target :
+            1)  cli.source.dir
+            2)  cli.to.filter.and.execute
+            3)  management.port (optional: default = 9999)
+            4)  cli.fail.on.error  (optional; default = true)
+    -->
+    <target name="cli.command" depends="" >
+        <fail unless="cli.command" message="cli.command:  need to pass 'cli.command' property" />
+        <if><not><isset property="server.ip.address"/></not>
+        <then><property name="server.ip.address" value="${os.hostname}" /></then></if>
+        <if><not><isset property="management.port"/></not>
+        <then><property name="management.port" value="9999" /></then></if>
+        <if><not><isset property="cli.fail.on.error"/></not>
+        <then><property name="cli.fail.on.error" value="true" /></then></if>
+        <if><not><isset property="jbossCliXmx"/></not>
+        <then><property name="jbossCliXmx" value="128m" /></then></if>
+        <exec executable="${development.base}/bin/local.jboss.domain.sh" failonerror="${cli.fail.on.error}" >
+            <arg value="executeCli"/>
+            <arg value="-jbossHome=${jboss.home}"/>
+            <arg value="-jbossCliXmx=${jbossCliXmx}" />
+            <arg value="-hostName=${server.ip.address}" />
+            <arg value="-cliPort=${management.port}"/>
+            <arg value="-cliCommand=${cli.command} "/>
+        </exec>
+    </target>
+
+
+    <!--
+        purpose:  filter substition variables in a cli batch script and execute against a running EAP 6 server
+        pass following parameters to this target :
+            1)  cli.source.dir                  :   mandatory
+            2)  cli.to.filter.and.execute       :   mandatory
+            3)  management.port                 :   optional; default = 9999
+            4)  cli.fail.on.error               :   optional; default = true
+            5)  dest.dir                        :   optional; default = ${temp.dir}
+            6)  server.ip.address               :   optional: default = ${os.hostname}
+    -->
+    <target name="cli.batch" depends="" >
+        <fail unless="cli.source.dir" message="cli.batch:  need to pass 'cli.source.dir' property" />
+        <fail unless="cli.to.filter.and.execute" message="cli.batch:  need to pass 'cli.to.filter.and.execute' property" />
+        <if><not><isset property="server.ip.address"/></not>
+        <then><property name="server.ip.address" value="${os.hostname}" /></then></if>
+        <if><not><isset property="management.port"/></not>
+        <then><property name="management.port" value="9999" /></then></if>
+        <if><not><isset property="cli.fail.on.error"/></not>
+        <then><property name="cli.fail.on.error" value="true" /></then></if>
+        <if><not><isset property="jbossCliXmx"/></not>
+        <then><property name="jbossCliXmx" value="${jboss.cli.Xmx}" /></then></if>
+        <if><not><isset property="dest.dir"/></not>
+        <then><property name="dest.dir" value="${temp.dir}" /></then></if>
+        <antcall target="filter">
+            <param name="source.dir" value="${cli.source.dir}"/>
+            <param name="file.name" value="${cli.to.filter.and.execute}"/>
+            <param name="dest.dir" value="${dest.dir}"/>
+        </antcall>
+        <echo message="***** cli.batch :  about to execute following batch script = ${dest.dir}/${cli.to.filter.and.execute} : cli.fail.on.error = ${cli.fail.on.error} : jbossCliXmx = ${jbossCliXmx}"/>
+        <exec executable="${development.base}/bin/local.jboss.domain.sh" failonerror="${cli.fail.on.error}" >
+            <arg value="executeCli"/>
+            <arg value="-jbossHome=${jboss.home}"/>
+            <arg value="-hostName=${server.ip.address}" />
+            <arg value="-jbossCliXmx=${jbossCliXmx}" />
+            <arg value="-cliPort=${management.port}"/>
+            <arg value="-cliFile=${dest.dir}/${cli.to.filter.and.execute}"/>
+        </exec>
+    </target>
+
+    <target name="local.print.eap.cli" depends="" description="">
+        <echo message="cli command = ${jboss.home}/bin/jboss-cli.sh --connect --controller=${os.hostname}:${management.port}" />
+    </target>
+
+
+    <target name="local.eap.cli.gui" depends="" description="">
+        <if><not><isset property="server.ip.address"/></not>
+        <then><property name="server.ip.address" value="${os.hostname}" /></then></if>
+        <if><not><isset property="management.port"/></not>
+        <then><property name="management.port" value="9999" /></then></if>
+        <exec spawn="true" executable="${jboss.home}/bin/jboss-cli.sh">
+            <arg value="--connect"/>
+            <arg value="--controller=${server.ip.address}:${management.port}"/>
+            <arg value="--gui"/>
+        </exec>
+    </target>
+
+    <target name="resolve.messaging.properties" >
+        <if>
+            <equals arg1="${org.jboss.processFlow.messagingProvider}" arg2="hornetq" />
+            <then>
+                <property name="org.jboss.processFlow.rar.name" value="${hornetq.rar.file.name}"/>
+            </then>
+            <else>
+                <property name="org.jboss.processFlow.rar.name" value="${activemq.rar.file.name}"/>
+            </else>
+        </if>
+    </target>
+
+    <target name="resolve.local.or.openshift.properties" >
+        <!--echo message="resolve.local.or.openshift.properties:  is.deployment.local = ${is.deployment.local}" / -->
+        <if>
+            <equals arg1="${is.deployment.local}" arg2="false" />
+            <then>
+                <property name="jbpm.console.server.host" value="${openshift.pfpCore.uri}"/>
+                <property name="jbpm.console.server.port" value="80"/>
+                <property name="jbpm.conf.dir" value="/var/lib/stickshift/${openshift.pfpCore.user.hash}/pfpCore/${openshift.jboss.cartridge.type}/standalone/configuration/modules/org/jbpm/configuration/main"/>
+                <property name="guvnor.host" value="${openshift.pfpCore.internal.ip}:8080"/>
+                <property name="guvnor.external.host" value="${openshift.pfpCore.uri}"/>
+                <property name="org.jboss.processFlow.remoting.ejb.receiver" value=""/>
+                <property name="org.jboss.processFlow.remoting.ha.group.ejb.receiver" value="" />
+                <property name="openshift.drools.session.template.path" 
+                        value="${openshift.pfpCore.home.dir}/${openshift.jboss.cartridge.type}/${openshift.jboss.cartridge.type}/standalone/configuration/drools.session.template"/>
+            </then>
+            <else>
+                <property name="jbpm.console.server.host" value="${os.hostname}"/>
+                <property name="jbpm.console.server.port" value="${brms.webs.http.port}"/>
+                <property name="jbpm.conf.dir" value="${pfp.module.path}/org/jbpm/configuration/main"/>
+                <property name="guvnor.host" value="${os.hostname}:${brms.webs.http.port}"/>
+                <property name="guvnor.external.host" value="${guvnor.host}"/>
+                <property name="org.jboss.processFlow.remoting.ejb.receiver" value="${local.org.jboss.processFlow.remoting.ejb.receiver}"/>
+                <property name="org.jboss.processFlow.remoting.ha.group.ejb.receiver" value="${local.org.jboss.processFlow.remoting.ha.group.ejb.receiver}" />
+            </else>
+        </if>
+    </target>
+
+    <target name="local.bounce.ha.primary" description="">
+        <if><not><equals arg1="group.stop" arg2="false" /></not><then>
+            <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+                <arg value="--connect"/>
+                <arg value="--controller=${os.hostname}:${management.port}"/>
+                <arg value="/server-group=ha.group.primary/:stop-servers"/>
+            </exec>
+        </then></if>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${os.hostname}:${management.port}"/>
+            <arg value="/server-group=ha.group.primary/:start-servers"/>
+        </exec>
+    </target>
+    <target name="local.bounce.ha.backup" description="">
+        <if><not><equals arg1="group.stop" arg2="false" /></not><then>
+            <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+                <arg value="--connect"/>
+                <arg value="--controller=${os.hostname}:${management.port}"/>
+                <arg value="/server-group=ha.group.backup/:stop-servers"/>
+            </exec>
+        </then></if>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${os.hostname}:${management.port}"/>
+            <arg value="/server-group=ha.group.backup/:start-servers"/>
+        </exec>
+    </target>
+    <target name="local.bounce.pfp.core" description="">
+        <if><not><equals arg1="group.stop" arg2="false" /></not><then>
+            <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+                <arg value="--connect"/>
+                <arg value="--controller=${os.hostname}:${management.port}"/>
+                <arg value="/server-group=${pfp.core.group}/:stop-servers"/>
+            </exec>
+        </then></if>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${os.hostname}:${management.port}"/>
+            <arg value="/server-group=${pfp.core.group}/:start-servers"/>
+        </exec>
+    </target>
+    <target name="local.bounce.brms.webs" description="">
+        <if><not><equals arg1="group.stop" arg2="false" /></not><then>
+            <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+                <arg value="--connect"/>
+                <arg value="--controller=${os.hostname}:${management.port}"/>
+                <arg value="/server-group=${brms.webs.group}/:stop-servers"/>
+            </exec>
+        </then></if>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${os.hostname}:${management.port}"/>
+            <arg value="/server-group=${brms.webs.group}/:start-servers"/>
+        </exec>
+    </target>
+    <target name="local.bounce.sy" description="">
+        <if><not><equals arg1="group.stop" arg2="false" /></not><then>
+            <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+                <arg value="--connect"/>
+                <arg value="--controller=${os.hostname}:${management.port}"/>
+                <arg value="/server-group=${sy.core.group}/:stop-servers"/>
+            </exec>
+        </then></if>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${os.hostname}:${management.port}"/>
+            <arg value="/server-group=${sy.core.group}/:start-servers"/>
+        </exec>
+    </target>
+
+    <target name="local.bounce.all.servers" description="">
+        <if>
+            <not><isset property="management.port"/></not>
+            <then><property name="management.port" value="9999" /></then>
+        </if>
+        <antcall target="local.stop.master"  />
+        <antcall target="local.start.master" />
+        <antcall target="local.bounce.ha.primary" />
+        <antcall target="local.bounce.ha.backup" />
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.pfpCore}" arg2="true" />
+            <then><antcall target="local.bounce.pfp.core"  ><param name="group.stop" value="false"/></antcall></then>
+        </if>
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.brmsWebs}" arg2="true" />
+            <then><antcall target="local.bounce.brms.webs"  ><param name="group.stop" value="false"/></antcall></then>
+        </if>
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.switchyard}" arg2="true" />
+            <then><antcall target="local.bounce.sy"  ><param name="group.stop" value="false"/></antcall></then>
+        </if>
+    </target>
+    <target name="local.stop.master" description="default behavior is to shutdown all jboss servers via management port of 9999" >
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/local.jboss.domain.sh"/>
+           <arg value="stop"/>
+           <arg value="-hostName=${os.hostname}"/>
+           <arg value="-cliPort=${management.port}"/>
+           <arg value="-node=master"/>
+           <arg value="-jbossHome=${jboss.home}"/>
+        </exec>
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/local.jboss.domain.sh"/>
+           <arg value="killJbossProcesses"/>
+        </exec>
+    </target>
+    <target name="local.start.master">
+        <var name="jbossModulePath" value="${jboss.home}/modules:${pfp.module.path}:${sy.module.path}" />
+        <if>
+            <isset property="project.module.path"/>
+            <then><var name="jbossModulePath" value="${jbossModulePath}:${project.module.path}"/></then>
+        </if>
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/local.jboss.domain.sh"/>
+           <arg value="start"/>
+           <arg value="-jbossDomainBaseDir=${jboss.domain.base.dir}"/>
+           <arg value="-domainConfig=${domain.config.file}"/>
+           <arg value="-jbossModulePath=${jbossModulePath}"/>
+           <arg value="-sleepSec=${master.sleep.sec.after.start}"/>
+           <arg value="-hostName=${os.hostname}"/>
+           <arg value="-jbossHome=${jboss.home}"/>
+        </exec>
+    </target>
+
+
+
+    <!--
+        pass following parameters to this target :
+        1) source.dir
+        2) file.name (optional)
+        3) dest.dir
+    -->
+    <!--
+        - using depends because with antcall :  The called target(s) are run in a new project; 
+        - be aware that this means properties, references, etc. set by called targets will not persist back to the calling project.
+    -->
+    <target name="filter" depends="resolve.local.or.openshift.properties,resolve.messaging.properties" >
+        <fail unless="source.dir" message="filter:  need to pass 'source.dir' property" />
+        <fail unless="dest.dir" message="filter:  need to pass 'dest.dir' property" />
+        <!--echo message="filter:  source.dir = ${source.dir} :  dest.dir = ${dest.dir}" / -->
+        <if>
+            <isset property="file.name"/>
+            <then>
+                <copy file="${source.dir}/${file.name}" toDir="${dest.dir}" overwrite="true" preservelastmodified="true" verbose="false">
+                    <filterchain>
+                        <expandproperties/>
+                    </filterchain>
+                </copy>
+            </then>
+            <else>
+                <copy toDir="${dest.dir}" overwrite="true" verbose="false" preservelastmodified="true">
+                    <fileset dir="${source.dir}" />
+                    <filterchain>
+                        <expandproperties/>
+                    </filterchain>
+                </copy>
+            </else>
+        </if>
+    </target>
+
+
+</project>
+<project name="processFlowProvision-distro" default="all" xmlns:artifact="antlib:org.apache.maven.artifact.ant" >
+
+    <property environment="ENV"/>
+    <property file="build.properties" />
+
+    <import file="base-build.xml"/>
+    <import file="openshift-build.xml" />
+    <import file="osProvision/build.xml"/>
+
+    <target name="refresh.master" >
+        <echo message="***** refresh.master :  will now call the following target :  local.stop.master, clone.jboss, and local.start.master" />
+        <antcall target="local.stop.master"  />
+        <!-- antcall target="configureJbossAdmin" / -->
+        <antcall target="pfp.clean" />
+        <mkdir dir="${install.home}/lib" />
+        <antcall target="clone.jboss" />
+        <antcall target="local.deploy.jboss.modules" />
+        <antcall target="addUserRoleConfigs" >
+            <param name="config.path" value="${jboss.home}/${jboss.domain.base.dir}/configuration" />
+        </antcall>
+        <antcall target="local.start.master"  />
+        <antcall target="cli.batch">
+                <param name="cli.source.dir" value="conf/jboss/"/>
+                <param name="cli.to.filter.and.execute" value="jboss-config.cli"/>
+        </antcall>
+        <antcall target="provision.jboss.with.jdbc" />
+    </target>
+
+    <target name="refresh.slave.hosts" depends="setClasspath" >
+        <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+            <sequential>
+                <var name="serverIpAddr" value="@{serverIpAddr}" />
+                <if>
+                    <not><equals arg1="${serverIpAddr}" arg2="master" /></not>
+                    <then>
+                        <echo message="refresh.slave.hosts() serverIpAddr = ${serverIpAddr}" />
+                        <java fork="yes" classname="org.jboss.processFlow.util.GeneratePasswordHash" failonerror="true">
+                            <sysproperty key="USER_ID" value="${serverIpAddr}" />
+                            <sysproperty key="REALM" value="ManagementRealm" />
+                            <sysproperty key="PASSWORD" value="${jboss.admin.password}" />
+                            <sysproperty key="MGT_USERS_PROPS_FILE" value="${jboss.home}/${jboss.domain.base.dir}/configuration/mgmt-users.properties" />
+                            <sysproperty key="log4j.configuration" value="file:${development.base}/conf/test/log4j.xml" />
+                            <classpath refid="classpath"/>
+                        </java>
+                        <antcall target="filter">
+                            <param name="source.dir" value="conf/jboss/${community.or.supported}/slave"/>
+                            <param name="dest.dir" value="${temp.jboss.dir}/domain-${organization.name}/configuration"/>
+                        </antcall>
+                        <antcall target="filter">
+                            <param name="source.dir" value="conf/brmsWebs/drools-guvnor"/>
+                            <param name="file.name" value="repository.xml"/>
+                            <param name="dest.dir" value="${temp.brmsWebs.dir}"/>
+                        </antcall>
+                        <exec executable="bash" failonerror="true" dir=".">
+                            <arg value="bin/local.jboss.domain.sh" />
+                            <arg value="refreshSlaveHosts" />
+                            <arg value="-serverIpAddr=${serverIpAddr}" />
+                            <arg value="-orgName=${organization.name}" />
+                            <arg value="-localGuvnorRepoLocation=${local.guvnor.repo.location}" />
+                            <arg value="-eap6DownloadName=${eap6.download.name}" />
+                            <arg value="-switchyardZipName=${switchyard.zip.name}" />
+                        </exec>
+                    </then>
+                </if>
+            </sequential>
+        </for>
+        <sleep seconds="5"/> <!-- sleep 5 seconds in case slave hosts need extra time to start -->
+    </target>
+
+    <target name="checkServersAndProjectLib">
+        <available file="${JBOSS_HOME}/jboss-modules.jar" property="defaultServerExists" />
+        <fail unless="defaultServerExists" message="${JBOSS_HOME}/jboss-modules.jar doesn't exist! .... please fix your $JBOSS_HOME environment variable!!" />
+        <condition property="projectLibNotExist">
+            <not>
+                <available file="${project.lib}" />
+            </not>
+        </condition>
+        <condition property="projectLibExists">
+                <available file="${project.lib}" />
+        </condition>
+    </target>
+
+    <!-- create a clone of the JBoss EAP 'domain' config and name it the value of ${jboss.domain.base.dir} -->
+    <target name="clone.jboss" >
+        <if>
+            <not><available file="${jboss.home}/domain/configuration/domain.xml" /></not>
+            <then>
+                <if>
+                    <equals arg1="${community.or.supported}" arg2="community" />
+                    <then>
+                        <get src="${as7.download.url}" dest="${install.home}/lib/${as7.name}.zip"  skipexisting="true" />
+                        <unzip src="${install.home}/lib/${as7.name}.zip" dest="${jboss.home}/.." />
+                    </then>
+                    <else>
+                        <get src="${eap6.download.url}" dest="${install.home}/lib/"  skipexisting="true" />
+                        <unzip src="${install.home}/lib/${eap6.download.name}" dest="${jboss.home}/.." />
+                    </else>
+                </if>
+                <mkdir dir="${pfp.module.path}" />
+                <mkdir dir="${sy.module.path}" />
+                <mkdir dir="${jboss.home}/modules/system/layers/${organization.name}" />
+            </then>
+        </if>
+        <delete dir="${jboss.home}/${jboss.domain.base.dir}" />
+        <copy overwrite="true" todir="${jboss.home}/${jboss.domain.base.dir}">
+            <fileset dir="${jboss.home}/domain" />
+        </copy>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/jboss/${community.or.supported}"/>
+            <param name="file.name" value="domain.xml"/>
+            <param name="dest.dir" value="${jboss.home}/${jboss.domain.base.dir}/configuration"/>
+        </antcall>
+        <copy file="conf/jboss/${community.or.supported}/host.xml" todir="${jboss.home}/${jboss.domain.base.dir}/configuration" overwrite="true" verbose="true" />
+    </target>
+
+    <target name="provision.jboss.with.jdbc" >
+        <property name="db.script" value="${jdbc.module.name}-config-up.cli" />
+        <antcall target="cli.batch">
+            <param name="cli.source.dir" value="conf/jboss"/>
+            <param name="cli.to.filter.and.execute" value="${db.script}"/>
+            <param name="cli.fail.on.error" value="true"/>
+        </antcall>
+    </target>
+
+
+    <!-- see:  <as7-source>/domain-management/src/main/java/org/jboss/as/domain/management/security/AddPropertiesUser.java -->
+    <!-- does not work in as7.1.2.Final due to :
+            Exception in thread "main" java.lang.IllegalStateException: JBAS015232: No java.io.Console available to interact with user.
+            at org.jboss.as.domain.management.security.AddPropertiesUser.<init>(AddPropertiesUser.java:108)
+            at org.jboss.as.domain.management.security.AddPropertiesUser.<init>(AddPropertiesUser.java:119)
+            at org.jboss.as.domain.management.security.AddPropertiesUser.main(AddPropertiesUser.java:167)
+
+        - appears this is fixed in 7.2.*
+    -->
+    <target name="configureJbossAdmin" >
+        <exec executable="bash" failonerror="true" dir=".">
+            <arg value="bin/local.jboss.domain.sh" />
+            <arg value="executeAddUser" />
+            <arg value="-isAdmin=true" />
+            <arg value="-userId=${jboss.admin.id}"/>
+            <arg value="-password=${jboss.admin.password}"/>
+        </exec>
+    </target>
+
+
+
+    <target name="download.brms.deployable" depends="mkPfpDirs" >
+        <echo message="Getting BRMS ..." />
+        <get src="${brms.download.url}" dest="${install.home}/lib/${brms.deployable.suffix}"  skipexisting="true" />
+    </target>
+
+    <target name="unzip.brms.deployable">
+        <antcall target="download.brms.deployable" />
+        <if>
+            <not><available file="${temp.brms.unzip.dir}/${guvnor.name}" type="dir" /></not> 
+            <then>
+                <unzip src="${install.home}/lib/${brms.deployable.suffix}" dest="${temp.brms.unzip.dir}" />
+                <delete file="${temp.brms.unzip.dir}/modeshape.zip" />
+                <unzip src="${temp.brms.unzip.dir}/jboss-brms-engine.zip" dest="${temp.brms.unzip.dir}" />
+                <delete file="${temp.brms.unzip.dir}/jboss-brms-engine.zip" />
+                <unzip src="${temp.brms.unzip.dir}/jboss-jbpm-engine.zip" dest="${temp.brms.unzip.dir}" />
+                <delete file="${temp.brms.unzip.dir}/jboss-jbpm-engine.zip" />
+                <unzip src="${temp.brms.unzip.dir}/jboss-brms-manager-ee6.zip" dest="${temp.brms.unzip.dir}" />
+                <delete file="${temp.brms.unzip.dir}/jboss-brms-manager-ee6.zip" />
+
+                <!-- contains: "business-central.war",  "designer.war", "gwt-console-server.war" &  "jbpm-human-task.war" -->
+                <unzip src="${temp.brms.unzip.dir}/jboss-jbpm-console-ee6.zip" dest="${temp.brms.unzip.dir}" />
+                <delete file="${temp.brms.unzip.dir}/jboss-jbpm-console-ee6.zip" />
+            </then>
+            <else>
+                <echo message="${temp.brms.unzip.dir}/${guvnor.name} already located .... no need to unzip brms again" />
+            </else>
+        </if>
+    </target>
+
+    <!-- re-create guvnor filesystem and copy over repository.xml -->
+    <target name="local.refresh.guvnor" >
+        <delete dir="${local.guvnor.repo.location}" />
+        <mkdir dir="${local.guvnor.repo.location}" />
+    </target>
+
+    <target name="explode.guvnor.and.designer" >
+        <if>
+            <equals arg1="${community.or.supported}" arg2="supported" />
+            <then>
+                <antcall target="unzip.brms.deployable" />
+                <copy todir="${guvnor.target}" >
+                    <fileset dir="${temp.brms.unzip.dir}/jboss-brms.war" />
+                </copy>
+                <copy todir="${designer.target}" >
+                    <fileset dir="${temp.brms.unzip.dir}/designer.war" />
+                </copy>
+            </then>
+            <else>
+                <antcall target="download.community.guvnor.and.designer" />
+                <unzip src="${install.home}/lib/guvnor-distribution-wars-${drools.guvnor.version}-jboss-as-7.0.war" dest="${guvnor.target}" />
+                <unzip src="${install.home}/lib/jbpm-designer-${designer.version}.war" dest="${designer.target}" />
+            </else>
+        </if>
+        <if>
+            <isset property="non.openshift.environment"/>
+            <then><property name="guvnor.repo.location" value="${local.guvnor.repo.location}" /></then>
+            <else><property name="guvnor.repo.location" value="${openshift.guvnor.repo.location}" /></else>
+        </if>
+        <delete file="${guvnor.target}/WEB-INF/classes/log4j.xml" />
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/drools-guvnor/WEB-INF"/>
+            <!-- BRMS 5.3.1 does not use beans.xml
+            <param name="file.name" value="beans.xml"/ -->
+            <param name="file.name" value="components.xml"/>
+            <param name="dest.dir" value="${guvnor.target}/WEB-INF"/>
+        </antcall>
+        <if>
+            <equals arg1="${org.jboss.processFlow.brmsWebs.clustered}" arg2="true" />
+            <then>
+                <property name="serverIpAddr" value="master" />
+                <antcall target="filter">
+                    <param name="source.dir" value="conf/brmsWebs/drools-guvnor"/>
+                    <param name="file.name" value="repository.xml"/>
+                    <param name="dest.dir" value="${local.guvnor.repo.location}"/>
+                </antcall>
+            </then>
+            <else><echo message="brmsWebs not clustered.  will just use default derby with filesystem persistence" /></else>
+        </if>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/drools-guvnor/WEB-INF/classes"/>
+            <param name="dest.dir" value="${guvnor.target}/WEB-INF/classes"/>
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/drools-guvnor/WEB-INF"/>
+            <param name="dest.dir" value="${guvnor.target}/WEB-INF"/>
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/drools-guvnor/WEB-INF"/>
+            <param name="file.name" value="jboss-deployment-structure.xml"/>
+            <param name="dest.dir" value="${guvnor.target}/WEB-INF"/>
+        </antcall>
+        <move todir="${temp.brmsExtras.module.path}">
+            <fileset dir="${guvnor.target}/WEB-INF/lib" >
+                <include name="*.jar" />
+                <exclude name="*seam*.jar" />
+                <exclude name="gwt*.jar" />
+                <exclude name="cobogw*.jar" />
+                <exclude name="droolsjbpm-ide-common*.jar" />
+            </fileset>
+        </move>
+        <delete file="${guvnor.target}/WEB-INF/lib/droolsjbpm-ide-common-${jBPM.version}.jar" />
+
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/designer/profiles"/>
+            <param name="file.name" value="jbpm.xml"/>
+            <param name="dest.dir" value="${designer.target}/profiles"/>
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/designer/WEB-INF"/>
+            <param name="dest.dir" value="${designer.target}/WEB-INF"/>
+        </antcall>
+        <move todir="${temp.brmsExtras.module.path}">
+            <fileset dir="${designer.target}/WEB-INF/lib" >
+                <include name="*.jar" />
+                <exclude name="jbpm-bpmn2-emfextmodel*.jar" />
+            </fileset>
+        </move>
+    </target>
+
+    <target name="explode.jbpm.gwt.console" >
+        <if>
+            <equals arg1="${community.or.supported}" arg2="supported" />
+            <then>
+                <antcall target="unzip.brms.deployable" />
+                <copy todir="${console.target}" >
+                    <fileset dir="${temp.brms.unzip.dir}/${console.name}" />
+                </copy>
+                <copy todir="${console.server.target}">
+                    <fileset dir="${temp.brms.unzip.dir}/${console.server.name}" />
+                </copy>
+            </then>
+            <else>
+                <unzip src="${jbpm.source.dir}/jbpm-gwt/jbpm-gwt-console/target/jbpm-gwt-console-${jBPM.version}.war" dest="${console.target}"/>
+                <unzip src="${jbpm.source.dir}/jbpm-gwt/jbpm-gwt-console-server/target/jbpm-gwt-console-server-${jBPM.version}-EE6.war" dest="${console.server.target}"/>
+            </else>
+        </if>
+        <move todir="${temp.brmsExtras.module.path}">
+            <fileset dir="${console.server.target}/WEB-INF/lib" >
+                <include name="*.jar" />
+                <include name="jbpm-gwt-shared*.jar" />
+                <exclude name="gwt*.jar" />
+                <exclude name="jbpm-gwt*.jar" />
+            </fileset>
+        </move>
+        <move todir="${temp.brmsExtras.module.path}">
+            <fileset dir="${console.target}/WEB-INF/lib" >
+                <include name="*.jar" />
+                <exclude name="gwt*.jar" />
+            </fileset>
+            <fileset dir="${console.target}/WEB-INF/classes" >
+                <include name="Errai*.properties" />
+            </fileset>
+        </move>
+        <copy file="${temp.pfp.lib.dir}/processFlow-adminConsole.jar" todir="${console.server.target}/WEB-INF/lib" />
+
+        <delete file="${console.server.target}/WEB-INF/classes/ChangeSet.xml" />
+        <delete file="${console.server.target}/WEB-INF/classes/META-INF/persistence.xml" />
+
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/bpm-console"/>
+            <param name="dest.dir" value="${console.target}"/>
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/bpm-console-server/WEB-INF"/>
+            <param name="dest.dir" value="${console.server.target}/WEB-INF"/>
+        </antcall>
+
+        <!-- bpm-console integration in BRMS 5.3.1 uses GuvnorConnectionUtils directly
+             - expects a valid jbpm.console.properties in root of classpath
+        -->
+        <antcall target="filter">
+            <param name="source.dir" value="conf/jboss/modules/pfp/org/jbpm/configuration/main"/>
+            <param name="file.name" value="jbpm.console.properties"/>
+            <param name="dest.dir" value="${console.server.target}/WEB-INF/classes"/>
+        </antcall>
+    </target>
+
+    <target name="addUserRoleConfigs" >
+        <fail unless="config.path" message="addUserRoleConfigs:  need to pass 'config.path' property" />
+        <copy file="conf/jboss/application-roles.properties" todir="${temp.jboss.dir}/domain-${organization.name}/configuration" verbose="true" overwrite="true" />
+        <copy file="conf/jboss/application-users.properties" todir="${temp.jboss.dir}/domain-${organization.name}/configuration" verbose="true" overwrite="true" />
+        <copy file="${temp.jboss.dir}/domain-${organization.name}/configuration/application-roles.properties" todir="${config.path}" verbose="true" overwrite="true" />
+        <copy file="${temp.jboss.dir}/domain-${organization.name}/configuration/application-users.properties" todir="${config.path}" verbose="true" overwrite="true" />
+        <copy file="conf/jboss/mgmt-users.properties" todir="${config.path}" verbose="true" overwrite="true" />
+    </target>
+
+    <target name="install.reporting.into.jboss7" >
+        <antcall target="download.birt.as7" />
+        <delete dir="${org.jbpm.report.dir}" />
+        <mkdir dir="${org.jbpm.report.dir}/ReportEngine" />
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/birt"/>
+            <param name="file.name" value="overall_activity.rptdesign"/>
+            <param name="dest.dir" value="${org.jbpm.report.dir}"/>
+        </antcall>
+        <unzip src="${install.home}/lib/birt-runtime-${birt.version}.zip" dest="${temp.brmsWebs.dir}"/>
+        <delete >
+            <fileset dir="${console.server.target}/WEB-INF/lib" >
+                <include name="report*.*" />
+            </fileset>
+        </delete>
+        <copy todir="${console.server.target}/WEB-INF/lib">
+            <fileset dir="${birt.target}/ReportEngine/lib">
+                <include name="**/*.jar"/>
+                <exclude name="org.apache.commons.codec*.jar"/>
+            </fileset>
+            <fileset dir="${install.home}/lib/reporting">
+                <include name="*.jar"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="local.deploy.jbpm.gwt.console" >
+        <jar jarfile="${console.server.zipped}" basedir="${console.server.target}" />
+        <jar jarfile="${console.zipped}" basedir="${console.target}" />
+    </target>
+
+    <target name="local.deploy.guvnor.designer" >
+        <jar jarfile="${guvnor.zipped}" basedir="${guvnor.target}" />
+        <jar jarfile="${designer.zipped}" basedir="${designer.target}" />
+    </target>
+
+    <!-- Install Eclipse plugins -->
+    <target name="local.install.drools-eclipse.into.eclipse" >
+        <get src="${drools.eclipse.url}" dest="${install.home}/lib/org.drools.updatesite-${drools.eclipse.version}-assembly.zip"  skipexisting="true" />
+        <mkdir dir="${eclipse.home}/drools-update-site"/>
+        <unzip src="${install.home}/lib/org.drools.updatesite-${drools.eclipse.version}-assembly.zip" dest="${eclipse.home}/drools-update-site" />
+        <copy todir="${eclipse.home}/features" overwrite="true">
+            <fileset dir="${eclipse.home}/drools-update-site/features"/>
+        </copy>
+        <copy todir="${eclipse.home}/plugins" overwrite="true">
+            <fileset dir="${eclipse.home}/drools-update-site/plugins"/>
+        </copy>
+        <delete dir="${eclipse.home}/drools-update-site"/>
+    </target>
+
+    <target name="configure.jboss.modules" >
+        <if>
+            <not><available file="${temp.pfp.lib.dir}" type="dir" /></not>
+            <then><antcall target="pfp.compile" /></then>
+        </if>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/jboss/modules/pfp"/>
+            <param name="dest.dir" value="${temp.pfp.modules.dir}"/>
+        </antcall>
+
+        <if>
+            <isset property="non.openshift.environment"/>
+            <then>
+                <!-- openshift adds database driver as a jboss module when adding database cartridge.
+                     this must not be an openshift enviroment ....so adding db drivers now
+                -->
+                <echo message="deploying following db modules locally:  ${jdbc.module.name}" />
+                <antcall target="filter">
+                    <param name="source.dir" value="conf/${jdbc.module.name}/modules"/>
+                    <param name="dest.dir" value="${temp.pfp.modules.dir}"/>
+                </antcall>
+                <if><equals arg1="${jdbc.module.name}" arg2="postgresql" />
+                    <then>
+                        <copy overwrite="true" verbose="true" file="${postgresql.jdbc.lib.path}" todir="${temp.pfp.modules.dir}/org/postgresql/jdbc/main" />
+                        <copy overwrite="true" verbose="true" file="${postgresql.jdbc.lib.path}" todir="${pfp.module.path}/org/postgresql/jdbc/main" />
+                    </then></if>
+                <if><equals arg1="${jdbc.module.name}" arg2="mysql" />
+                    <then>
+                        <copy overwrite="true" verbose="true" file="${mysql.jdbc.lib.path}" todir="${temp.pfp.modules.dir}/com/mysql/jdbc/main" />
+                        <copy overwrite="true" verbose="true" file="${mysql.jdbc.lib.path}" todir="${pfp.module.path}/com/mysql/jdbc/main" />
+                    </then></if>
+                <if><equals arg1="${jdbc.module.name}" arg2="oracle" />
+                    <then>
+                        <copy overwrite="true" verbose="true" file="${oracle.jdbc.lib.path}" todir="${temp.pfp.modules.dir}/com/oracle/jdbc/main" />
+                        <copy overwrite="true" verbose="true" file="${oracle.jdbc.lib.path}" todir="${pfp.module.path}/com/oracle/jdbc/main" />
+                    </then></if>
+                <if><equals arg1="${jdbc.module.name}" arg2="h2" />
+                    <then><echo message="configure.jboss.modules() h2 driver already in eap6.*" /></then></if>
+            </then>
+            <else><echo message="deploying to openshift:  postgresql/mysql/h2 modules already pre-configured" /></else>
+        </if>
+
+        <copy file="lib/quartz/quartz-${version.quartz}.jar" todir="${temp.pfp.modules.dir}/org/quartz/main" />
+        <copy file="lib/quartz/quartz-oracle-${version.quartz}.jar" todir="${temp.pfp.modules.dir}/org/quartz/main" />
+        <copy file="lib/commons/commons-codec-1.5.jar" todir="${temp.pfp.modules.dir}/org/apache/commons/codec/5" /> <!-- GuvnorConnectionUtils needs this version -->
+        <copy file="${deps.lib.path}/stringtemplate-${version.stringtemplate}.jar" todir="${temp.pfp.modules.dir}/org/antlr/stringtemplate/main" />
+        <copy file="${deps.lib.path}/protobuf-java-${version.protobuf}.jar" todir="${temp.pfp.modules.dir}/com/google/protobuf/main" />
+        <copy file="${deps.lib.path}/antlr-runtime-${version.antlr}.jar" todir="${temp.pfp.modules.dir}/org/antlr/antlr-runtime/main" />
+        <copy file="${deps.lib.path}/ecj-${version.ecj}.jar" todir="${temp.pfp.modules.dir}/org/eclipse/jdt/core/compiler/ecj/main" />
+        <copy file="${deps.lib.path}/xstream-${version.xstream}.jar" todir="${temp.pfp.modules.dir}/com/thoughtworks/xstream/main" />
+        <copy file="${deps.lib.path}/xpp3_min-${version.xpp3_min}.jar" todir="${temp.pfp.modules.dir}/com/thoughtworks/xstream/main" />
+        <copy file="${deps.lib.path}/xmlpull-${version.xmlpull}.jar" todir="${temp.pfp.modules.dir}/com/thoughtworks/xstream/main" />
+        <!--copy file="${deps.lib.path}/xml-apis-${version.xml.apis}.jar" todir="${temp.pfp.modules.dir}/com/thoughtworks/xstream/main" / -->
+        <copy tofile="${temp.pfp.modules.dir}/org/drools/${droolsjbpm.slot}/drools-compiler-${version.drools}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="drools-compiler-*.jar" /></fileset>
+        </copy>
+        <copy tofile="${temp.pfp.modules.dir}/org/drools/${droolsjbpm.slot}/droolsjbpm-ide-common-${version.drools}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="droolsjbpm-ide-common-*.jar" /></fileset>
+        </copy>
+        <copy tofile="${temp.pfp.modules.dir}/org/drools/${droolsjbpm.slot}/drools-core-${version.drools}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="drools-core-*.jar" /></fileset>
+        </copy>
+        <copy tofile="${temp.pfp.modules.dir}/org/drools/${droolsjbpm.slot}/drools-persistence-jpa-${version.drools}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="drools-persistence-jpa-*.jar" /></fileset>
+        </copy>
+        <copy tofile="${temp.pfp.modules.dir}/org/drools/${droolsjbpm.slot}/knowledge-api-${version.drools}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="knowledge-api-*.jar" /></fileset>
+        </copy>
+        <copy tofile="${temp.pfp.modules.dir}/org/mvel/mvel2/main/mvel2-${version.mvel}.jar" >
+            <fileset dir="${deps.lib.path}" ><include name="mvel2-*.jar" /></fileset>
+        </copy>
+        <copy todir="${temp.pfp.modules.dir}/org/jbpm/${droolsjbpm.slot}" >
+            <fileset dir="${jbpm.lib.path}" >
+                <include name="jbpm-*.jar" />
+                <exclude name="jbpm-human-task-hornetq-*.jar" />
+                <exclude name="jbpm-human-task-jms-*.jar" />
+                <exclude name="jbpm-human-task-mina-*.jar" />
+                <exclude name="jbpm-test-*.jar" />
+                <exclude name="jbpm-gwt-*.jar" />
+            </fileset>
+        </copy>
+
+
+        <if>
+            <equals arg1="${community.or.supported}" arg2="community" />
+            <then><var name="temp.gwt.path" value="${jbpm.source.dir}/jbpm-gwt/jbpm-gwt-shared/target/" /></then>
+            <else><var name="temp.gwt.path" value="${jbpm.lib.path}/business-central-server.war/WEB-INF/lib/" /></else>
+        </if>
+        <copy toDir="${temp.pfp.modules.dir}/org/jbpm/${droolsjbpm.slot}" overwrite="true" >
+            <fileset dir="${temp.gwt.path}" >
+                <include name="jbpm-gwt-shared*.jar" />
+            </fileset>
+        </copy>
+        <copy toDir="${temp.brmsExtras.module.path}" overwrite="true" >
+            <fileset dir="${temp.gwt.path}" >
+                <include name="jbpm-gwt*.jar" />
+            </fileset>
+        </copy>
+        <copy todir="${temp.pfp.modules.dir}/org/jboss/processFlow/main" >
+            <fileset dir="${temp.pfp.lib.dir}" />
+        </copy>
+        <copy file="${temp.gwt.path}/gson-${version.gson}.jar" todir="${temp.pfp.modules.dir}/com/google/gson/main" />
+        
+        <if>
+            <isset property="non.openshift.environment"/>
+            <then>
+                <antcall target="explode.guvnor.and.designer" >
+                    <param name="non.openshift.environment" value="true"/>
+                </antcall>
+            </then>
+            <else>
+                <antcall target="explode.guvnor.and.designer" />
+            </else>
+        </if>
+        <antcall target="explode.jbpm.gwt.console" />
+                <delete> 
+                    <fileset dir="${temp.brmsExtras.module.path}" >
+                        <include name="commons-collections*.jar" />
+                        <include name="log4j*.jar" />
+                        <include name="slf4j*.jar" />
+                        <exclude name="jbpm-gwt-*.jar" />
+                        <include name="jbpm*.jar" />
+                        <include name="drools-compiler*.jar" />
+                        <include name="drools-core*.jar" />
+                        <include name="google-collections*.jar" />
+                        <include name="gwt-servlet-2.0.4.jar" />
+                        <include name="hornetq*.jar" />
+                        <include name="knowledge-*.jar" />
+                        <include name="mvel-*.jar" />
+                        <include name="serializer-*.jar" />
+                        <include name="xalan-2.7.1.jar" />
+                        <include name="xstream-1.3.1.jar" />
+                    </fileset>
+                </delete>
+    </target> 
+
+    <target name="local.deploy.jboss.modules" >
+        <antcall target="configure.jboss.modules" >
+            <param name="non.openshift.environment" value="true"/>
+        </antcall>
+        <copy todir="${pfp.module.path}" overwrite="true" >
+            <fileset dir="${temp.pfp.modules.dir}" />
+        </copy>
+        <antcall target="download.and.unzip.sy.deployer"  />
+        <antcall target="configure.jbossamq.modules" >
+            <param name="non.openshift.environment" value="true"/>
+        </antcall>
+        <!-- https://community.jboss.org/wiki/LayeredDistributionsAndModulePathOrganization -->
+        <mkdir dir="${jboss.home}/modules/system/layers/${organization.name}" />
+        <antcall target="filter">
+            <param name="source.dir" value="conf/jboss/modules/"/>
+            <param name="file.name" value="layers.conf"/>
+            <param name="dest.dir" value="${jboss.home}/modules"/>
+        </antcall>
+    </target>
+
+    <target name="resolve.droolsjbpm.dependencies" >
+        <typedef resource="org/apache/maven/artifact/ant/antlib.xml" uri="antlib:org.apache.maven.artifact.ant" >
+            <classpath>
+                <pathelement location="lib/ant/maven-ant-tasks-2.1.3.jar"/>
+            </classpath>
+        </typedef>
+        <artifact:pom id="droolsjbpm-build-bootstrap" file="${droolsjbpm.source.dir}/droolsjbpm-build-bootstrap/pom.xml" />
+        <artifact:dependencies filesetId="droolsjbpm.deps.path" pomRefId="droolsjbpm-build-bootstrap" useScope="test" />
+        <pathconvert pathsep="${line.separator}|   |- "
+             property="echo.droolsjbpm.deps.path"
+             refid="droolsjbpm.deps.path">
+        </pathconvert>
+        <echo message="droolsjbpm-build-bootstrap-version = ${echo.droolsjbpm.deps.path} " />
+    </target> 
+
+    <target name="local.configure.core.services">
+        <math result="ha.remoting.port" operand1="${base.remoting.port}" operation="+" operand2="${ha.group.port.offset}" datatype="int" />
+        <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+            <sequential>
+                <var name="serverIpAddr" value="@{serverIpAddr}" />
+                <antcall target="cli.batch">
+                    <param name="cli.source.dir" value="conf/jboss/"/>
+                    <param name="cli.to.filter.and.execute" value="core-services-up.cli"/>
+                    <param name="cli.fail.on.error" value="true"/>
+                </antcall>
+            </sequential>
+        </for>
+    </target> 
+
+    <target name="local.provision.ha.jvms">
+        <sleep seconds="2"/>
+        <if>
+            <equals arg1="${org.jboss.processFlow.messagingProvider}" arg2="hornetq" />
+            <then>
+                <antcall target="cli.batch">
+                    <param name="cli.source.dir" value="conf/ha/"/>
+                    <param name="cli.to.filter.and.execute" value="hornetq-config-group.cli"/>
+                    <param name="cli.fail.on.error" value="true"/>
+                </antcall>
+            </then>
+        </if>
+        <antcall target="cli.batch">
+            <param name="cli.source.dir" value="conf/ha/"/>
+            <param name="cli.to.filter.and.execute" value="ha-config-group.cli"/>
+            <param name="cli.fail.on.error" value="true"/>
+        </antcall>
+        <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+            <sequential>
+                <var name="serverIpAddr" value="@{serverIpAddr}" />
+                <for list="${ha.server.number.list}" param="serverNum">
+                  <sequential>
+                    <var name="ha.server.id" value="ha-@{serverNum}" />
+                    <math result="ha.port.increment" operand1="100" operation="*" operand2="@{serverNum}" datatype="int" />
+                    <math result="ha.port.offset" operand1="${ha.group.port.offset}" operation="+" operand2="${ha.port.increment}" datatype="int" />
+                    <var name="ha.server.id" value="ha-@{serverNum}" />
+                    <var name="ha.block" value="false" />
+                    <var name="ha.group" value="ha.group.backup" />
+                    <!-- only if ha-0 on master will set jvm to ha.group .... all others will be set to ha.group.backup -->
+                    <if>
+                        <equals arg1="${ha.server.id}" arg2="ha-0" />
+                        <then>
+                            <if>
+                                <equals arg1="${serverIpAddr}" arg2="master" />
+                                <then>
+                                    <var name="ha.block" value="true" />
+                                    <var name="ha.group" value="ha.group.primary" />
+                                </then>
+                            </if>
+                        </then>
+                    </if>
+                    <echo message="ha.server.id = ${ha.server.id} : serverIpAddr = ${serverIpAddr} : ha.group = ${ha.group}" />
+                    <antcall target="cli.batch">
+                                <param name="cli.source.dir" value="conf/ha/"/>
+                                <param name="cli.to.filter.and.execute" value="ha-config-server.cli"/>
+                                <param name="cli.fail.on.error" value="true"/>
+                    </antcall>
+                                <antcall target="cli.batch">
+                                <param name="cli.source.dir" value="conf/ha/"/>
+                                <param name="cli.to.filter.and.execute" value="ha-config-up.cli"/>
+                                <param name="cli.fail.on.error" value="true"/>
+                    </antcall>
+                  </sequential>
+                </for>
+            </sequential>
+        </for>
+    </target>
+
+    <!--
+      pass following parameters to this target :
+        1) org.jboss.processFlow.provision.pfpCore
+        2) refresh.master (optional)
+    -->
+    <target name="local.provision.pfp.core">
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.pfpCore}" arg2="true" />
+            <then>
+                <if>
+                    <equals arg1="${refresh.master}" arg2="true" />
+                    <then><antcall target="refresh.master" /></then>
+                </if>
+                <!--copy file="conf/pfp/default.session.template" tofile="${drools.session.template.path}" overwrite="true" / -->
+                <antcall target="filter">
+                    <param name="source.dir" value="conf/pfp"/>
+                    <param name="file.name" value="${org.quartz.property.file.name}"/>
+                    <param name="dest.dir" value="${jboss.home}/domain-${organization.name}/configuration" />
+                </antcall>
+                <antcall target="cli.batch">
+                    <param name="cli.source.dir" value="conf/pfp"/>
+                    <param name="cli.to.filter.and.execute" value="pfp-server-group.cli"/>
+                    <param name="cli.fail.on.error" value="true"/>
+                </antcall>
+                <if>
+                    <equals arg1="${org.jboss.processFlow.messagingProvider}" arg2="hornetq" />
+                    <then>
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/pfp"/>
+                            <param name="cli.to.filter.and.execute" value="pfp-using-hornetq.cli"/>
+                            <param name="cli.fail.on.error" value="true"/>
+                        </antcall>
+                    </then>
+                    <else>
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/pfp"/>
+                            <param name="cli.to.filter.and.execute" value="pfp-using-activemq.cli"/>
+                            <param name="cli.fail.on.error" value="true"/>
+                        </antcall>
+                    </else>
+                </if>
+                <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+                    <sequential>
+                        <var name="serverIpAddr" value="@{serverIpAddr}" />
+                        <for list="${pfp.core.server.number.list}" param="serverNum">
+                            <sequential>
+                              <var name="pfp.core.server.id" value="pfp-core-@{serverNum}" />
+                              <math result="pfp.core.port.increment" operand1="100" operation="*" operand2="@{serverNum}" datatype="int" />
+                              <math result="pfp.core.port.offset" operand1="${pfp.core.base.port.offset}" operation="+" operand2="${pfp.core.port.increment}" datatype="int" />
+                              <math result="pfp.core.debugger.port" operand1="${pfp.core.base.debugger.port}" operation="+" operand2="${pfp.core.port.increment}" datatype="int" />
+                              <var name="server.specific.hibernate.hbm2ddl.auto" value="validate" />
+                              <if>
+                                <equals arg1="${pfp.core.server.id}" arg2="pfp-core-0" />
+                                <then><var name="server.specific.hibernate.hbm2ddl.auto" value="${hibernate.hbm2ddl.auto}" /></then>
+                              </if>
+                              <echo message="local.provision.pfp.core() serverIpAddr=${serverIpAddr}  : pfp.core.server.id=${pfp.core.server.id} : pfp.core.port.offset=${pfp.core.port.offset} : pfp.core.debugger.port = ${pfp.core.debugger.port}  : server.specific.hibernate.hbm2ddl.auto = ${server.specific.hibernate.hbm2ddl.auto} " />
+                              <antcall target="cli.batch">
+                                <param name="cli.source.dir" value="conf/pfp"/>
+                                <param name="cli.to.filter.and.execute" value="pfp-server-up.cli"/>
+                                <param name="cli.fail.on.error" value="true"/>
+                              </antcall>
+                            </sequential>
+                        </for>
+                    </sequential>
+                </for>
+            </then>
+            <else>
+                <echo message="local.provision.pfp.core:  org.jboss.processFlow.provision.pfpCore = ${org.jboss.processFlow.provision.pfpCore}" />
+            </else>
+        </if>
+    </target>
+
+    <!--
+      pass following parameters to this target :
+        1) org.jboss.processFlow.provision.switchyard
+        2) refresh.master (optional)
+    -->
+    <target name="local.provision.switchyard">
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.switchyard}" arg2="true" />
+            <then>
+                <if>
+                    <equals arg1="${refresh.master}" arg2="true" />
+                    <then><antcall target="refresh.master" /></then>
+                </if>
+                <antcall target="cli.batch">
+                    <param name="cli.source.dir" value="conf/switchyard"/>
+                    <param name="cli.to.filter.and.execute" value="sy-server-group.cli"/>
+                    <param name="cli.fail.on.error" value="true"/>
+                </antcall>
+                <if>
+                    <equals arg1="${org.jboss.processFlow.messagingProvider}" arg2="hornetq" />
+                    <then>
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/switchyard"/>
+                            <param name="cli.to.filter.and.execute" value="sy-using-hornetq.cli"/>
+                            <param name="cli.fail.on.error" value="true"/>
+                        </antcall>
+                    </then>
+                    <else>
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/switchyard"/>
+                            <param name="cli.to.filter.and.execute" value="sy-using-activemq.cli"/>
+                            <param name="cli.fail.on.error" value="true"/>
+                        </antcall>
+                    </else>
+                </if>
+                <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+                    <sequential>
+                        <var name="serverIpAddr" value="@{serverIpAddr}" />
+                          <for list="${sy.core.server.number.list}" param="serverNum">
+                            <sequential>
+                                <var name="sy.core.server.id" value="sy-core-@{serverNum}" />
+                                <math result="sy.core.port.increment" operand1="100" operation="*" operand2="@{serverNum}" datatype="int" />
+                                <math result="sy.core.port.offset" operand1="${sy.core.base.port.offset}" operation="+" operand2="${sy.core.port.increment}" datatype="int" />
+                                <math result="sy.core.debugger.port" operand1="${sy.core.base.debugger.port}" operation="+" operand2="${sy.core.port.increment}" datatype="int" />
+                                <echo message="sy.core.server.id=${sy.core.server.id} : sy.core.port.offset=${sy.core.port.offset} : sy.core.debugger.port = ${sy.core.debugger.port}" />
+                                <antcall target="cli.batch">
+                                    <param name="cli.source.dir" value="conf/switchyard"/>
+                                    <param name="cli.to.filter.and.execute" value="sy-server-up.cli"/>
+                                    <param name="cli.fail.on.error" value="true"/>
+                                </antcall>
+                            </sequential>
+                        </for>
+                    </sequential>
+                </for>
+            </then>
+            <else>
+                <echo message="local.provision.switchyard:  org.jboss.processFlow.provision.switchyard = ${org.jboss.processFlow.provision.switchyard}" />
+            </else>
+        </if>
+    </target>
+
+
+    <!--
+      pass following parameters to this target :
+        1) org.jboss.processFlow.provision.brmsWebs (optional)
+        2) refresh.master (optional)
+    -->
+    <target name="local.provision.brms.webs">
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.brmsWebs}" arg2="true" />
+            <then>
+                <if>
+                    <equals arg1="${refresh.master}" arg2="true" />
+                    <then><antcall target="refresh.master" /></then>
+                </if>
+                <if>
+                    <equals arg1="${org.jboss.processFlow.provision.guvnor}" arg2="true" />
+                    <then>
+                        <antcall target="local.deploy.guvnor.designer" />
+                    </then>
+                    <else>
+                        <echo message="local.provision.brms.webs:  will provision biz central only" />
+                    </else>
+                </if>
+                <antcall target="local.deploy.jbpm.gwt.console" />
+                <math result="pfp.core.remoting.port" operand1="${base.remoting.port}" operation="+" operand2="${pfp.core.base.port.offset}" datatype="int" />
+                <antcall target="cli.batch">
+                    <param name="cli.source.dir" value="conf/brmsWebs"/>
+                    <param name="cli.to.filter.and.execute" value="brmsWebs-config-group.cli"/>
+                    <param name="cli.fail.on.error" value="true"/>
+                </antcall> 
+                <if>
+                    <equals arg1="${org.jboss.processFlow.provision.guvnor}" arg2="true" />
+                    <then>
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/brmsWebs"/>
+                            <param name="cli.to.filter.and.execute" value="guvnorWebApps-config-group.cli"/>
+                            <param name="cli.fail.on.error" value="true"/>
+                        </antcall> 
+                    </then>
+                </if>
+
+                <for list="${org.jboss.eap.host.list}" param="serverIpAddr">
+                    <sequential>
+                        <var name="serverIpAddr" value="@{serverIpAddr}" />
+                        <antcall target="cli.batch">
+                            <param name="cli.source.dir" value="conf/brmsWebs"/>
+                            <param name="cli.to.filter.and.execute" value="brmsWebs-config-server.cli"/>
+                            <param name="cli.fail.on.error" value="false"/>
+                        </antcall> 
+                        <if>
+                            <equals arg1="${serverIpAddr}" arg2="master" />
+                            <then>
+                                <antcall target="cli.batch">
+                                    <param name="cli.source.dir" value="conf/brmsWebs"/>
+                                    <param name="cli.to.filter.and.execute" value="brmsWebs-config-up.cli"/>
+                                    <param name="cli.fail.on.error" value="false"/>
+                                </antcall> 
+                            </then>
+                            <else>
+                                <if>
+                                    <equals arg1="${org.jboss.processFlow.brmsWebs.clustered}" arg2="true" />
+                                    <then>
+                                        <antcall target="cli.batch">
+                                            <param name="cli.source.dir" value="conf/brmsWebs"/>
+                                            <param name="cli.to.filter.and.execute" value="brmsWebs-config-up.cli"/>
+                                            <param name="cli.fail.on.error" value="false"/>
+                                        </antcall> 
+                                    </then>
+                                    <else><echo message="local.provision.brms.webs() org.jboss.processFlow.brmsWebs.clustered property equals false.  will NOT start up brmsWebs on remote slave host = ${serverIpAddr}" /></else>
+                                </if>
+                            </else>
+                        </if>
+                    </sequential>
+                </for>
+            </then>
+            <else>
+                <echo message="local.provision.brms.webs:  org.jboss.processFlow.provision.brmsWebs = ${org.jboss.processFlow.provision.brmsWebs}" />
+            </else>
+        </if>
+    </target>
+
+    <macrodef name="iterate">
+        <attribute name="target"/>
+        <sequential>
+            <subant target="@{target}">
+                <fileset dir="pfpServices/interfaces" includes="build.xml"/>
+                <fileset dir="pfpServices/common" includes="build.xml"/>
+                <fileset dir="pfpServices/bam" includes="build.xml"/>
+                <fileset dir="pfpServices/knowledgeSessionService" includes="build.xml"/>
+                <fileset dir="pfpServices/taskService" includes="build.xml"/>
+                <fileset dir="pfpServices/haTimerService" includes="build.xml"/>
+                <fileset dir="pfpServices/adminConsole" includes="build.xml"/>
+                <fileset dir="privateServiceTaskRepo" includes="build.xml"/>
+            </subant>
+        </sequential>
+    </macrodef>
+
+
+    <target name="pfp.clean" description="" >
+        <if>
+            <available file="pfpServices" type="dir" />
+            <then>
+                <iterate target="clean" />
+                <if>
+                    <available file="${build.dir}" type="dir" />
+                    <then>
+                        <delete includeemptydirs="true">
+                            <fileset dir="${build.dir}" excludes="lib/**/*,openshiftAccount.properties" />
+                        </delete>
+                    </then>
+                </if>
+            </then>
+        </if>
+        <delete dir="${distro.clean}" />
+        <delete dir="privateServiceTaskRepo/${build.dir}" />
+        <delete dir="pfpServicesTest/${build.dir}" />
+        <delete dir="osProvision/${build.dir}" />
+    </target>
+
+    <target name="create.temp.client.dir" >
+        <copy toDir="${temp.client.dir}" overwrite="true" >
+            <fileset dir="${temp.pfp.lib.dir}" >
+                <include name="processFlow-interfaces*.jar" />
+            </fileset>
+            <fileset dir="${jbpm.lib.path}" >
+                <include name="jbpm-human-task-core*.jar" />
+            </fileset>
+            <fileset dir="${deps.lib.path}" >
+                <include name="knowledge-api-*.jar" />
+            </fileset>
+        </copy>
+    </target>
+
+
+    <target name="configure.jbossamq.modules">
+        <if>
+            <equals arg1="${org.jboss.processFlow.messagingProvider}" arg2="amq" />
+            <then>
+                <antcall target="filter">
+                    <param name="source.dir" value="conf/amq/modules"/>
+                    <param name="dest.dir" value="${jboss.home}/modules/system/layers/pfp"/>
+                </antcall>
+                <get src="${activemq.rar.download.url}" dest="${install.home}/lib/"  skipexisting="true" />
+                <copy file="${install.home}/lib/${activemq.rar.file.name}" todir="${jboss.home}/modules/system/layers/pfp/org/apache/activemq/rar/main" />
+            </then>
+            <else><echo message="not using jbossamq.  instead using:  ${org.jboss.processFlow.messagingProvider}" /></else>
+        </if>
+    </target>
+    <target name="download.and.unzip.sy.deployer">
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.switchyard}" arg2="true" />
+            <then>
+                <get src="${switchyard.deployer.download.url}" dest="${install.home}/lib/"  skipexisting="true" />
+                <if>
+                    <equals arg1="${switchyard.zip.name}" arg2="switchyard.deployer.zip" />
+                    <then><unzip src="${install.home}/lib/${switchyard.zip.name}" dest="${jboss.home}" /></then>
+                    <else>
+                        <if>
+                            <not><available file="${temp.soa.unzip.dir}/${guvnor.name}" type="dir" /></not> 
+                            <then><unzip src="${install.home}/lib/${switchyard.zip.name}" dest="${temp.soa.unzip.dir}" /></then>
+                        </if>
+                        <copy todir="${jboss.home}/modules" overwrite="true">
+                            <fileset dir="${temp.soa.unzip.dir}/${eap6.name}/modules" />
+                        </copy>
+                    </else>
+                </if>
+            </then>
+        </if>
+    </target>
+    <target name="download.drools.guvnor">
+        <get src="${drools.guvnor.download.url}" dest="${install.home}/lib/guvnor-distribution-wars-${drools.guvnor.version}-jboss-as-7.0.war"  skipexisting="true" />
+    </target>
+    <target name="download.designer" >
+        <get src="${designer.url}/jbpm-designer-${designer.version}.war" dest="${install.home}/lib/jbpm-designer-${designer.version}.war"  skipexisting="true" />
+    </target>
+    <target name="download.jBPM.gwt-console">
+        <property name="jBPM.url" value="file://${jbpm.source.dir}/jbpm-distribution/target" />
+        <get src="${jBPM.url}/jbpm-${console.server.version}-gwt-console.zip" dest="${install.home}/lib/jbpm-${console.server.version}-gwt-console.zip"  skipexisting="true" />
+    </target>
+    <target name="download.birt.as7" >
+        <mkdir dir="${install.home}/lib/reporting" />
+        <get src="${birt.download.url.as7}" dest="${install.home}/lib/birt-runtime-${birt.version}.zip" skipexisting="true" />
+        <get src="${jboss.nexus.url}/content/repositories/releases/org/jboss/bpm/report-core/1.3.0/report-core-1.3.0.jar" dest="${install.home}/lib/reporting" skipexisting="true" />
+        <get src="${jboss.nexus.url}/content/repositories/releases/org/jboss/bpm/report-shared/1.3.0/report-shared-1.3.0.jar" dest="${install.home}/lib/reporting" skipexisting="true" />
+    </target>
+    <target name="download.community.guvnor.and.designer">
+        <antcall target="download.drools.guvnor" />
+        <antcall target="download.designer" />
+    </target>
+
+    <target name="mkPfpDirs">
+        <mkdir dir="${temp.pfp.lib.dir}" />
+        <mkdir dir="${temp.pfp.services.dir}" />
+        <mkdir dir="${install.home}/lib" />
+    </target>
+
+    <target name="pfp.compile" depends="mkPfpDirs" description="" >
+        <if>
+            <available file="pfpServices" type="dir" />
+            <then><iterate target="all" /></then>
+        </if>
+    </target>
+
+    <target name="all" >
+        <if>
+            <equals arg1="${community.or.supported}" arg2="supported" />
+            <then><antcall target="unzip.brms.deployable" /></then>
+        </if>
+        <antcall target="apply.BZ887847" />
+        <antcall target="refresh.master" />
+        <antcall target="refresh.slave.hosts" />
+        <antcall target="local.configure.core.services" />
+        <antcall target="local.provision.ha.jvms" />
+        <antcall target="local.provision.pfp.core">
+            <param name="refresh.master" value="false"/>
+        </antcall>
+        <antcall target="local.provision.switchyard">
+            <param name="refresh.master" value="false"/>
+        </antcall>
+        <antcall target="create.temp.client.dir" />
+        <antcall target="local.provision.brms.webs">
+            <param name="refresh.master" value="false"/>
+        </antcall>
+        <if>
+            <equals arg1="${org.jboss.processFlow.provision.pfpCore}" arg2="true" />
+            <then>
+                <antcall target="pfp.print.common.test.rest.calls" />
+            </then>
+        </if>
+    </target>
+
+    <target name="pfp.print.common.test.rest.calls" description="">
+        <echo message="you may find executing the following will be helpful to diagnose your environment :" />
+        <echo message="    curl -v -X PUT -HAccept:text/plain ${os.hostname}:8330/knowledgeService/kbase               :   refresh kBase in PFP's kSessionService" />
+        <echo message="    curl -v -X GET -HAccept:text/plain ${os.hostname}:8330/knowledgeService/kbase/content       :   view contents of kbase" />
+        <echo message="    curl -v -X GET -HAccept:text/plain ${os.hostname}:8330/knowledgeService/workItemHandlers    :   view all registerd workItemHandlers with kSessions" />
+    </target>
+    <target name="pfp.distro" depends="" >
+        <property name="distro.name" value="processFlow-bin-${brms.major.version}-${brms.minor.version}" />
+        <property name="base.name" value="processFlowProvision" />
+
+        <copy file="base-build.xml" todir="${temp.distro.dir}" />
+        <copy file="build.xml" todir="${temp.distro.dir}" />
+        <copy file="openshift-build.xml" todir="${temp.distro.dir}" />
+        <copy file="build.properties" todir="${temp.distro.dir}" />
+        <copy file="LICENSE.txt" todir="${temp.distro.dir}" />
+        <copy file="README.txt" todir="${temp.distro.dir}" />
+
+        <mkdir dir="${temp.pfp.lib.dir}" />
+        <mkdir dir="${temp.pfp.services.dir}" />
+
+        <zip destfile="${install.home}/${distro.name}.zip">
+            <zipfileset dir="${temp.distro.dir}" prefix="${base.name}" />
+            <zipfileset dir="bin" prefix="${base.name}/bin" filemode="755"/>
+            <zipfileset dir="privateServiceTaskRepo" prefix="${base.name}/privateServiceTaskRepo" />
+            <zipfileset dir="${temp.client.dir}" prefix="${base.name}/clientLibs" />
+            <zipfileset dir="conf" prefix="${base.name}/conf"/>
+            <zipfileset dir="lib" prefix="${base.name}/lib"/>
+            <zipfileset dir="osProvision" prefix="${base.name}/osProvision"/>
+            <zipfileset dir="doc" prefix="${base.name}/doc">
+                <include name="ADMIN_GUIDE.txt" />
+                <include name="release_notes.txt" />
+            </zipfileset>
+            <zipfileset dir="${temp.pfp.lib.dir}" prefix="${base.name}/${build.dir}/pfp/lib" />
+            <zipfileset dir="${temp.pfp.services.dir}" prefix="${base.name}/${build.dir}/pfp/services" />
+        </zip>
+    </target>
+
+    <target name="apply.BZ887847" >
+        <if>
+            <equals arg1="${org.jboss.process.apply.BZ887847}" arg2="true" />
+            <then>
+                <if><not><available file="${install.home}/lib/BZ887847.zip" /></not>
+                    <then>
+                        <fail message="need to download BZ887847.zip from: https://access.redhat.com/jbossnetwork/restricted/listSoftware.html?product=brms.  afterwards, copy to $PFP_HOME/target/lib directory" />
+                    </then>
+                </if>
+                <mkdir dir="${temp.brmsWebs.dir}" />
+                <unzip src="${install.home}/lib/BZ887847.zip" dest="${temp.brmsWebs.dir}" />
+                <copy file="${temp.brmsWebs.dir}/BZ887847/classes/org/drools/guvnor/server/configurations/ApplicationPreferencesInitializer.class"
+                      todir="${temp.brms.unzip.dir}/jboss-brms.war/WEB-INF/classes/org/drools/guvnor/server/configurations"
+                      overwrite="true" verbose="true" />
+                <copy file="${temp.brmsWebs.dir}/BZ887847/classes/org/drools/guvnor/client/configurations/ApplicationPreferences.class"
+                      todir="${temp.brms.unzip.dir}/jboss-brms.war/WEB-INF/classes/org/drools/guvnor/client/configurations"
+                      overwrite="true" verbose="true" />
+                <copy file="${temp.brmsWebs.dir}/BZ887847/lib/droolsjbpm-ide-common-5.3.1.BRMS-BZ_887847.jar"
+                      tofile="${temp.brms.unzip.dir}/binaries/droolsjbpm-ide-common-5.3.1.BRMS.jar" 
+                      overwrite="true" verbose="true" />
+            </then>
+        </if>
+    </target>
+</project>
+<project name="pfp-openshift" >
+
+    <target name="openshift.provision.both" >
+        <echo message="service repository = ${service.repository}" />
+        <echo message="openshift.domain.name = ${openshift.domain.name}" />
+        <antcall target="openshift.provision.pfp.core" />
+    </target>
+
+    <!--    
+        pass following parameters to this target :
+        1)  bounce.servers  :   optional 
+    -->
+    <target name="openshift.provision.pfp.core" depends="openshift.provision.prep" >
+        <delete dir="${openshift.pfpcore.app.location}" />
+        <mkdir dir="${openshift.app.dir}" />
+        <echo message="executing following command:  git clone -o ${openshift.domain.name} ${openshift.pfpcore.git.url} ${openshift.pfpcore.app.location}" />
+        <exec executable="git" failonerror="true" >
+           <arg value="clone"/>
+           <arg value="-o"/>
+           <arg value="${openshift.domain.name}"/>
+           <arg value="${openshift.pfpcore.git.url}"/>
+           <arg value="${openshift.pfpcore.app.location}"/>
+        </exec>
+        <antcall target="openshift.deploy.jboss.modules" >
+            <param name="app.location" value="${openshift.pfpcore.app.location}"/>
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="conf/openshift/pfpcore"/>
+            <param name="dest.dir" value="${openshift.pfpcore.app.location}/.openshift"/>
+        </antcall>
+        <delete file="${openshift.pfpcore.app.location}/pom.xml" />
+        <delete file="${openshift.pfpcore.app.location}/.openshift/markers/java7" />
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="copyFileToRemote"/>
+           <arg value="-localDir=conf/jboss/"/>
+           <arg value="-file=*.properties"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}"/>
+        </exec>
+        <copy todir="${openshift.pfpcore.app.location}/deployments" overwrite="true" >
+            <fileset dir="${temp.pfp.services.dir}" >
+                <include name="*.jar" />
+                <include name="*.war" />
+            </fileset>
+        </copy>
+        <antcall target="openshift.provision.brms.webs" />
+        <!-- rsync to exploded web archives to :  ${openshift.jboss.cartridge.type}/tmp/deployments
+            this directory will not get blown away when executing 'git push' on openshift app
+        -->
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="openshiftRsync"/>
+           <arg value="-localDir=${temp.brmsWebs.dir}/${console.server.name}/*"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}/deployments/${console.server.name}"/>
+           <arg value="-rsyncDelete=true"/>
+        </exec> 
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="openshiftRsync"/>
+           <arg value="-localDir=${temp.brmsWebs.dir}/${console.name}/*"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}/deployments/${console.name}"/>
+           <arg value="-rsyncDelete=true"/>
+        </exec> 
+        <if>
+            <not><equals arg1="${bounce.servers}" arg2="false" /></not>
+            <then>
+                <exec executable="bash" failonerror="true" dir="." >
+                <arg value="${development.base}/bin/openshift.sh"/>
+                <arg value="push"/>
+                <arg value="-localAppLocation=${openshift.pfpcore.app.location}"/>
+                <arg value="-domainName=${openshift.domain.name}"/>
+                </exec> 
+            </then>
+        </if>
+    </target>
+
+    <target name="openshift.provision.brms.webs" >
+        <!-- rsync to exploded web archives to :  ${openshift.jboss.cartridge.type}/tmp/deployments
+            this directory will not get blown away when executing 'git push' on openshift app
+        -->
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="openshiftRsync"/>
+           <arg value="-localDir=${temp.brmsWebs.dir}/${guvnor.name}/*"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}/deployments/${guvnor.name}"/>
+           <arg value="-rsyncDelete=true"/>
+        </exec>
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="copyFileToRemote"/>
+           <arg value="-localDir=${temp.brmsWebs.dir}"/>
+           <arg value="-file=repository.xml"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}/guvnor"/>
+        </exec>
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="openshiftRsync"/>
+           <arg value="-localDir=${temp.brmsWebs.dir}/${designer.name}/*"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}/deployments/${designer.name}"/>
+           <arg value="-rsyncDelete=true"/>
+        </exec>
+    </target>
+
+
+    <target name="openshift.bounce.pfpcore" description="" >
+        <antcall target="openshift.stop.jboss" >
+            <param name="ssh.url" value="${openshift.pfpcore.ssh.url}"/>
+        </antcall>
+        <antcall target="openshift.start.jboss" >
+            <param name="ssh.url" value="${openshift.pfpcore.ssh.url}"/>
+        </antcall>
+    </target>
+
+    <target name="openshift.stop.jboss" >
+        <fail unless="ssh.url" message="stop.jboss:  need to pass 'ssh.url' property" />
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="stopJboss"/>
+           <arg value="-sshUrl=${ssh.url}"/>
+        </exec> 
+    </target>
+    <target name="openshift.start.jboss" >
+        <fail unless="ssh.url" message="start.jboss:  need to pass 'ssh.url' property" />
+        <exec executable="${development.base}/bin/openshift.sh" failonerror="true" >
+            <arg value="startJboss"/>
+            <arg value="-remoteJbossHome=${openshift.remote.jboss.home}"/>
+            <arg value="-sshUrl=${ssh.url}"/>
+        </exec> 
+    </target>
+
+    <target name="openshift.refreshGuvnor" >
+        <fail unless="ssh.url" message="os.refreshGuvnor:  need to pass 'ssh.url' property" />
+        <fail unless="os.data.dir" message="os.refreshGuvnor:  need to pass 'os.data.dir' property" />
+        <antcall target="filter">
+            <param name="source.dir" value="conf/brmsWebs/drools-guvnor"/>
+            <param name="file.name" value="repository.xml"/>
+            <param name="dest.dir" value="target/tmp"/>
+        </antcall>
+        <!--exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="refreshGuvnor"/>
+           <arg value="-sshUrl=${ssh.url}"/>
+           <arg value="-remoteDir=${os.data.dir}/guvnor"/>
+        </exec --> 
+
+    </target>
+
+    <target name="openshift.deploy.jboss.modules" >
+        <fail unless="app.location" message="openshift.deploy.jboss.modules:  need to pass 'app.location' property" />
+        <delete dir="${openshift.pfpcore.app.location}/.openshift/config/modules" />
+        <antcall target="configure.jboss.modules" />
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="openshiftRsync"/>
+           <arg value="-localDir=${temp.jboss.dir}/*"/>
+           <arg value="-sshUrl=${openshift.pfpcore.ssh.url}"/>
+           <arg value="-remoteDir=${openshift.pfpcore.config.dir}"/>
+           <arg value="-rsyncDelete=true"/>
+        </exec> 
+    </target>
+
+    <target name="openshift.provision.db" >
+        <if>    
+            <equals arg1="${jdbc.module.name}" arg2="postgresql" />
+            <then><property name="command" value="executePostgresqlScript" /></then>
+            <else><property name="command" value="executeMysqlScript" /></else>
+        </if>   
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="${command}"/>
+           <arg value="-serverIpAddr=${brmsWebs.db.ip.addr}"/>
+           <arg value="-managementPort=3306"/>
+           <arg value="-sshUrl=${brmsWebs.db.ssh.url}"/>
+           <arg value="-user=${brmsWebs.db.root.user}"/>
+           <arg value="-password=${brmsWebs.db.root.password}"/>
+           <arg value="-localDir=conf/postgresql" />
+           <arg value="-file=processFlowProvision.sql" />
+           <arg value="-remoteDir=/tmp" />
+        </exec> 
+    </target>
+    <target name="openshift.provision.prep" >
+        <if>
+            <not><available file="${temp.pfp.services.dir}" type="dir" /></not>
+            <then>
+                <antcall target="unzip.brms.deployable" />
+                <antcall target="apply.BZ887847" />
+                <antcall target="local.stop.master"  />
+                <antcall target="pfp.clean" />
+                <mkdir dir="${install.home}/lib" />
+                <antcall target="clone.jboss" />
+                <antcall target="configure.jboss.modules" />
+            </then>
+            <else><echo message="openshiftPrep() found ${temp.pfp.services.dir} ... no need to rebuild" /></else>
+        </if>
+    </target>
+    <target name="openshift.provision.accounts.with.brms" description="" >
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="provisionAccountsWithPFP"/>
+           <arg value="-bldwProvisionProjectLocation=${bldw.provision.project.location}"/>
+           <arg value="-skipFullBuild=${openshift.skip.full.build}"/>
+        </exec> 
+    </target>
+
+    <target name="openshift.set.RSA.key.and.namespace.on.accounts" description="" >
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="setRSAkeyAndNamespaceOnAccounts"/>
+           <arg value="-rsaPublicKeyPath=${rsa.public.key.path}"/>
+        </exec> 
+    </target>
+
+    <target name="openshift.list.dig.results.for.each.account" description="" >
+        <exec executable="bash" failonerror="true" dir="." >
+           <arg value="${development.base}/bin/openshift.sh"/>
+           <arg value="listDigResultsForEachAccount"/>
+        </exec> 
+    </target>
+
+</project>
+<project name="osProvision" default="openshift.provision.empty.accounts" >
+
+
+    <target name="openshift.provision.empty.accounts" depends="openshiftCompile" description="">
+        <java fork="yes" classname="org.jboss.processFlow.openshift.ShifterProvisioner" failonerror="true">
+            <jvmarg value="-Xms16m" />
+            <jvmarg value="-Xmx64m" />
+            <sysproperty key="log4j.configuration" value="file:conf/test/log4j.xml" />
+            <jvmarg value="-Xrunjdwp:transport=dt_socket,address=${org.jboss.processFlow.client.debuggerPort},server=y,suspend=n" />
+            <classpath refid="sub.classpath"/>
+        </java>
+    </target>
+    <target name="openshift.transform.account.details" depends="openshiftCompile" description="">
+        <java fork="yes" classname="org.jboss.processFlow.openshift.TransformAccountDetails" failonerror="true">
+            <sysproperty key="log4j.configuration" value="file:conf/test/log4j.xml" />
+            <sysproperty key="openshift.account.details.file.location" value="${openshift.account.details.file.location}" />
+            <jvmarg value="-Xrunjdwp:transport=dt_socket,address=${org.jboss.processFlow.client.debuggerPort},server=y,suspend=n" />
+            <classpath refid="sub.classpath"/>
+        </java>
+    </target>
+    <target name="openshift.json.parser" depends="openshiftCompile" >
+        <java fork="yes" classname="org.jboss.processFlow.openshift.JsonParser" failonerror="true">
+            <sysproperty key="log4j.configuration" value="file:conf/test/log4j.xml" />
+            <sysproperty key="openshift.account.details.file.location" value="${openshift.account.details.file.location}.test" />
+            <jvmarg value="-Xrunjdwp:transport=dt_socket,address=${org.jboss.processFlow.client.debuggerPort},server=y,suspend=n" />
+            <classpath refid="sub.classpath"/>
+        </java>
+    </target>
+
+    <target name="openshiftPrep" depends="setClasspath,openshift.provision.prep" >
+        <var name="subproject.name" value="osProvision" />
+        <var name="subproject.build" value="${subproject.name}/target" />
+        <path id="sub.classpath" >
+            <path refid="classpath" />
+            <pathelement location="${subproject.build}"/>
+        </path>
+
+        <!--property name="openshift.cp" refid="sub.classpath" />
+        <echo message="sub.classpath = ${openshift.cp}" / --> 
+    </target>
+    <target name="openshiftClean" depends="openshiftPrep" >
+        <delete dir="${subproject.build}" />
+    </target>
+    <target name="openshiftCompile" depends="openshiftClean" >
+        <mkdir dir="${subproject.build}" />
+        <copy file="openshift.properties" tofile="${subproject.build}/openshift.pfp.properties" overwrite="true" >
+            <filterchain><expandproperties/></filterchain>
+        </copy>
+        <copy file="${subproject.name}/src/main/resources/openshift_account_details.xsd" todir="${subproject.build}" />
+
+        <javac debug="true" srcdir="${subproject.name}/src/main/java" destdir="${subproject.build}" optimize="true" >
+            <classpath refid="classpath" />
+        </javac>
+    </target>
+
+</project>
+<project name="adminConsole" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean,setClasspath" >
+        <antcall target="jar" >
+            <param name="jar.name" value="processFlow-${ant.project.name}" />
+        </antcall>
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.lib.dir}" />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+</project>
+<project name="bam" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean,setClasspath" >
+        <mkdir dir="${build.dir}" />
+
+        <javac debug="true" srcdir="src/main/java" destdir="${build.dir}" >
+            <classpath refid="classpath" />
+        </javac>
+        <copy toDir="${build.dir}/META-INF/" overwrite="true" verbose="true" >
+            <fileset dir="src/main/resources/META-INF" />
+        </copy>
+        <jar jarfile="${temp.pfp.services.dir}/processFlow-${ant.project.name}Service.jar" 
+            basedir="${build.dir}" 
+            includes="**/*BAMService*.class,META-INF/*"
+        />
+        <jar jarfile="${temp.pfp.lib.dir}/processFlow-${ant.project.name}-libs.jar" 
+            basedir="${build.dir}" 
+            excludes="**/*BAMService*.class,META-INF/*"
+        />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+</project>
+<project name="common" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean" >
+        <antcall target="jar" >
+            <param name="jar.name" value="processFlow-${ant.project.name}" />
+        </antcall>
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.lib.dir}" />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+
+</project>
+<project name="haTimerService" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean,setClasspath">
+        <mkdir dir="${build.dir}" />
+        <antcall target="jar" >
+            <param name="jar.name" value="processFlow-${ant.project.name}"/>
+        </antcall>
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.services.dir}" />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+
+</project>
+<project name="interfaces" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean" >
+        <antcall target="jar" >
+            <param name="jar.name" value="processFlow-${ant.project.name}" />
+            <param name="generate.java.doc" value="true" />
+        </antcall>
+
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.lib.dir}" />
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.client.dir}" />
+        <copy file="${build.dir}/processFlow-${ant.project.name}-javadoc.jar" toDir="${temp.client.dir}" />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+
+</project>
+<project name="knowledgeSessionService" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean,setClasspath" >
+        <!-- need to manually create jar because persistence.xml must not go through ant filter/substition -->
+        <mkdir dir="${build.dir}" />
+        <javac debug="true" srcdir="src/main/java" destdir="${build.dir}" >
+            <classpath refid="classpath" />
+        </javac>
+        <copy toDir="${build.dir}/META-INF/" overwrite="true" verbose="true" >
+            <fileset dir="src/main/resources/META-INF" />
+        </copy>
+        <antcall target="filter">
+            <param name="source.dir" value="src/main/resources/META-INF" />
+            <param name="file.name" value="beans.xml" />
+            <param name="dest.dir" value="${build.dir}/META-INF" />
+        </antcall>
+        <antcall target="filter">
+            <param name="source.dir" value="src/main/resources/META-INF" />
+            <param name="file.name" value="jboss-ejb3.xml" />
+            <param name="dest.dir" value="${build.dir}/META-INF" />
+        </antcall>
+
+        <!-- can't have jboss-ejb-client in an openshift environment -->
+        <if>
+            <equals arg1="${is.deployment.local}" arg2="false" />
+            <then>
+                <delete file="${build.dir}/META-INF/jboss-ejb-client.xml"/>
+            </then>
+            <else>
+                <antcall target="filter">
+                    <param name="source.dir" value="src/main/resources/META-INF" />
+                    <param name="file.name" value="jboss-ejb-client.xml" />
+                    <param name="dest.dir" value="${build.dir}/META-INF" />
+                </antcall>
+            </else>
+        </if>
+
+        <jar jarfile="${build.dir}/processFlow-${ant.project.name}.jar" basedir="${build.dir}" />
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.services.dir}" overwrite="true" verbose="true" />
+
+        <!-- now re-create so as to generate java doc -->
+        <antcall target="clean" />
+        <antcall target="jar" >
+            <param name="jar.name" value="processFlow-${ant.project.name}" />
+            <param name="generate.java.doc" value="true" />
+        </antcall>
+        <copy file="${build.dir}/processFlow-${ant.project.name}-javadoc.jar" toDir="${temp.client.dir}" overwrite="true" verbose="true" />
+
+        <!-- now create ksessionService war -->
+        <antcall target="war" >
+            <param name="war.name" value="processFlow-${ant.project.name}-web" />
+        </antcall>
+        <copy file="${build.dir}/processFlow-${ant.project.name}-web.war" toDir="${temp.pfp.services.dir}" overwrite="true" verbose="true" />
+    </target>
+
+    <target name="test" depends="clean,setClasspath" >
+        <mkdir dir="${subproject.build}" />
+        <javac debug="true" srcdir="src/test/java" destdir="${build.dir}" optimize="${javac.optimize}" >
+            <classpath refid="classpath" />
+        </javac>
+        <jar jarfile="${jboss.server.deploy.dir}/${organization.name}/processFlow-${ant.project.name}-test.jar" basedir="${build.dir}" />
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+
+</project>
+<project name="pfpServicesTest" default="test.standaloneTask" basedir="." >
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="test.webTask" depends="setClasspath,clean" description="" >
+        <mkdir dir="${build.dir}/webapp/WEB-INF/classes" />
+        <antcall target="filter">
+            <param name="source.dir" value="src/main/webapp"/>
+            <param name="dest.dir" value="${build.dir}/webapp"/>
+        </antcall>
+        <javac debug="true" srcdir="src/main/webapp/WEB-INF/classes" destdir="${build.dir}/webapp/WEB-INF/classes" >
+            <classpath refid="classpath" />
+        </javac>
+
+        <jar jarfile="${build.dir}/${ant.project.name}.war" >
+            <fileset dir="${build.dir}/webapp" />
+            <manifest>
+                <attribute name="Dependencies" value="org.slf4j,org.jboss.processFlow"/>
+            </manifest>
+        </jar>
+        <exec executable="${jboss.home}/bin/jboss-cli.sh" failonerror="${cli.fail.on.error}">
+            <arg value="--connect"/>
+            <arg value="--controller=${ENV.HOSTNAME}:${management.port}"/>
+            <arg value="deploy ${build.dir}/${ant.project.name}.war --server-groups=brms-webs-group" />
+        </exec>
+    </target>
+
+
+    <target name="test.standaloneTask" depends="setClasspath,standaloneSetup" description="optional :  -Dtest.openshift=true">
+        <java fork="yes" classname="org.jboss.processFlow.test.SimpleTaskClient" failonerror="true">
+            <jvmarg value="-Xms16m" />
+            <jvmarg value="-Xmx64m" />
+            <jvmarg value="-Dorg.jboss.processFlow.test.absolutePathToBpmn=src/test/resources/simpleHumanTask.bpmn2" />
+            <sysproperty key="log4j.configuration" value="file:${development.base}/conf/test/log4j.xml" />
+            <classpath refid="classpath"/>
+        </java>
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+    <target name="standaloneSetup" depends="clean" >
+        <mkdir dir="${build.dir}" />
+        <if>
+            <isset property="test.openshift"/>
+            <then>
+                <property name="configurable.pfp.core.host.name" value="${openshift.pfpCore.internal.ip}" />
+                <property name="pfp.core.remoting.port" value="4447" />
+                <exec executable="bash" failonerror="true" dir="." >
+                    <arg value="bin/openshift.sh"/>
+                    <arg value="createTunnel"/>
+                    <arg value="-serverIpAddr=${openshift.pfpCore.internal.ip}"/>
+                    <arg value="-port=${pfp.core.remoting.port}"/>
+                    <arg value="-sshUrl=${openshift.pfpCore.ssh.url}"/>
+                </exec>
+            </then>
+            <else>
+                <math result="pfp.core.remoting.port" operand1="${base.remoting.port}" operation="+" operand2="${pfp.core.port.offset}" datatype="int"/>
+                <property name="configurable.pfp.core.host.name" value="${pfp.core.host.name}" />
+            </else>
+        </if>
+        <antcall target="filter" >
+            <param name="source.dir" value="src/test/resources"/>
+            <param name="file.name" value="jboss-ejb-client.properties"/>
+            <param name="dest.dir" value="${build.dir}"/>
+        </antcall>
+        <javac debug="true" srcdir="src/test/java" destdir="${build.dir}" optimize="true" >
+            <classpath refid="classpath" />
+        </javac>
+    </target>
+
+</project>
+<project name="taskService" default="all" basedir=".">
+
+    <property environment="ENV"/>
+    <property file="../../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean,setClasspath">
+        <!-- need to manually create jar because persistence.xml must not go through ant filter/substition -->
+        <mkdir dir="${build.dir}" />
+        <javac debug="true" srcdir="src/main/java" destdir="${build.dir}" >
+            <classpath refid="classpath" />
+        </javac>
+        <copy toDir="${build.dir}/META-INF/" overwrite="true" verbose="true" >
+            <fileset dir="src/main/resources/META-INF" />
+        </copy>
+        <jar jarfile="${build.dir}/processFlow-${ant.project.name}.jar" basedir="${build.dir}" /> 
+        <copy file="${build.dir}/processFlow-${ant.project.name}.jar" toDir="${temp.pfp.services.dir}" />
+    </target>
+
+    <target name="taskServiceTest" depends="clean,setTestClasspath" >
+        <mkdir dir="${subproject.build}" />
+        <javac debug="true" srcdir="${subproject.name}/src/test/java" destdir="${subproject.build}" optimize="${javac.optimize}" >
+            <classpath refid="taskService.classpath" />
+        </javac>
+        <junit printsummary="true" fork="yes" >
+            <jvmarg value="-Xms16m" />
+            <jvmarg value="-Xmx64m" />
+            <jvmarg value="-Xss128k" />
+            <sysproperty key="log4j.configuration" value="file:conf/test/resources/log4j.xml" />
+            <classpath refid="taskService.classpath" />
+            <!--batchtest todir="${subproject.build}">
+                <fileset dir="${subproject.build}"/>
+                <formatter type="xml"/>
+            </batchtest -->
+            <test name="org.jboss.processFlow.tasks.HumanTaskServiceTest" todir="${subproject.build}">
+                <formatter type="xml"/>
+            </test>
+        </junit>
+    </target>
+
+    <target name="clean"><delete dir="${build.dir}" /></target>
+
+</project>
+<project name="privateServiceTaskRepo" >
+
+    <property environment="ENV"/>
+    <property file="../build.properties" />
+    <import file="${development.base}/base-build.xml"/>
+
+    <target name="all" depends="clean" >
+        <fail unless="service.repository" message="need to set service.repository property" />
+        <copy toDir="${service.repository}" overwrite="true" verbose="true" >
+            <fileset dir="src/main/resources" />
+        </copy>
+    </target>
+
+    <target name="clean" >
+        <delete dir="${service.repository}" />
+    </target>
+
+</project>

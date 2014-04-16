@@ -1,0 +1,986 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+    Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+    Requires Ant version 1.2 or later
+
+    Compilation currently requires JDK 1.5 or later. Can cross-compile to
+    support JDK 1.4.
+-->
+
+<project name="Rhino" default="help" basedir=".">
+
+  <target name="properties">
+    <!-- Allow user to override default settings from build.properties -->
+    <property file="build.local.properties" />
+    <tstamp>
+      <!-- Specify date part of Context#getImplementationVersion() -->
+      <format property="implementation.date" pattern="yyyy MM dd"/>
+    </tstamp>
+    <property file="build.properties"/>
+
+    <property name="dist.file" value="rhino${version}.zip"/>
+    <property name="dist.source-only-zip" value="rhino${version}-sources.zip"/>
+
+    <property file="apiClasses.properties"/>
+    <property name="xmlimplsrc-build-file"
+              location="xmlimplsrc/build.xml"/>
+
+    <available property="xmlimplsrc-present?"
+               file="${xmlimplsrc-build-file}" />
+
+  </target>
+
+  <target name="init" depends="properties">
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${classes}"/>
+    <mkdir dir="${dist.dir}"/>
+  </target>
+
+  <target name="compile" depends="init">
+    <ant antfile="src/build.xml" target="compile"/>
+    <ant antfile="toolsrc/build.xml" target="compile"/>
+    <antcall target="xmlimplsrc-compile" />
+  </target>
+
+  <target name="compile-all" depends="compile">
+    <ant antfile="deprecatedsrc/build.xml" target="compile"/>
+  </target>
+
+  <target name="graph" depends="init">
+    <ant antfile="src/build.xml" target="graph"/>
+  </target> 
+
+  <target name="shell" depends="compile">
+    <ant antfile="src/build.xml" target="shell"/>
+  </target> 
+
+  <target name="copy-source" depends="init">
+    <ant antfile="src/build.xml" target="copy-source"/>
+    <ant antfile="toolsrc/build.xml" target="copy-source"/>
+    <ant antfile="testsrc/build.xml" target="copy-source"/>
+    <antcall target="xmlimplsrc-copy-source" />
+    <ant antfile="deprecatedsrc/build.xml" target="copy-source"/>
+    <copy todir="${dist.dir}" file="build.xml"/>
+    <copy todir="${dist.dir}" file="build.properties"/>
+    <copy todir="${dist.dir}" file="apiClasses.properties"/>
+    <copy todir="${dist.dir}" file="LICENSE.txt"/>
+  </target>
+
+  <target name="xmlimplsrc-compile" if="xmlimplsrc-present?">
+    <echo>Calling ${xmlimplsrc-build-file}</echo>
+    <!-- Ignore compilation errors under JDK less then 1.4 -->
+    <property name="xmlimpl.compile.failonerror" value="no"/>
+    <ant antfile="${xmlimplsrc-build-file}" target="compile"/>
+  </target>
+
+  <target name="xmlimplsrc-copy-source" if="xmlimplsrc-present?">
+    <echo>Calling ${xmlimplsrc-build-file}</echo>
+    <ant antfile="${xmlimplsrc-build-file}" target="copy-source"/>
+  </target>
+
+  <target name="jar" depends="compile-all">
+    <copy todir="${classes}" file="LICENSE.txt"/>
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <jar jarfile="${jarfile}"
+         basedir="${classes}"
+         manifest="src/manifest"
+         compress="${jar-compression}"
+     />
+  </target>
+
+  <target name="console" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}"
+          fork="true">
+      <arg line="-version 170"/>
+    </java>
+  </target>
+
+  <target name="retrotranslator" depends="retrotranslator-check,retrotranslator-download">
+    <taskdef name="retrotranslator" classpath="build/download/Retrotranslator-1.2.8-bin/retrotranslator-transformer-1.2.8.jar"
+      classname="net.sf.retrotranslator.transformer.RetrotranslatorTask"/>
+  </target>
+
+
+  <target name="retrotranslator-check">
+    <condition property="retrotranslator.available">
+      <and>
+        <available file="build/download/Retrotranslator-1.2.8-bin/retrotranslator-transformer-1.2.8.jar"/>
+        <available file="build/download/Retrotranslator-1.2.8-bin/retrotranslator-runtime-1.2.8.jar"/>
+        <available file="build/download/Retrotranslator-1.2.8-bin/backport-util-concurrent-3.1.jar"/>
+      </and>
+    </condition>
+  </target>
+
+  <target name="retrotranslator-download" unless="retrotranslator.available">
+    <mkdir dir="build/download"/>
+    <get src="http://downloads.sourceforge.net/retrotranslator/Retrotranslator-1.2.8-bin.zip" dest="build/download/Retrotranslator-1.2.8-bin.zip" usetimestamp="true"/>
+    <unzip src="build/download/Retrotranslator-1.2.8-bin.zip" dest="build/download"/>
+  </target>
+
+  <target name="retrojar" depends="jar,retrotranslator">
+    <retrotranslator
+      srcjar="${jarfile}"
+      destjar="${dist.dir}/${rhino-14.jar}"
+      embed="org.mozilla.javascript"
+    />
+  </target>
+
+  <target name="smalljar" depends="compile">
+    <property name="smalljarfile" location="${dist.dir}/${small-rhino.jar}"/>
+    <jar basedir="${classes}" destfile="${smalljarfile}"
+         compress="${jar-compression}">
+      <include name="org/mozilla/javascript/*.class"/>
+
+      <include name="org/mozilla/javascript/debug/*.class"/>
+      <include name="org/mozilla/javascript/resources/*.properties"/>
+      <include name="org/mozilla/javascript/xml/*.class"/>
+      <include name="org/mozilla/javascript/continuations/*.class"/>
+      <include name="org/mozilla/javascript/jdk13/*.class"/>
+      <include name="org/mozilla/javascript/ast/*.class"/>
+      <include name="org/mozilla/javascript/json/*.class"/>
+      <include name="org/mozilla/javascript/annotations/*.class"/>
+      <include name="org/mozilla/javascript/v8dtoa/*.class"/>
+
+      <!-- exclude classes that uses class generation library -->
+      <exclude name="org/mozilla/javascript/JavaAdapter*.class"/>
+
+      <include name="org/mozilla/javascript/regexp/*.class"
+               unless="no-regexp"/>
+    </jar>
+
+  </target>
+
+  <target name="retrosmalljar" depends="smalljar,retrotranslator">
+    <retrotranslator
+      srcjar="${smalljarfile}"
+      destjar="${dist.dir}/${small-rhino-14.jar}"
+      embed="org.mozilla.javascript"
+    />
+  </target>
+
+  <target name="copy-examples" depends="init">
+    <mkdir dir="${dist.dir}/examples"/>
+    <copy todir="${dist.dir}/examples">
+      <fileset dir="examples" includes="**/*.java,**/*.js,**/*.html" />
+    </copy>
+  </target>
+
+  <target name="copy-misc" depends="init">
+    <filter token="datestamp" value="${TODAY}"/>
+    <copy todir="${dist.dir}" filtering="yes">
+      <fileset dir=".">
+        <patternset>
+          <include name="build-date"/>
+        </patternset>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="copy-all" depends="copy-source,copy-examples,copy-misc">
+  </target>
+
+  <target name="javadoc" depends="init">
+    <mkdir dir="${dist.dir}/javadoc"/>
+    <javadoc sourcefiles="${apiClasses}"
+             sourcepath="src"
+             destdir="${dist.dir}/javadoc"
+             version="true"
+             author="true"
+             windowtitle="${Name}" />
+  </target>
+
+  <target name="dev-javadoc" depends="init">
+    <mkdir dir="${dist.dir}/javadoc"/>
+    <javadoc sourcepath="src"
+             destdir="${dist.dir}/javadoc"
+             version="true"
+             package="true"
+             author="true"
+             windowtitle="${Name}">
+       <fileset
+         dir="."
+         includes="**/*.java"
+         excludes="**/deprecatedsrc/**/*.java,**/testsrc/**/*.java"
+       />
+    </javadoc>
+  </target>
+
+  <!--
+    Compiles and tests all sources and then creates the distribution file
+  -->
+  <target name="all" depends="deepclean,compile-all,junit-all,dist">
+  </target>
+
+  <target name="dist" depends="deepclean,jar,retrojar,copy-all,javadoc">
+    <delete file="${dist.file}" />
+    <zip destfile="${dist.file}">
+      <fileset dir="${build.dir}" includes="${dist.name}/**"/>
+    </zip>
+  </target>
+
+  <target name="source-zip" depends="copy-source,copy-examples,javadoc">
+    <delete file="${dist.source-only-zip}" />
+    <zip destfile="${dist.source-only-zip}">
+      <zipfileset prefix="${dist.name}" dir="${dist.dir}">
+        <include name="*src/**"/>
+        <include name="build.xml"/>
+        <include name="*.properties"/>
+        <include name="examples/**"/>
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="compile-debugger">
+    <ant antfile="toolsrc/build.xml" target="compile-debugger"/>
+  </target>
+
+  <target name="clean" depends="properties">
+    <delete quiet="true" file="${dist.dir}/${rhino.jar}"/>
+    <delete quiet="true" file="${dist.dir}/${small-rhino.jar}"/>
+    <delete quiet="true" dir="${build.dir}"/>
+  </target>
+
+  <target name="deepclean" depends="properties">
+    <delete quiet="true" dir="${build.dir}"/>
+    <delete quiet="true" file="${dist.file}"/>
+    <delete quiet="true" file="${dist.source-only-zip}"/>
+  </target>
+
+  <!--
+    The next two targets run the JavaScript Test Library tests.  Note that these tests are quite extensive and take a long time
+    to run.  They are not documented in the 'help' target for now.
+  -->
+
+  <!--
+    Run the tests using JUnit.  Beware that if you are using Ant from the command-line, there are some difficulties you may
+    encounter setting this up correctly; see http://ant.apache.org/faq.html#delegating-classloader
+
+    IDEs that use Ant as the build system probably handle this fine.
+  -->
+  <target name="junit-all" depends="compile">
+    <ant antfile="testsrc/build.xml" target="junit-coveragereport"/>
+  </target>
+
+  <!--
+  Run the tests using the Java port of jsdriver.pl.  Note that running this port
+  from the command-line may be more useful running this Ant target, as running
+  from the command line allows configuration options, such as running with a
+  non-default optimization level, or running only a subset of the tests.
+  -->
+  <target name="jsdriver-run" depends="compile">
+      <ant antfile="testsrc/build.xml" target="jsdriver" />
+  </target>
+
+  <!--
+    Compile the JsDriver test driver.
+  -->
+  <target name="jsdriver" depends="compile">
+      <ant antfile="testsrc/build.xml" target="clean" />
+      <ant antfile="testsrc/build.xml" target="compile" />
+  </target>
+
+  <target name="benchmark-v8-opt-1" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt -1 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-v8-opt0" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 0 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-v8-opt9" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 9 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt-1" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt -1 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt0" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 0 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt9" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 9 run.js"/>
+    </java>
+  </target>
+
+  <target name="help" depends="properties">
+<echo>The following targets are available with this build file:
+
+ clean       remove all compiled classes and copied property files
+
+ compile     compile classes and copy all property files
+             into ${classes} directory
+             excluding deprecated code
+
+ compile-all compile all classes and copy all property files
+             into ${classes} directory
+             including deprecated code
+
+ deepclean   remove all generated files and directories
+
+ dist        create ${dist.file} with full Rhino distribution
+
+ help        print this help
+
+ jar         create ${rhino.jar} in ${dist.dir}
+
+ smalljar    create ${small-rhino.jar} in ${dist.dir} with
+             minimalist set of Rhino classes. See footprint.html
+             from the doc directory for details.
+
+ javadoc     generate Rhino API documentation
+             in ${dist.dir}/javadoc
+
+ source-zip  create ${dist.source-only-zip} with all Rhino
+             source files necessary to recreate ${dist.file}
+</echo>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<project name="src" default="compile" basedir="..">
+
+  <property file="build.properties"/>
+
+  <target name="compile">
+    <javac srcdir="deprecatedsrc"
+           destdir="${classes}"
+           includes="org/mozilla/javascript/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+	   target="${target-jvm}"
+ 	   source="${source-level}"
+	   >
+    </javac>
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/deprecatedsrc"/>
+    <copy todir="${dist.dir}/deprecatedsrc">
+      <fileset dir="deprecatedsrc"
+               includes="**/*.java,**/*.properties,**/*.xml,manifest"/>
+    </copy>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+Requires Ant version 1.2
+-->
+<project name="src" default="compile" basedir="..">
+
+  <property file="build.properties"/>
+
+  <available property="jdk15"
+             classname="java.lang.reflect.ParameterizedType" />
+
+  <target name="compile" depends="compile-most,compile-jdk15">
+  </target>
+
+  <target name="shell" depends="compile">
+    <java classname="org.mozilla.javascript.tools.shell.Main"
+          classpath="${classes}"
+          fork="true">
+      <arg line="-version 170"/>
+    </java>
+  </target>
+
+  <target name="compile-most">
+    <javac srcdir="src"
+           destdir="${classes}"
+           includes="org/**/*.java"
+           excludes="org/**/jdk15/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+    <copy todir="${classes}">
+      <fileset dir="src" includes="org/**/*.properties" />
+      <filterset>
+      <filter token="IMPLEMENTATION.VERSION"
+              value="${implementation.version}"/>
+      </filterset>
+    </copy>
+  </target>
+
+  <target name="compile-jdk15" if="jdk15">
+    <javac srcdir="src"
+           destdir="${classes}"
+           includes="org/**/jdk15/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/src"/>
+    <copy todir="${dist.dir}/src">
+      <fileset dir="src"
+               includes="**/*.java,**/*.properties,**/*.xml,manifest"/>
+    </copy>
+  </target>
+
+  <target name="clean">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               excludes="org/mozilla/javascript/tools/**"/>
+    </delete>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<project name="testsrc" basedir="..">
+  <!--
+    Location of mozilla/js/tests directory
+  -->
+  <property name="test.library.dir" location="${build.dir}/tests" />
+  <property name="test.jstests.jar" location="${test.library.dir}/src/jstests.jar" />
+
+  <!--
+    URL from which junit.jar can be retrieved
+  -->
+  <property name="test.junit.url" value="http://repo1.maven.org/maven2/junit/junit/4.10/junit-4.10.jar"/>
+
+  <!--
+    URL from which emma.jar can be retrieved
+  -->
+  <property name="test.emma.url" value="http://repo1.maven.org/maven2/emma/emma/2.1.5320/emma-2.1.5320.jar"/>
+
+  <!--
+    URL from which emma_ant.jar can be retrieved
+  -->
+  <property name="test.emma_ant.url" value="http://repo1.maven.org/maven2/emma/emma_ant/2.1.5320/emma_ant-2.1.5320.jar"/>
+
+  <!--
+    Destination to which testing classes should be built
+  -->
+  <property name="test.classes" value="${build.dir}/test/classes" />
+
+  <!--
+    Output directory for HTML files generated by jsdriver
+  -->
+  <property name="test.output" value="${build.dir}/test/output" />
+
+  <!--
+    Timeout in milliseconds for tests
+  -->
+  <property name="test.timeout" value="60000" />
+
+  <!--
+    Maximum heap size for VM executing test cases.
+  -->
+  <property name="test.vm.mx" value="256m" />
+
+  <target name="get-junit">
+    <mkdir dir="lib"/>
+    <get src="${test.junit.url}" dest="lib/junit.jar" usetimestamp="true"/>
+  </target>
+
+  <target name="junit-compile">
+    <mkdir dir="${test.classes}" />
+    <antcall target="get-junit"/>
+    <javac
+      destdir="${test.classes}" debug="true"
+      target="${target-jvm}"
+      source="${source-level}"
+    >
+      <classpath>
+        <pathelement path="lib/junit.jar" />
+        <pathelement path="${classes}" />
+      </classpath>
+        <src path="testsrc"/>
+        <src path="examples"/>
+    </javac>
+    <antcall target="copy-files" />
+  </target>
+
+  <target name="compile">
+    <mkdir dir="${test.classes}" />
+	<antcall target="get-junit"/>
+    <javac
+      srcdir="testsrc"
+      destdir="${test.classes}" debug="true"
+      target="${target-jvm}"
+      source="${source-level}"
+    >
+      <classpath>
+        <pathelement path="lib/junit.jar" />
+        <pathelement path="${classes}" />
+      </classpath>
+      <sourcepath path="testsrc" />
+        <include name="org/mozilla/javascript/drivers/JsDriver.java" />
+    </javac>
+    <antcall target="copy-files" />
+  </target>
+
+  <target name="copy-files">
+    <copy todir="${test.classes}">
+       <fileset dir="testsrc">
+         <exclude name="**/*.java build.xml"/>
+       </fileset>
+    </copy>
+    <gunzip src="testsrc/tests.tar.gz" dest="${build.dir}/tests.tar"/>
+    <untar src="${build.dir}/tests.tar" dest="build"/>
+  </target>
+  	
+  <target name="clean">
+    <delete dir="${test.classes}" />
+  </target>
+
+  <target name="coverage-instrument">
+    <get src="${test.emma.url}" dest="lib/emma.jar" usetimestamp="true"/>
+    <get src="${test.emma_ant.url}" dest="lib/emma_ant.jar" usetimestamp="true"/>
+    <property name="coverage.dir" location="${build.dir}/coverage"/>
+    <property name="coverage.classes.dir" location="${build.dir}/coverage/classes"/>
+    <mkdir dir="${coverage.classes.dir}"/>
+    <path id="emma.lib">
+      <pathelement location="lib/emma.jar" />
+      <pathelement location="lib/emma_ant.jar" />
+    </path>
+    <taskdef resource="emma_ant.properties" classpathref="emma.lib" />
+    <property name="coverage.instrumentationfile" location="${coverage.dir}/instrumentation"/>
+    <emma enabled="true">
+      <instr 
+        instrpath="${classes}" outdir="${coverage.classes.dir}" 
+        outfile="${coverage.instrumentationfile}" mode="copy"/>
+    </emma>
+    <copy todir="${coverage.classes.dir}">
+      <fileset dir="src" excludes="**/*.java"/>
+    </copy>
+    <copy todir="${coverage.classes.dir}">
+      <fileset dir="${classes}"/>
+    </copy>
+    <property name="coverage.outfile" location="${coverage.dir}/coverage"/>
+  </target>
+	
+  <target name="junit" depends="junit-compile,coverage-instrument">
+    <junit printsummary="on" fork="true" forkmode="once" maxmemory="${test.vm.mx}" showoutput="true"
+    	failureproperty="junitFailed">
+      <sysproperty key="java.awt.headless" value="true" />
+      <sysproperty key="mozilla.js.tests" value="${test.library.dir}" />
+      <sysproperty key="mozilla.js.tests.timeout" value="${test.timeout}" />
+      <sysproperty key="emma.coverage.out.file" value="${coverage.outfile}"/>
+      <!-- mozilla test cases are locale dependent! -->
+      <sysproperty key="user.language" value="en"/>
+      <sysproperty key="user.country" value="US"/>
+      <sysproperty key="user.timezone" value="America/Los_Angeles"/>
+      <classpath>
+        <pathelement location="${xbean.jar}"/>
+        <pathelement location="${jsr173.jar}"/>
+        <pathelement path="${coverage.classes.dir}" />
+        <pathelement path="${classes}" />
+        <pathelement path="${test.classes}" />
+        <pathelement path="lib/emma.jar"/>
+        <pathelement path="lib/junit.jar" />
+        <pathelement location="${test.jstests.jar}"/>
+      </classpath>
+      <batchtest todir="build/test">
+        <fileset dir="${test.classes}" includes="**/tests/**/*Test.class"/>
+        <fileset dir="${test.classes}" includes="**/StandardTests.class"/>
+      </batchtest>
+      <formatter type="xml"/>
+      <assertions>
+        <enable/>
+      </assertions>
+    </junit>
+    <mkdir dir="build/test/report"/>
+    <junitreport todir="build/test/report">
+       <fileset dir="build/test" includes="*.xml"/>
+       <report todir="build/test/report"/>
+    </junitreport>
+  </target>
+
+  <target name="junit-coveragereport" depends="junit">
+    <property name="coverage.report.dir" location="${build.dir}/coverage/report"/>
+    <mkdir dir="${coverage.report.dir}"/>
+    <delete dir="${coverage.report.dir}"/>
+    <mkdir dir="${coverage.report.dir}"/>
+    <emma enabled="true">
+      <report>
+        <fileset dir="${basedir}">
+          <include name="build/coverage/instrumentation"/>
+          <include name="build/coverage/coverage"/>
+        </fileset>
+        <sourcepath>
+          <dirset dir="${basedir}">
+            <include name="src"/>
+          </dirset>
+        </sourcepath>
+        <html outfile="${coverage.report.dir}/index.html"/>
+      </report>
+    </emma>
+  	<fail if="junitFailed" message="JUnit test(s) failed"/>
+  </target>
+
+  <target name="jsdriver" depends="compile">
+    <tstamp>
+      <format property="test.timestamp" pattern="yyyy.MM.dd.HH.mm.ss" />
+    </tstamp>
+    <mkdir dir="${test.output}" />
+    <java
+      fork="true"
+      classname="org.mozilla.javascript.drivers.JsDriver"
+      maxmemory="${test.vm.mx}"
+    >
+      <classpath>
+        <pathelement location="${xbean.jar}"/>
+        <pathelement location="${jsr173.jar}"/>
+        <pathelement path="${classes}" />
+        <pathelement path="${test.classes}" />
+        <pathelement location="${test.jstests.jar}"/>
+      </classpath>
+      <arg value="-p" />
+      <arg file="${test.library.dir}" />
+      <arg value="-f" />
+      <arg value="${test.output}/rhino-test-results.${test.timestamp}.html" />
+      <arg value="--timeout" />
+      <arg value="${test.timeout}" />
+    </java>
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/testsrc"/>
+    <copy todir="${dist.dir}/testsrc">
+      <fileset dir="testsrc">
+        <include name="**/*.java"/>
+        <include name="**/*.js"/>
+        <include name="**/*.jstest"/>
+        <include name="**/*.doctest"/>
+        <include name="**/*.properties"/>
+        <include name="**/*.xml"/>
+        <include name="**/*.html"/>
+        <include name="**/*.jar"/>
+        <include name="*.skip"/>
+        <include name="*.tests"/>
+        <include name="tests.tar.gz"/>
+      </fileset>
+    </copy>
+  </target>
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+Requires Ant version 1.2
+-->
+<project name="toolsrc" default="compile" basedir="..">
+
+  <target name="properties">
+    <property file="build.properties"/>
+  </target>
+
+  <target name="compile" depends="properties">
+    <javac srcdir="toolsrc"
+           destdir="${classes}"
+           includes="org/**/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}"
+    >
+    </javac>
+    <copy todir="${classes}">
+      <fileset dir="toolsrc" includes="org/**/*.properties" />
+    </copy>
+  </target>
+
+  <target name="copy-source" depends="properties">
+    <mkdir dir="${dist.dir}/toolsrc"/>
+    <copy todir="${dist.dir}/toolsrc">
+      <fileset dir="toolsrc"
+               includes="**/*.java,**/*.properties,**/*.xml" />
+    </copy>
+  </target>
+
+  <target name="clean" depends="properties">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               includes="org/mozilla/javascript/tools/**"/>
+    </delete>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<project name="toolsrc" default="help" basedir=".">
+
+  <target name="properties">
+    <property name="swing-ex-url" value="http://java.sun.com/products/jfc/tsc/articles/treetable2/downloads/src.zip"/>
+    <available file="downloaded/AbstractCellEditor.java"
+               property="swing-ex-available"/>
+  </target>
+
+  <target name="get-swing-ex" unless="swing-ex-available">
+    <!-- Download source from Sun's site, unzip it, remove
+         the files we don't need, and change the package
+    -->
+    <mkdir dir="downloaded"/>
+    <get src="${swing-ex-url}" dest="downloaded/swingExSrc.zip"/>
+    <unzip src="downloaded/swingExSrc.zip" dest="downloaded/">
+      <patternset>
+          <include name="AbstractCellEditor.java"/>
+          <include name="JTreeTable.java"/>
+          <include name="TreeTableModel.java"/>
+          <include name="TreeTableModelAdapter.java"/>
+      </patternset>
+    </unzip>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.Component;</replacetoken>
+       <replacevalue>
+package org.mozilla.javascript.tools.debugger.downloaded;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.event.*;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.AWTEvent;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.io.Serializable;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>import javax.swing.*;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.*;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>class ListToTreeSelectionModelWrapper</replacetoken>
+       <replacevalue>public class ListToTreeSelectionModelWrapper</replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>ListSelectionModel getListSelectionModel</replacetoken>
+       <replacevalue>public ListSelectionModel getListSelectionModel</replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>import java.awt.Rectangle;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/TreeTableModel.java">
+       <replacetoken>import javax.swing.tree.TreeModel;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.tree.TreeModel;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/TreeTableModelAdapter.java">
+       <replacetoken>import javax.swing.JTree;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.JTree;
+       </replacevalue>
+    </replace>
+    <delete file="downloaded/swingExSrc.zip"/>
+  </target>
+
+  <target name="download" depends="properties,get-swing-ex"/>
+
+  <target name="help" depends="properties">
+<echo>The following targets are available with this build file:
+
+ download    Download ${swing-ex-url}
+             and extract the necessary files from it.
+
+ help        Print this help.
+
+</echo>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<project name="xmlimplsrc" basedir=".." default="compile">
+  <!--
+    Properties which affect this build file:
+
+    no-e4x: Will cause E4X not to be built
+    no-xmlbeans: Will cause the old, XMLBeans-based implementation of E4X not to be built
+  -->
+
+  <property file="build.local.properties"/>
+  <property file="build.properties"/>
+
+  <!--
+    Provide support for the old name for skipping E4X compilation, in case someone is still using it
+  -->
+  <condition property="no-e4x">
+    <isset property="without-xmlimpl" />
+  </condition>
+
+  <path id="xmlbeans.classpath">
+    <pathelement location="${xbean.jar}"/>
+    <pathelement location="${jsr173.jar}"/>
+  </path>
+
+  <target name="compile" unless="no-e4x">
+    <antcall target="e4x-compile" />
+    <antcall target="no-e4x-compile" />
+
+    <antcall target="old-e4x" />
+  </target>
+
+  <available property="jdk1.5?" classname="java.lang.ProcessBuilder" />
+
+  <target name="e4x-compile" if="jdk1.5?">
+    <javac
+      srcdir="xmlimplsrc"
+      destdir="${classes}"
+      deprecation="on"
+      debug="${debug}"
+                        includeAntRuntime="false"
+      target="${target-jvm}"
+      source="${source-level}"
+    />
+  </target>
+
+  <target name="no-e4x-compile" unless="jdk1.5?">
+    <echo>
+      Skipping DOM E4X implementation; JDK 1.5+ currently required for compilation.
+      <!--
+        If the compiler is outfitted with DOM3 using the endorsed standards
+        override mechanism, presumably the code could be built under 1.4.
+        Not tested.
+      -->
+    </echo>
+  </target>
+
+  <target name="old-e4x" unless="no-xmlbeans">
+    <antcall target="old-e4x-compile" />
+    <antcall target="no-old-e4x-compile" />
+  </target>
+
+  <target name="old-e4x-compile" depends="xmlbeans-unzip">
+    <echo>Compiling XMLBeans E4X implementation using ${xbean.jar} and ${jsr173.jar}</echo>
+    <javac srcdir="deprecatedsrc"
+           destdir="${classes}"
+           includes="org/mozilla/javascript/xml/impl/xmlbeans/*.java"
+           deprecation="on"
+           debug="${debug}"
+           classpathref="xmlbeans.classpath"
+           failonerror="${xmlimpl.compile.failonerror}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+  </target>
+
+  <target name="no-old-e4x-compile" if="no-xmlbeans">
+    <echo>
+      Skipping compilation of XMLBeans E4X implementation due to missing XMLBeans files
+    </echo>
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/xmlimplsrc"/>
+    <copy todir="${dist.dir}/xmlimplsrc">
+      <fileset dir="xmlimplsrc"
+               includes="**/*.java,**/*.properties,**/*.xml"
+      />
+    </copy>
+  </target>
+
+  <target name="clean">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               includes="org/mozilla/javascript/xmlimpl/**"
+      />
+    </delete>
+  </target>
+
+  <property name="xmlbeans.tmp" location="${build.dir}/tmp-xbean" />
+  <property name="xmlbeans.zip" location="${xmlbeans.tmp}/xbean.zip" />
+
+  <condition property="xmlbeans-present?">
+    <and>
+      <available file="${xbean.jar}" />
+      <available file="${jsr173.jar}" />
+    </and>
+  </condition>
+
+  <condition property="xmlbeans-zip-present?">
+    <available file="${xmlbeans.zip}" />
+  </condition>
+
+  <target name="xmlbeans-get" unless="xmlbeans-zip-present?">
+    <property
+      name="xmlbeans.url"
+      value="http://www.apache.org/dist/xmlbeans/binaries/xmlbeans-2.5.0.zip"
+    />
+
+    <mkdir dir="${xmlbeans.tmp}" />
+    <get src="${xmlbeans.url}" dest="${xmlbeans.zip}" ignoreerrors="true" />
+  </target>
+
+  <target name="xmlbeans-unzip" unless="xmlbeans-present?">
+    <antcall target="xmlbeans-get" />
+    <unzip src="${xmlbeans.zip}" dest="${xmlbeans.tmp}" />
+    <copy tofile="${xbean.jar}" file="${xmlbeans.tmp}/xmlbeans-2.5.0/lib/xbean.jar" />
+    <copy tofile="${jsr173.jar}" file="${xmlbeans.tmp}/xmlbeans-2.5.0/lib/jsr173_1.0_api.jar" />
+    <delete dir="${xmlbeans.tmp}" />
+  </target>
+</project>

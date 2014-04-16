@@ -1,0 +1,449 @@
+<?xml version="1.0"?>
+<!--
+		File: build.xml
+		
+		Copyright (C) 2006, 2012 mkgmap contributors
+		
+		 This program is free software; you can redistribute it and/or modify
+		 it under the terms of the GNU General Public License version 2 or
+		 version 3 as published by the Free Software Foundation.
+		
+		 This program is distributed in the hope that it will be useful,
+		 but WITHOUT ANY WARRANTY; without even the implied warranty of
+		 MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+		 GNU General Public License for more details.
+		
+		Create date: 26 Nov 2006
+-->
+<project name="mkgmap" default="dist" basedir="."
+		xmlns:ivy="antlib:org.apache.ivy.ant">
+
+	<!-- Set default javac target value -->
+	<property name="ant.build.javac.target" value="1.7"/>
+	<property name="ant.build.javac.source" value="1.7"/>
+
+	<property name="project.name" value="${ant.project.name}"/>
+
+	<!-- Init -->
+	<property name="top" value="."/>
+
+	<!-- Instead of modifying external.properties, you can create a file called
+	local.properties instead.  Anything defined in the local.properties file will
+	override properties defined later
+	-->
+	<!--suppress AntResolveInspection,AntMissingPropertiesFileInspection -->
+	<property file="${top}/local.properties"/>
+
+	<property name="build" value="build"/>
+	<property name="dist" value="dist"/>
+
+	<property name="build.classes" value="${build}/classes"/>
+	<property name="build.test" value="${build}/test"/>
+
+	<property name="src" value="src"/>
+	<property name="test" value="test"/>
+
+	<property name="doc" value="doc"/>
+	<property name="javadoc" value="${doc}/api"/>
+	<property name="resources" value="resources"/>
+
+	<property name="project.jar" value="${dist}/${project.name}.jar"/>
+
+	<!-- A place to keep a local copy of the test input data.  The test files
+	 are large and so are not kept in svn.	If you don't set this then they
+	 will be downloaded.
+
+	 You can set it in the external.properties file too.
+	 -->
+	<property name="test.input.cache" value="/opt/data/testinput"/>
+
+	<!-- the project's version number -->
+	<tstamp>
+		<format property="build.timestamp" pattern="yyyy-MM-dd'T'HH:mm:ssZ" />
+	</tstamp>
+
+	<!-- ivy dependency support -->
+	<property name="ivy.version" value="2.2.0"/>
+	<property name="ivy.lib.dir" value="${basedir}/lib" />
+	<property name="ivy.jar.dir" value="${ivy.lib.dir}/build" />
+	<property name="ivy.retrieve.pattern" value="${ivy.lib.dir}/[conf]/[artifact]-[revision].[ext]" />
+	<property name="ivy.distrib.dir" value="ivy-distrib" />
+
+	<!-- For class paths -->
+	<path id="compile.classpath">
+		<fileset dir="${ivy.lib.dir}/compile" />
+	</path>
+	<path id="test.classpath">
+		<fileset dir="${ivy.lib.dir}/test" />
+	</path>
+	<path id="optional.classpath">
+		<fileset dir="${ivy.lib.dir}/optional" />
+	</path>
+
+	<path id="main">
+		<pathelement location="${build.classes}" />
+		<path refid="compile.classpath" />
+		<path refid="optional.classpath" />
+	</path>
+
+	<path id="test">
+		<pathelement location="test/resources"/>
+		<pathelement location="build/test"/>
+		<path refid="test.classpath" />
+		<pathelement location="${build.classes}" />
+		<pathelement location="test"/>
+	</path>
+
+	<!-- ******************** TARGETS ******************** -->
+
+	<!-- targets for downloading and registering ivy -->
+	<target name="ivy-availability" description="Checks if the ivy library is available">
+		<property name="ivy.jar.file" value="${ivy.jar.dir}/ivy-${ivy.version}.jar" />
+		<available property="ivy.available" file="${ivy.jar.file}" />
+	</target>
+
+	<target name="download-ivy" unless="ivy.available" description="Downloads the ivy library from public repositories.">
+		<delete dir="${ivy.jar.dir}"/>
+		<mkdir dir="${ivy.jar.dir}" />
+		<get src="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.version}/ivy-${ivy.version}.jar"
+		     dest="${ivy.jar.file}" usetimestamp="true"/>
+	</target>
+
+	<target name="init-ivy" depends="ivy-availability, download-ivy" description="Registers ivy with ant and initializes it." unless="ivy.initialized">
+		<path id="ivy.lib.path">
+			<fileset dir="${ivy.jar.dir}" includes="*.jar" />
+		</path>
+		<taskdef resource="org/apache/ivy/ant/antlib.xml"
+			 uri="antlib:org.apache.ivy.ant"
+			 classpathref="ivy.lib.path" />
+		<ivy:configure />
+		<ivy:info />
+		<property name="ivy.initialized" value="true"/>
+	</target>
+
+	<!-- targets for fetching dependencies via ivy -->
+	<target name="resolve-compile" depends="init-ivy" description="Downloads compile dependencies using ivy.">
+		<ivy:retrieve conf="compile" log="download-only" />
+	</target>
+	<target name="resolve-test" depends="init-ivy" description="Downloads test program dependencies using ivy.">
+		<ivy:retrieve conf="test" log="download-only"/>
+	</target>
+	<target name="resolve-macker" depends="init-ivy" description="Downloads macker program dependencies using ivy.">
+		<ivy:retrieve conf="macker" log="download-only"/>
+	</target>
+	<target name="resolve-optional" depends="init-ivy" description="Downloads optional program dependencies using ivy.">
+		<ivy:retrieve conf="optional" log="download-only"/>
+	</target>
+	<target name="resolve" depends="resolve-compile, resolve-test, resolve-macker, resolve-optional"
+					description="Downloads all program dependencies using ivy." />
+
+	<!-- targets for publishing the project (locally) via ivy -->
+	<target name="publish" depends="dist">
+		<copy file="${project.jar}"
+		      tofile="${ivy.distrib.dir}/jars/${project.name}-${project.version}.jar"/>
+		<ivy:deliver pubrevision="${project.version}"/>
+		<ivy:publish resolver="local" pubrevision="${project.version}" overwrite="true"/>
+	</target>
+
+	<!-- Prepare - make all the directories -->
+	<target name="prepare">
+		<mkdir dir="${build.classes}" />
+		<mkdir dir="${ivy.lib.dir}/optional"/>
+
+		<property environment="env"/>
+
+		<condition property="have.svn">
+			<and>
+				<available file="${top}/.svn"/>
+				<or>
+					<available file="svnversion" filepath="${env.PATH}"/>
+					<available file="svnversion.exe" filepath="${env.PATH}"/>
+					<available file="svnversion.exe" filepath="${env.Path}"/>
+				</or>
+			</and>
+		</condition>
+		<condition property="have.git">
+			<available file="${top}/.git"/>
+		</condition>
+	</target>
+
+	<target name="svn-version" if="have.svn">
+		<exec executable="svnversion" dir="${top}" logError="false"
+					outputproperty="svn.version.tmp" resultproperty="svnversion.result"
+					failifexecutionfails="false">
+			<arg value="-n" /><arg value="-c" />
+			<redirector><outputfilterchain><tokenfilter>
+				<replaceregex pattern="^([0-9]*:)?" replace="" />
+				<replaceregex pattern="^exported$" replace="" />
+			</tokenfilter></outputfilterchain></redirector>
+		</exec>
+		<condition property="svn.version.build" value="${svn.version.tmp}" else="unknown">
+			<and>
+				<isset property="svn.version.tmp" />
+				<equals arg1="${svnversion.result}" arg2="0" />
+				<not><equals arg1="${svn.version.tmp}" arg2="" /></not>
+			</and>
+		</condition>
+		
+		<property name="project.version" value="${svn.version.build}" />
+	</target>
+
+	<target name="git-version" if="have.git">
+		<exec executable="git" dir="${top}" logError="false"
+					outputproperty="git.version.tmp" resultproperty="gitdescribe.result"
+					failifexecutionfails="false">
+			<arg value="describe" /><arg value="--dirty" /><arg value="--tags" /><arg value="--always" />
+		</exec>
+		<condition property="git.version.build" value="${git.version.tmp}">
+			<and>
+				<isset property="git.version.tmp" />
+				<equals arg1="${gitdescribe.result}" arg2="0" />
+				<not><equals arg1="${git.version.tmp}" arg2="" /></not>
+			</and>
+		</condition>
+		<property name="project.version" value="${git.version.build}" />
+	</target>
+
+	<target name="check-version" depends="svn-version, git-version">
+		<property file="${build.classes}/mkgmap-version.properties"/>
+		<condition property="have.version">
+			<or>
+				<and>
+					<isset property="have.svn"/>
+					<equals arg1="${svn.version.build}" arg2="${svn.version}"/>
+				</and>
+				<and>
+					<not><isset property="have.svn"/></not>
+					<available file="${build}/classes/mkgmap-version.properties"/>
+				</and>
+			</or>
+		</condition>
+	</target>
+
+	<target name="version-file" unless="have.version">
+		<property name="project.version" value="${build.timestamp}" />
+		<property name="svn.version.build" value="unknown"/>
+
+		<propertyfile file="${build.classes}/mkgmap-version.properties">
+			<entry key="svn.version" value="${svn.version.build}" />
+			<entry key="build.timestamp" value="${build.timestamp}" />
+		</propertyfile>
+	</target>
+
+	<!-- Compile the product itself (no tests). -->
+	<target name="compile" depends="prepare, resolve-compile"
+					description="main compilation">
+
+		<javac srcdir="${src}" destdir="${build.classes}" encoding="utf-8" debug="true" includeantruntime="false">
+			<include name="**/*.java" />
+			<classpath refid="main"/>
+			<exclude name="**/optional/*.java"/>
+		</javac>
+	</target>
+
+	<!-- Build into the build direcotory.  All resource files are copied in. -->
+	<target name="build" depends="compile" description="Build everything into the build direcotory">
+		<copy todir="${build.classes}">
+			<fileset dir="${resources}">
+				<include name="*.csv"/>
+				<include name="*.properties"/>
+				<include name="*.xml"/>
+				<include name="**/*.trans"/>
+				<include name="styles/**"/>
+				<include name="help/**"/>
+				<include name="installer/**"/>
+				<include name="sort/**"/>
+				<exclude name="**/.*"/>
+			</fileset>
+			<fileset dir="src">
+				<include name="**/*.properties"/>
+			</fileset>
+		</copy>
+	</target>
+
+	<!-- Compile the test classes -->
+	<target name="build-test" depends="build, resolve-test">
+		<mkdir dir="${build.test}" />
+		<javac srcdir="${test}" destdir="${build.test}" encoding="utf-8" debug="true" includeantruntime="false">
+			<include name="**/*.java" />
+			<classpath refid="test"/>
+		</javac>
+	</target>
+
+	<target name="test" depends="build-test, obtain-test-input-files" description="Run the junit tests">
+		<mkdir dir="tmp/report"/>
+		<junit printsummary="yes" failureproperty="junit.failure">
+
+			<classpath refid="test"/>
+			<formatter type="xml"/>
+			
+			<assertions>
+				<enable/>
+			</assertions>
+
+			<batchtest fork="yes" todir="tmp/report">
+				<fileset dir="test">
+					<include name="**/*Test.java"/>
+
+					<!-- These are standalone tests, not  unit tests. -->
+					<exclude name="main/**"/>
+				</fileset>
+			</batchtest>
+		</junit>
+		<junitreport todir="tmp">
+      <fileset dir="tmp/report"/>
+      <report todir="test-reports"/>
+    </junitreport>
+    <fail if="junit.failure" message="Test failed.  See test-reports/index.html"/>
+	</target>
+
+	<target name="obtain-test-input-files" description="download the input files for the functional tests">
+		<!-- Local cache, if it doesn't exist then it is not a problem the files
+		will be downloaded in the next step -->
+		<copy todir="test/resources/in" failonerror="false">
+			<fileset dir="${test.input.cache}" includes="**"/>
+		</copy>
+		<mkdir dir="test/resources/in/osm"/>
+		<mkdir dir="test/resources/in/mp"/>
+		<mkdir dir="test/resources/in/img"/>
+		<get src="http://www.mkgmap.org.uk/testinput/osm/lon1.osm.gz"
+			dest="test/resources/in/osm/lon1.osm.gz" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/osm/uk-test-1.osm.gz"
+			dest="test/resources/in/osm/uk-test-1.osm.gz" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/osm/uk-test-2.osm.gz"
+			dest="test/resources/in/osm/uk-test-2.osm.gz" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/mp/test1.mp"
+			dest="test/resources/in/mp/test1.mp" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/img/63240001.img"
+			dest="test/resources/in/img/63240001.img" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/img/63240002.img"
+			dest="test/resources/in/img/63240002.img" usetimestamp="true"
+			ignoreerrors="true"/>
+		<get src="http://www.mkgmap.org.uk/testinput/img/63240003.img"
+			dest="test/resources/in/img/63240003.img" usetimestamp="true"
+			ignoreerrors="true"/>
+	</target>
+
+	<target name="dist" depends="build, check-version, version-file"
+					description="Make the distribution area">
+
+		<mkdir dir="${dist}"/>
+		<mkdir dir="${dist}/lib"/>
+
+		<copy todir="${dist}/lib" flatten="true">
+			<path refid="compile.classpath" />
+		</copy>
+
+		<manifestclasspath property="manifest_cp" jarfile="${project.jar}">
+			<classpath>
+				<fileset dir="${dist}/lib">
+					<include name="**/*.jar" />
+				</fileset>
+			</classpath>
+		</manifestclasspath>
+
+		<!-- Make the jar -->
+		<jar basedir="${build.classes}" jarfile="${project.jar}">
+			<manifest>
+				<attribute name="Main-Class" value="uk.me.parabola.mkgmap.main.Main" />
+				<attribute name="Class-Path" value="${manifest_cp}" />
+				<attribute name="Implementation-Version" value="${project.version}" />
+			</manifest>
+			<include name="**/*.class"/>
+			<include name="*.csv"/>
+			<include name="*.xml"/>
+			<include name="*.properties"/>
+			<include name="**/*.trans"/>
+			<include name="styles/**"/>
+			<include name="sort/**"/>
+			<include name="help/**"/>
+			<include name="installer/**"/>
+		</jar>
+
+		<copy todir="${dist}/doc" >
+			<fileset dir="doc">
+				<include name="README"/>
+				<include name="mkgmap.1"/>
+			</fileset>
+		</copy>
+
+		<!-- misc to be copied to the top level -->
+		<copy todir="${dist}" flatten="true">
+			<fileset dir="${basedir}">
+				<include name="README"/>
+				<include name="LICENCE*"/>
+			</fileset>
+		</copy>
+
+		<mkdir dir="${dist}/examples"/>
+
+		<copy todir="${dist}/examples">
+			<fileset dir="resources">
+				<include name="installer/**"/>
+				<include name="styles/default/**"/>
+				<include name="styles/noname/**"/>
+				<include name="chars/ascii/row02.trans"/>
+			</fileset>
+		</copy>
+		
+	</target>
+
+	<target name="javadoc" description="Create the javadoc">
+		<mkdir dir="doc"/>
+		<javadoc destdir="${javadoc}">
+
+			<fileset dir="${src}" includes="**/*.java"/>
+			<classpath refid="main"/>
+		</javadoc>
+	</target>
+
+	<target name="macker" depends="build, resolve-macker">
+		<taskdef name="macker"
+						 classname="net.innig.macker.ant.MackerAntTask"
+						 classpathref="macker.classpath"/>
+
+		<property name="macker.report.xml" value="macker.out.xml"/>
+		<property name="macker.report.html" value="macker.out.html"/>
+
+		<macker xmlReportFile="${macker.report.xml}" failOnError="false">
+			<rules dir="." includes="macker.xml"/>
+			<classes dir="${build.classes}">
+				<include name="**/*.class"/>
+			</classes>
+		</macker>
+
+		<taskdef name="macker-report"
+			classname="net.innig.macker.ant.MackerReportAntTask"
+			classpathref="macker.classpath"/>
+		<macker-report xmlReportfile="${macker.report.xml}" outputFile="${macker.report.html}" />
+	</target>
+
+	<target name="clean-ivy" description="Clean the ivy installation.">
+		<delete dir="${ivy.jar.dir}"/>
+	</target>
+
+	<!-- Clean everything -->
+	<target name="clean" description="Remove built files">
+		<delete dir="${build}" />
+		<delete dir="tmp"/>
+	</target>
+
+	<!-- Clobber all generated and built files -->
+	<target name="clobber" depends="clean" description="Remove all built files">
+		<delete dir="${dist}" />
+		<delete dir="${ivy.lib.dir}"/>
+		<delete dir="${javadoc}"/>
+		<delete dir="${ivy.distrib.dir}"/>
+	</target>
+
+	<target name="clean-cache" depends="init-ivy" description="Clean the ivy cache.">
+		<ivy:cleancache />
+	</target>
+
+	<target name="rebuild" depends="clean, build" description="Clean existing class files and build from scratch"/>
+</project>

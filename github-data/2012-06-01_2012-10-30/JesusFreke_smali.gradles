@@ -1,0 +1,683 @@
+/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+configurations {
+    proguard
+}
+
+dependencies {
+    compile project(':util')
+    compile project(':dexlib2')
+    compile depends.commons_cli
+    compile depends.guava
+
+    testCompile depends.junit
+
+    proguard depends.proguard
+}
+
+processResources.inputs.property('version', version)
+processResources.expand('version': version)
+
+// This is the jar that gets uploaded to maven
+jar {
+    baseName = 'maven'
+}
+
+// Build a separate jar that contains all dependencies
+task fatJar(type: Jar) {
+    from sourceSets.main.output
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+
+    manifest {
+        attributes("Main-Class": "org.jf.baksmali.main")
+    }
+
+    doLast {
+        if (!System.getProperty("os.name").toLowerCase().contains("windows")) {
+            ant.symlink(link: file("${destinationDir}/baksmali.jar"), resource: archivePath, overwrite: true)
+        }
+    }
+}
+tasks.getByPath('build').dependsOn(fatJar)
+
+uploadArchives {
+    repositories.mavenDeployer {
+        pom.project {
+            description 'baksmali is a disassembler for dalvik bytecode'
+            scm {
+                url 'https://github.com/JesusFreke/smali/tree/master/baksmali'
+            }
+        }
+    }
+}
+
+task proguard(type: JavaExec, dependsOn: fatJar) {
+    def outFile = fatJar.destinationDir.getPath() + '/' + fatJar.baseName + '-' + fatJar.version + '-small' + '.' + fatJar.extension
+    inputs.file fatJar.archivePath
+    outputs.file outFile
+
+    classpath = configurations.proguard
+    main = 'proguard.ProGuard'
+    args '-injars ' + fatJar.archivePath
+    args '-outjars ' + outFile
+    args '-libraryjars ' + System.properties['java.home'] + '/lib/rt.jar'
+    args '-dontobfuscate'
+    args '-dontoptimize'
+    args '-keep public class org.jf.baksmali.main { public static void main(java.lang.String[]); }'
+    args '-keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }'
+    args '-dontwarn com.google.common.**'
+    args '-dontnote com.google.common.**'
+}
+
+tasks.getByPath(':release').dependsOn(proguard)
+/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+apply plugin: 'idea'
+
+version = '2.0.3'
+
+def jarVersion = version
+
+if (!('release' in gradle.startParameter.taskNames)) {
+    def versionSuffix
+    try {
+        def git = org.eclipse.jgit.api.Git.open(file('.'))
+        def head = git.getRepository().getRef("HEAD")
+        versionSuffix = head.getObjectId().abbreviate(8).name()
+
+        if (!git.status().call().clean) {
+            versionSuffix += '-dirty'
+        }
+    } catch (Exception) {
+        // In case we can't get the commit for some reason,
+        // just use -dev
+        versionSuffix = 'dev'
+    }
+
+    def baseVersion = version
+    version = baseVersion + '-' + versionSuffix
+
+    // use something like module-1.2.3-dev.jar for the jar name, rather than the full
+    // module-1.2.3-001afe02-dirty.jar
+    jarVersion = baseVersion + '-dev'
+}
+
+// Note: please don't use this. This is strictly for the official releases
+// that are posted on, e.g. the bitbucket download page.
+task release() {
+}
+
+// The projects that get pushed to maven
+def maven_release_projects = ['smali', 'baksmali', 'dexlib2', 'util']
+
+subprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+
+    version = parent.version
+
+    ext {
+        depends = [guava: 'com.google.guava:guava:14.0',
+                   findbugs: 'com.google.code.findbugs:jsr305:1.3.9',
+                   junit: 'junit:junit:4.6',
+                   antlr_runtime: 'org.antlr:antlr-runtime:3.5',
+                   antlr: 'org.antlr:antlr:3.5',
+                   commons_cli: 'commons-cli:commons-cli:1.2',
+                   jflex: 'de.jflex:jflex:1.4.3',
+                   proguard: 'net.sf.proguard:proguard-base:4.8'
+         ]
+    }
+
+    jar {
+        version = jarVersion
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    if (project.name in maven_release_projects) {
+        apply plugin: 'maven'
+        apply plugin: 'signing'
+
+        group = 'org.smali'
+
+        task javadocJar(type: Jar, dependsOn: javadoc) {
+            classifier = 'javadoc'
+            from 'build/docs/javadoc'
+        }
+
+        task sourcesJar(type: Jar) {
+            classifier = 'sources'
+            from sourceSets.main.allJava
+        }
+
+        artifacts {
+            archives javadocJar
+            archives sourcesJar
+        }
+
+        signing {
+            required { gradle.taskGraph.hasTask("uploadArchives") }
+            sign configurations.archives
+        }
+
+        uploadArchives {
+            repositories.mavenDeployer {
+                configuration = configurations.archives
+
+                beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+                if (rootProject.hasProperty('sonatypeUsername') && rootProject.hasProperty('sonatypePassword')) {
+                    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                        authentication(userName: sonatypeUsername, password: sonatypePassword)
+                    }
+                }
+
+                pom.artifactId = project.name
+
+                pom.project {
+                    name project.name
+                    url 'http://smali.org'
+                    packaging 'jar'
+                    licenses {
+                        license {
+                            name 'The BSD 3-Clause License'
+                            url 'http://opensource.org/licenses/BSD-3-Clause'
+                            distribution 'repo'
+                        }
+                    }
+                    scm {
+                        connection 'scm:git:git://github.com/JesusFreke/smali.git'
+                        developerConnection 'scm:git:git@github.com:JesusFreke/smali.git'
+                    }
+                    developers {
+                        developer {
+                            id 'jesusfreke'
+                            name 'Ben Gruver'
+                            email 'jesusfreke@jesusfreke.com'
+                        }
+                    }
+                }
+            }
+        }
+
+        tasks.getByPath(':release').dependsOn(uploadArchives)
+    }
+}
+
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'org.eclipse.jgit:org.eclipse.jgit:2.0.0.201206130900-r'
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.10'
+}/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+dependencies {
+    compile project(':util')
+    compile 'com.google.code.findbugs:jsr305:1.3.9'
+    compile 'com.google.guava:guava:13.0.1'
+    compile 'org.antlr:ST4:4.0.7'
+
+    testCompile 'junit:junit:4.6'
+}/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+configurations {
+    accessorTestGenerator
+}
+
+dependencies {
+    compile project(':util')
+    compile depends.findbugs
+    compile depends.guava
+
+    testCompile depends.junit
+
+    accessorTestGenerator project('accessorTestGenerator')
+}
+
+ext.testAccessorOutputDir = file("${buildDir}/generated-accessor-test-sources")
+ext.testAccessorOutputFile = file("${buildDir}/generated-accessor-test-sources/org/jf/dexlib2/AccessorTypes.java")
+
+sourceSets {
+    // The sources for building the test dex file for the accessor test
+    accessorTestDex {
+        java {
+            srcDir testAccessorOutputDir
+        }
+    }
+
+    // The sources for the accessor test itself
+    accessorTest {
+        java {
+            compileClasspath += main.output
+            runtimeClasspath += main.output
+        }
+    }
+}
+
+configurations {
+    accessorTestDexCompile.extendsFrom compile
+    accessorTestDexRuntime.extendsFrom runtime
+
+    accessorTestCompile.extendsFrom testCompile
+    accessorTestRuntime.extendsFrom testRuntime
+}
+
+idea {
+    module {
+        testSourceDirs += sourceSets.accessorTest.java.srcDirs
+    }
+}
+
+// You must manually execute this task to regenerate SyntheticAccessorFSM.java, after modifying the ragel file
+// e.g. ./gradlew ragel
+task ragel(type:Exec) {
+    workingDir = 'src/main/ragel'
+
+    commandLine 'ragel', '-J', '-o', file('src/main/java/org/jf/dexlib2/util/SyntheticAccessorFSM.java'),
+            'SyntheticAccessorFSM.rl'
+}
+
+task generateAccessorTestSource(type: JavaExec) {
+    outputs.dir file(testAccessorOutputDir)
+
+    mkdir(file(testAccessorOutputFile).parent)
+
+    classpath = configurations.accessorTestGenerator
+    main = 'org.jf.dexlib2.AccessorTestGenerator'
+    args testAccessorOutputFile
+}
+compileAccessorTestDexJava.dependsOn(generateAccessorTestSource)
+
+task generateAccessorTestDex(type: Exec, dependsOn: compileAccessorTestDexJava) {
+    def outputDex = file("${sourceSets.accessorTest.output.resourcesDir}/accessorTest.dex")
+    mkdir(outputDex.parent)
+
+    inputs.dir project.sourceSets.accessorTestDex.output.classesDir
+    outputs.file outputDex
+
+    sourceSets.accessorTest.resources
+
+    workingDir project.sourceSets.accessorTestDex.output.classesDir
+    executable 'dx'
+    args '--dex'
+    args "--output=${outputDex}"
+    args '.'
+}
+
+task accessorTest(type: Test, dependsOn: generateAccessorTestDex) {
+    testClassesDir = project.sourceSets.accessorTest.output.classesDir
+    classpath = project.sourceSets.accessorTest.runtimeClasspath
+}
+
+uploadArchives {
+    repositories.mavenDeployer {
+        pom.project {
+            description 'dexlib2 is a library for reading/modifying/writing Android dex files'
+            scm {
+                url 'https://github.com/JesusFreke/smali/tree/master/dexlib2'
+            }
+        }
+    }
+}/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+configurations {
+    antlr3
+    jflex
+    proguard
+}
+
+ext.antlrSource = 'src/main/antlr3'
+ext.antlrOutput = file("${buildDir}/generated-sources/antlr3")
+
+ext.jflexSource = "src/main/jflex"
+ext.jflexOutput = file("${buildDir}/generated-sources/jflex")
+
+ext.testAntlrSource = 'src/test/antlr3'
+ext.testAntlrOutput = file("${buildDir}/generated-test-sources/antlr3")
+
+sourceSets.main.java.srcDir antlrOutput
+sourceSets.main.java.srcDir jflexOutput
+
+sourceSets.test.java.srcDir testAntlrOutput
+
+idea {
+    module {
+        excludeDirs -= buildDir
+        if (buildDir.exists()) {
+            excludeDirs.addAll(buildDir.listFiles())
+        }
+        for (sourceDir in (sourceDirs + testSourceDirs)) {
+            excludeDirs.remove(sourceDir);
+            while ((sourceDir = sourceDir.getParentFile()) != null) {
+                excludeDirs.remove(sourceDir);
+            }
+        }
+    }
+}
+
+dependencies {
+    compile project(':util')
+    compile project(':dexlib2')
+    compile depends.antlr_runtime
+    compile depends.commons_cli
+
+    testCompile depends.junit
+
+    antlr3 depends.antlr
+    jflex depends.jflex
+    proguard depends.proguard
+}
+
+task generateParserAntlrSource(type: JavaExec) {
+    inputs.dir file(antlrSource)
+    outputs.dir file(antlrOutput)
+
+    mkdir(antlrOutput)
+    def grammars = fileTree(antlrSource).include('**/smaliParser.g')
+
+    classpath = configurations.antlr3
+    main = 'org.antlr.Tool'
+    args '-fo', relativePath("${antlrOutput}/org/jf/smali")
+    args grammars.files
+}
+
+task generateTreeWalkerAntlrSource(type: JavaExec) {
+    inputs.dir file(antlrSource)
+    outputs.dir file(antlrOutput)
+
+    mkdir(antlrOutput)
+    def grammars = fileTree(antlrSource).include('**/smaliTreeWalker.g')
+
+    classpath = configurations.antlr3
+    main = 'org.antlr.Tool'
+    args '-fo', relativePath("${antlrOutput}/org/jf/smali")
+    args grammars.files
+}
+
+task generateTestAntlrSource(type: JavaExec) {
+    inputs.dir file(testAntlrSource)
+    outputs.dir file(testAntlrOutput)
+
+    mkdir(testAntlrOutput)
+    def grammars = fileTree(testAntlrSource).include('**/*.g')
+
+    classpath = configurations.antlr3
+    main = 'org.antlr.Tool'
+    args '-fo', relativePath("${testAntlrOutput}/org/jf/smali")
+    args grammars.files.join(' ')
+}
+
+task generateJflexSource(type: JavaExec) {
+    inputs.dir file(jflexSource)
+    outputs.dir file(jflexOutput)
+
+    mkdir(jflexOutput)
+    def grammars = fileTree(jflexSource).include('**/*.flex')
+
+    classpath = configurations.jflex
+    main = 'JFlex.Main'
+    args '-q'
+    args '-d', relativePath("${jflexOutput}/org/jf/smali")
+    args grammars.files.join(' ')
+    environment LC_ALL: "en_US"
+}
+
+compileJava.dependsOn generateParserAntlrSource, generateTreeWalkerAntlrSource, generateJflexSource
+compileTestJava.dependsOn generateTestAntlrSource
+
+processResources.inputs.property('version', version)
+processResources.expand('version': version)
+
+// This is the jar that gets uploaded to maven
+jar {
+    baseName = 'maven'
+}
+
+// Build a separate jar that contains all dependencies
+task fatJar(type: Jar, dependsOn: jar) {
+    from sourceSets.main.output
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+
+    manifest {
+        attributes("Main-Class": "org.jf.smali.main")
+    }
+
+    doLast {
+        if (!System.getProperty("os.name").toLowerCase().contains("windows")) {
+            ant.symlink(link: file("${destinationDir}/smali.jar"), resource: archivePath, overwrite: true)
+        }
+    }
+}
+tasks.getByPath('build').dependsOn(fatJar)
+
+uploadArchives {
+    repositories.mavenDeployer {
+        pom.project {
+            description 'smali is an assembler for dalvik bytecode'
+            scm {
+                url 'https://github.com/JesusFreke/smali/tree/master/smali'
+            }
+        }
+    }
+}
+
+task proguard(type: JavaExec, dependsOn: fatJar) {
+    def outFile = fatJar.destinationDir.getPath() + '/' + fatJar.baseName + '-' + fatJar.version + '-small' + '.' + fatJar.extension
+    inputs.file fatJar.archivePath
+    outputs.file outFile
+
+    classpath = configurations.proguard
+    main = 'proguard.ProGuard'
+    args "-injars ${fatJar.archivePath}(!**/TestStringTemplate*.class)"
+    args "-outjars ${outFile}"
+    args "-libraryjars ${System.properties['java.home']}/lib/rt.jar"
+    args '-dontobfuscate'
+    args '-dontoptimize'
+    args '-keep public class org.jf.smali.main { public static void main(java.lang.String[]); }'
+    args '-keepclassmembers enum * { public static **[] values(); public static ** valueOf(java.lang.String); }'
+    args '-dontwarn com.google.common.**'
+    args '-dontnote com.google.common.**'
+}
+
+tasks.getByPath(':release').dependsOn(proguard)
+/*
+ * Copyright 2012, Google Inc.
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without
+ * modification, are permitted provided that the following conditions are
+ * met:
+ *
+ *     * Redistributions of source code must retain the above copyright
+ * notice, this list of conditions and the following disclaimer.
+ *     * Redistributions in binary form must reproduce the above
+ * copyright notice, this list of conditions and the following disclaimer
+ * in the documentation and/or other materials provided with the
+ * distribution.
+ *     * Neither the name of Google Inc. nor the names of its
+ * contributors may be used to endorse or promote products derived from
+ * this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+ * "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+ * LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+ * A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+ * OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+ * SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+ * LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+ * DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+ * THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+ * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+
+dependencies {
+    compile depends.commons_cli
+    compile depends.findbugs
+    compile depends.guava
+    testCompile depends.junit
+}
+
+uploadArchives {
+    repositories.mavenDeployer {
+        pom.project {
+            description 'This library contains random utilities used by smali/baksmali/dexlib2'
+            scm {
+                url 'https://github.com/JesusFreke/smali/tree/master/util'
+            }
+        }
+    }
+}

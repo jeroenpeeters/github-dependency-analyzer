@@ -1,0 +1,661 @@
+description = 'Elasticsearch for Apache Hadoop'
+
+buildscript {
+    repositories {
+		mavenCentral()
+        maven { url 'http://repo.spring.io/plugins-release' }
+
+    }
+    dependencies {
+        classpath('org.springframework.build.gradle:propdeps-plugin:0.0.5')
+		classpath('nl.javadude.gradle.plugins:license-gradle-plugin:0.5.0')
+	}
+}
+
+allprojects {
+	repositories {
+	  mavenCentral()
+	  // cascading
+	  maven { url "http://conjars.org/repo" }
+	  maven { url 'http://repo.spring.io/plugins-release' }
+	  
+  	  // Hive depends on JDO ec2 missing from Maven Central
+	  maven { url "http://www.datanucleus.org/downloads/maven2" }
+	  maven { url "http://oss.sonatype.org/content/groups/public/" }
+	}
+
+	apply plugin: "java"
+	apply plugin: 'eclipse'
+	apply plugin: 'idea'
+	apply plugin: 'propdeps'
+	apply plugin: 'propdeps-idea'
+	apply plugin: 'propdeps-eclipse'
+	// report plugins
+	apply plugin: 'findbugs'
+	apply plugin: 'pmd'
+	apply plugin: 'jacoco'
+	apply from: "$rootDir/dist.gradle"
+	//apply plugin: 'license'
+}
+
+ext.hadoopClient = []
+ext.hadoopDistro = project.hasProperty("distro") ? project.getProperty("distro") : "hadoopStable"
+
+def java8 = org.gradle.api.JavaVersion.current().isJava8Compatible()
+
+// Hadoop aliases
+def hadoopStableVersion = hadoop12Version
+def hadoopYarnVersion = hadoop2Version
+def hadoopVersion = hadoopStableVersion 
+def hadoopMsg;
+
+switch (hadoopDistro) {
+
+  // Hadoop YARN/2.0.x
+  case "hadoopYarn":
+    hadoopVersion = hadoopYarnVersion
+    hadoopMsg = "Using Apache Hadoop YARN [$hadoopVersion]"
+    hadoopClient = ["org.apache.hadoop:hadoop-client:$hadoopVersion"]
+
+    break;
+  // Hadoop 1.2.x
+  case "hadoop12":
+    hadoopVersion = hadoop12Version
+    hadoopMsg =  "Using Apache Hadoop 1.2.x [$hadoopVersion]"
+    hadoopClient = ["org.apache.hadoop:hadoop-streaming:$hadoopVersion",
+              "org.apache.hadoop:hadoop-tools:$hadoopVersion"]
+
+    break;
+	
+  // Hadoop 1.1.x
+  case "hadoop11":
+    hadoopVersion = hadoop11Version
+    hadoopMsg = "Using Apache Hadoop 1.1.x [$hadoopVersion]"
+    hadoopClient = ["org.apache.hadoop:hadoop-streaming:$hadoopVersion",
+              "org.apache.hadoop:hadoop-tools:$hadoopVersion"]
+
+    break;
+
+  // Hadoop 1.0.x
+  case "hadoop10":
+    hadoopVersion = hadoop10Version
+    hadoopMsg = "Using Apache Hadoop 1.0.x [$hadoopVersion]"
+    hadoopClient = ["org.apache.hadoop:hadoop-streaming:$hadoopVersion",
+              "org.apache.hadoop:hadoop-tools:$hadoopVersion"]
+
+    break;
+
+  default:
+    hadoopMsg = "Using Apache Hadoop Stable [$hadoopVersion]"
+    hadoopVersion = hadoopStableVersion
+    hadoopClient = ["org.apache.hadoop:hadoop-streaming:$hadoopVersion",
+              "org.apache.hadoop:hadoop-tools:$hadoopVersion"] 
+}
+
+allprojects {
+	dependencies {
+		testCompile "junit:junit:$junitVersion"
+		testCompile "org.hamcrest:hamcrest-all:$hamcrestVersion"
+	}
+}
+
+if (rootProject == project) {
+	println hadoopMsg
+}
+
+configurations.all {
+  resolutionStrategy {
+	forcedModules = ['commons-httpclient:commons-httpclient:3.0.1']
+  }
+}
+
+allprojects { project ->
+
+	compileJava {
+		sourceCompatibility = 1.6
+		targetCompatibility = 1.6 
+	}
+	
+	compileJava.options*.compilerArgs = [
+		"-Xlint:unchecked", "-Xlint:options"
+	]
+	
+	compileTestJava {
+			sourceCompatibility = 1.6
+			targetCompatibility = 1.6
+	}
+	
+	sourceSets.test.resources.srcDirs = ["src/test/resources", "src/test/java"]
+
+	test {
+		jacoco {
+			//def jacocoEnabled = project.hasProperty("jacocoCoverage")
+			enabled = project.hasProperty("jacocoCoverage")
+		   
+			if (enabled)
+				println "Enabling Jacoco Coverage"
+		}
+	}
+
+	sourceSets {
+		integrationTest {
+			java.srcDir file('src/itest/java')
+			resources.srcDir file('src/itest/resources')
+		}
+    }
+
+	dependencies {
+		// makes eclipse classpath easier
+		testCompile "org.elasticsearch:elasticsearch:$esVersion"
+		testRuntime "org.slf4j:slf4j-log4j12:1.7.6"
+		testRuntime "log4j:log4j:$log4jVersion"
+
+		
+		integrationTestCompile sourceSets.main.output
+		integrationTestCompile configurations.testCompile
+		integrationTestCompile configurations.provided
+		integrationTestCompile sourceSets.test.output
+		integrationTestRuntime configurations.testRuntime
+	}
+
+	jar {
+		manifest.attributes["Created-By"] = "${System.getProperty("java.version")} (${System.getProperty("java.specification.vendor")})"
+		manifest.attributes['Implementation-Title'] = project.name
+		manifest.attributes['Implementation-Version'] = project.version
+		manifest.attributes['Implementation-URL'] = "http://github.com/elasticsearch/elasticsearch-hadoop"
+		manifest.attributes['Implementation-Vendor'] = "Elasticsearch"
+		manifest.attributes['Implementation-Vendor-Id'] = "org.elasticsearch.hadoop"
+		
+		def build = System.env['ESHDP.BUILD']
+		if (build != null)
+			manifest.attributes['Build'] = build
+		
+		String rev = "unknown"
+
+		// parse the git files to find out the revision
+		File gitHead = file("$rootDir/.git/HEAD")
+		if (gitHead.exists()) {
+			gitHead = file("$rootDir/.git/" + gitHead.text.trim().replace('ref: ',''))
+			if (gitHead.exists()) { rev = gitHead.text }
+		}
+
+		from("$rootDir/docs/src/info") {
+			include "license.txt"
+			include "notice.txt"
+			into "META-INF"
+			expand(copyright: new Date().format('yyyy'), version: project.version)
+		}
+
+		manifest.attributes['Repository-Revision'] = rev
+	}
+	
+	task sourcesJar(type: Jar, dependsOn:classes) {
+		classifier = 'sources'
+		from sourceSets.main.allJava
+	}
+
+	javadoc {
+		ext.srcDir = file("${rootProject}/docs/src/api")
+	
+		configure(options) {
+			//stylesheetFile = file("${rootProject.projectDir}/docs/src/api/javadoc.css")
+			//overview = "${rootProject.projectDir}/docs/src/api/overview.html"
+			docFilesSubDirs = true
+			outputLevel = org.gradle.external.javadoc.JavadocOutputLevel.QUIET
+			breakIterator = true
+			author = false
+			header = project.name
+			showFromProtected()
+	
+			// enable it for java 1.8 or higher
+			if (java8)
+				addStringOption('Xdoclint:none', '-quiet')
+
+			groups = [
+			'Elasticsearch Map/Reduce' : ['org.elasticsearch.hadoop.mr*'],
+			'Elasticsearch Cascading' : ['org.elasticsearch.hadoop.cascading*'],
+			'Elasticsearch Hive' : ['org.elasticsearch.hadoop.hive*'],
+			'Elasticsearch Pig' : ['org.elasticsearch.hadoop.pig*'],
+			]
+
+			links = [
+				"http://docs.oracle.com/javase/6/docs/api/",
+				"http://commons.apache.org/proper/commons-logging/apidocs/",
+				"http://hadoop.apache.org/docs/stable1/api/",
+				//"http://hbase.apache.org/apidocs/",
+				"http://pig.apache.org/docs/r0.12.0/api/",
+				"http://hive.apache.org/javadocs/r0.12.0/api/",
+				"http://docs.cascading.org/cascading/2.1/javadoc/"
+			]
+
+			excludes = [
+				"org/elasticsearch/hadoop/mr/compat/**", 
+				"org/elasticsearch/hadoop/rest/**", 
+				"org/elasticsearch/hadoop/serialization/**", 
+				"org/elasticsearch/hadoop/util/**"
+			]
+		}
+
+		title = "${rootProject.description} ${version} API"
+	}
+
+	task javadocJar(type: Jar) {
+		classifier = 'javadoc'
+		from javadoc
+	}
+
+	task pack(dependsOn: [jar, javadocJar, sourcesJar]) {
+		artifacts {
+			archives javadocJar
+			archives sourcesJar
+		}
+	}
+	
+	configurations { s3 }
+	uploadToS3 {
+		ext.toDir = "hadoop"
+	}
+}
+
+project(":elasticsearch-hadoop-mr") {
+	description = "Elasticsearch Hadoop Map/Reduce"
+	
+	dependencies {
+		provided(hadoopClient)
+		provided("org.codehaus.jackson:jackson-mapper-asl:$jacksonVersion")
+		
+		// Testing
+		if (hadoopVersion.contains("1.0.")) {
+			// missing dependency in Hadoop 1.0.3/1.0.4
+			testCompile "commons-io:commons-io:2.1"
+		}
+	}
+	
+	eclipse.classpath.file {
+		whenMerged { cp ->
+			// export all jars (to be used upstream by dependent projects)	<-- for some reason Gradle removes all jars
+			cp.entries.each { entry -> 
+				if (entry.hasProperty("exported"))
+					entry.exported = true
+			}
+		}
+	}
+	
+	artifacts  {
+		s3 javadocJar
+		s3 sourcesJar
+		s3 jar
+	}
+}
+
+// reusable method to nest Map/Reduce module in the rest of the projects to make them usable stand-alone
+def nestMRProject(target) {
+	target.evaluationDependsOn(':elasticsearch-hadoop-mr')
+    
+	target.dependencies {
+		provided(project(":elasticsearch-hadoop-mr"))
+		provided(project(path: ":elasticsearch-hadoop-mr", configuration:"provided"))
+		
+		integrationTestCompile project(":elasticsearch-hadoop-mr").sourceSets.integrationTest.runtimeClasspath
+	}
+
+	target.jar {
+		from(zipTree(project(":elasticsearch-hadoop-mr").jar.archivePath)) {
+			include "org/elasticsearch/hadoop/**"
+		}
+	}
+
+	target.javadoc {
+		source += project(":elasticsearch-hadoop-mr").sourceSets.main.allJava
+		classpath += files(project(":elasticsearch-hadoop-mr").sourceSets.main.compileClasspath)
+	}
+	
+	target.sourcesJar {
+		from project(":elasticsearch-hadoop-mr").sourceSets.main.allJava.srcDirs
+	}
+
+	target.artifacts  {
+		s3 target.javadocJar
+		s3 target.sourcesJar
+		s3 target.jar
+	}
+}
+
+project(":elasticsearch-hadoop-cascading") {
+	description = "Elasticsearch Hadoop Cascading"
+	nestMRProject(project)
+
+	dependencies {
+		provided("cascading:cascading-hadoop:$cascadingVersion")
+		provided("cascading:cascading-local:$cascadingVersion")
+	}
+}
+
+project(":elasticsearch-hadoop-pig") {
+	description = "Elasticsearch Hadoop Pig"
+	nestMRProject(project)
+	
+	dependencies {
+		provided("org.apache.pig:pig:$pigVersion")
+		optional("joda-time:joda-time:$jodaVersion")
+		
+		testRuntime "com.google.guava:guava:11.0"
+		testRuntime "jline:jline:0.9.94"
+
+		integrationTestRuntime "dk.brics.automaton:automaton:1.11-8"
+	}
+}
+
+project(":elasticsearch-hadoop-hive") {
+	description = "Elasticsearch Hadoop Hive"
+	nestMRProject(project)
+	
+	dependencies {
+		provided("org.apache.hive:hive-service:$hiveVersion")
+
+		integrationTestRuntime "org.apache.hive:hive-jdbc:$hiveVersion"
+	}
+}
+
+
+configure(rootProject) {
+	def eshModules = subprojects - project(":elasticsearch-repository-hdfs")
+
+	// jar used for testing Hadoop remotely (es-hadoop + tests)
+	task hadoopTestingJar(type: Jar, dependsOn: jar) {
+		eshModules.each { subproject ->
+			from subproject.sourceSets.test.output
+			from subproject.sourceSets.main.output
+			from subproject.sourceSets.integrationTest.output
+		}
+		classifier = 'testing'
+		
+		logger.info("Created Remote Testing Jar")
+	}
+}
+
+allprojects { project ->
+
+	task integrationTest(type: Test, dependsOn: rootProject.hadoopTestingJar) {
+		testClassesDir = sourceSets.integrationTest.output.classesDir
+		classpath = sourceSets.integrationTest.runtimeClasspath
+		excludes = ["**/Abstract*.class"]
+		
+		minHeapSize = "256m"
+		maxHeapSize = "768m"
+		if (!java8)
+			jvmArgs '-XX:MaxPermSize=368m'
+
+	    testLogging {
+			events "started" //, "standardOut", "standardError"
+			minGranularity 2
+			maxGranularity 2
+		}
+		
+		jacoco {
+			enabled = project.hasProperty("jacocoCoverage")
+		}
+	}
+}
+
+
+configure(rootProject) {
+	description = "Elasticsearch Hadoop"
+	
+	def eshModules = subprojects - project(":elasticsearch-repository-hdfs")
+	
+	// build root project dependencies
+	// extract optional and provided dependencies
+	eshModules.each { subproject ->
+		for (scope in ["provided", "optional"]) {
+			 subproject.configurations[scope].allDependencies.findAll { dep ->
+					// look only at external dependencies
+					dep instanceof org.gradle.api.artifacts.ExternalDependency
+				}.each { match ->
+					// convert all dependencies outside Hadoop (and Jackson) from provided to optional
+					String depScope = (match.group in ["org.apache.hadoop", "org.codehaus.jackson"] ? "provided" : "optional")
+					project.dependencies.add(depScope, match)
+				} 
+		}
+    }
+	
+	sourcesJar {
+		eshModules.each { subproject ->
+			from subproject.sourceSets.main.allJava.srcDirs
+		}
+	}
+
+	jar {
+		dependsOn {
+			eshModules.collect {
+					it.tasks.getByName("jar")
+				}
+		}
+		duplicatesStrategy = "exclude"
+		eshModules.each { subproject ->
+			from(zipTree(subproject.jar.archivePath)) {
+				exclude "META-INF/**"
+				include "**/*"
+			}
+		}
+	}
+	
+	
+	javadoc {
+		// aggregate
+		source eshModules*.javadoc*.source
+		classpath += files(eshModules*.sourceSets*.main.flatten().compileClasspath)
+	}
+	
+	// packaging
+	task distZip(type: Zip, dependsOn: pack) {
+		group = "Distribution"
+		description = "Builds -${classifier} archive, containing all jars and docs, suitable for download page."
+		
+		dependsOn {
+			eshModules.collect { it.tasks["pack"] }
+		}
+
+		configurations { s3 }
+		artifacts { s3 distZip }
+
+		ext.folderName = "${baseName}" + "-" + "${version}"
+		
+		from(".") {
+			include "README.md"
+			include "LICENSE.txt"
+			include "NOTICE.txt"
+			into folderName
+			//expand(yyyy: new Date().format("yyyy"), version: project.version)
+		}
+
+		from ("build/libs") {
+			into "$folderName/dist" 
+			exclude "*-testing.jar"
+		}
+
+		eshModules.each { subproject ->
+			from (subproject.jar.destinationDir) {
+				into ("${folderName}/dist")
+			}
+		}
+		
+		// execution phase only
+		doLast {
+			ant.checksum(file: archivePath, algorithm: 'SHA1', format: 'MD5SUM', fileext: '.sha1.txt')
+		}
+	}
+	
+	uploadToS3() {
+		dependsOn(distZip)
+	}
+
+	task wrapper(type: Wrapper) {
+		description = 'Generates gradlew[.bat] scripts'
+		gradleVersion = '1.11'
+	}
+}
+
+
+// reporting
+allprojects { project ->
+	
+	findbugs {
+	  ignoreFailures = true
+	  effort = "max"
+	  reportLevel = "low"
+	  sourceSets = [sourceSets.main]
+	  
+	}
+	
+	findbugsMain {
+	  reports {
+		xml.enabled = true
+		html.enabled = false
+	  }
+	  enabled = project.hasProperty("enableFindbugs")
+	}
+
+	pmd {
+	  ignoreFailures = true
+	  sourceSets = [sourceSets.main]
+	}
+	
+	pmdMain {
+	  reports {
+		xml.enabled = true
+		html.enabled = false
+	  }
+	  enabled = project.hasProperty("enablePmd")
+	}
+
+	jacoco {
+		toolVersion = "0.6.3.201306030806"
+	}
+
+	jacocoTestReport {
+		reports {
+			xml.enabled true
+			csv.enabled true
+			html.enabled false
+		}
+	}
+
+	if (java8) {
+		findbugsMain.enabled = false
+		pmdMain.enabled = false
+	}
+}
+
+
+// skip creation of javadoc jars 
+assemble.dependsOn = ['jar', 'hadoopTestingJar']
+defaultTasks 'build'description = 'Elasticsearch HDFS Repository'
+
+configurations {
+	hadoop1
+	hadoop2
+	s3
+}
+
+dependencies {
+	provided("org.apache.hadoop:hadoop-core:$hadoop12Version")
+	provided("org.elasticsearch:elasticsearch:$esVersion")
+	testCompile "org.elasticsearch:elasticsearch:$esVersion:tests"
+	testCompile "org.apache.lucene:lucene-test-framework:4.7.0"
+	
+	hadoop1("org.apache.hadoop:hadoop-core:$hadoop12Version") {
+		exclude module: "commons-cli"
+		exclude group: "com.sun.jersey"
+		exclude group: "org.mortbay.jetty"
+		exclude group: "tomcat"
+		exclude module: "commons-el"
+		exclude module: "hsqldb"
+		exclude group: "org.eclipse.jdt"
+		exclude module: "commons-beanutils"
+	}
+
+	hadoop2("org.apache.hadoop:hadoop-client:$hadoop2Version") {
+		exclude module: "commons-cli"
+		exclude group: "com.sun.jersey"
+		exclude group: "com.sun.jersey.contribs"
+		exclude group: "com.sun.jersey.jersey-test-framework"
+		exclude module: "guice"
+		exclude group: "org.mortbay.jetty"
+		exclude group: "tomcat"
+		exclude module: "commons-el"
+		exclude module: "hsqldb"
+		exclude group: "org.eclipse.jdt"
+		exclude module: "commons-beanutils"
+		exclude module: "javax.servlet"
+	}
+}
+
+jar {
+	manifest.attributes['Implementation-Title'] = 'elasticsearch-repository-hdfs'
+}
+
+def baseZip(Zip zip) {
+	zip.group = "Distribution"
+
+	artifacts { s3 zip }
+	
+	zip.from("../") {
+			include "LICENSE.txt"
+			include "NOTICE.txt"
+			//expand(yyyy: new Date().format("yyyy"), version: project.version)
+		}
+	zip.from (".") { include "README.md" }
+	zip.from jar.archivePath
+	
+	// tell Gradle about our output (for incremental build) - disabled for now since the sha1 is created alongside the zip
+	// zip.outputs.file file(zip.archivePath.absolutePath + '.sha1.txt')
+	
+	// execute phase
+	zip << {
+		ant.checksum(file: zip.archivePath, algorithm: 'SHA1', format: 'MD5SUM', fileext: '.sha1.txt')
+	}
+}
+
+task distZipHadoop1(type: Zip, dependsOn: [jar]) { zipTask ->
+	baseZip(zipTask)
+    description = "Builds archive (with Hadoop1 dependencies) suitable for download page."
+	
+	from configurations.hadoop1.allArtifacts.files
+	from configurations.hadoop1
+}
+
+task distZipHadoop2(type: Zip, dependsOn: [jar]) { zipTask ->
+    baseZip(zipTask)
+    description = "Builds archive (with Hadoop2/YARN dependencies) suitable for download page."
+	classifier = "hadoop2"
+
+	from configurations.hadoop2.allArtifacts.files
+	from configurations.hadoop2
+}
+
+task distZipNoHadoop(type: Zip, dependsOn: [jar]) { zipTask ->
+    baseZip(zipTask)
+    description = "Builds archive (without any Hadoop dependencies) suitable for download page."
+	classifier = "light"
+}
+
+task distZip(dependsOn : [distZipHadoop1, distZipHadoop2, distZipNoHadoop]) {
+	group = "Distribution"
+	description = "Builds all distribution zips for Elasticsearch Repository HDFS"
+}
+
+pack() {
+	artifacts {
+		archives distZipHadoop1
+		archives distZipHadoop2
+		archives distZipNoHadoop
+	}
+}
+
+uploadToS3() {
+	ext.toDir = "elasticsearch/elasticsearch-repository-hdfs"
+}
+
+assemble.dependsOn = ['jar']
+defaultTasks 'build'

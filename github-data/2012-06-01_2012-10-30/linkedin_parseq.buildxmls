@@ -1,0 +1,268 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns:ivy="antlib:org.apache.ivy.ant" name="parseq" default="build" basedir=".">
+    <description>ParSeq Project</description>
+
+    <property name="example.dir" value="${basedir}/example" />
+    <property name="src.dir" value="${basedir}/src" />
+    <property name="test.dir" value="${basedir}/test" />
+    <property name="tools.dir" value="${basedir}/tools" />
+    <property name="build.dir" value="${basedir}/build" />
+    <property name="example.build.dir" value="${build.dir}/example" />
+    <property name="src.build.dir" value="${build.dir}/src" />
+    <property name="lib.build.dir" value="${build.dir}/lib" />
+    <property name="test.build.dir" value="${build.dir}/test" />
+    <property name="test.result.dir" value="${test.build.dir}/reports"/>
+    <property name="doc.build.dir" value="${build.dir}/doc"/>
+    <property name="dist.dir" value="${basedir}/dist" />
+
+    <!-- IVY configuration -->
+    <property name="ivy.jar.version" value="2.2.0" />
+    <property name="ivy.jar.file" value="${build.dir}/ivy.jar" />
+    <property name="ivy.jar.url" value="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.jar.version}/ivy-${ivy.jar.version}.jar" />
+    <!-- This has special meaning for the ivy:retrieve task: it points to the location the JARs will be placed -->
+    <property name="ivy.lib.dir" value="${lib.build.dir}"/>
+
+    <property name="javac.source" value="1.6" />
+    <property name="javac.target" value="1.6" />
+    <!-- Enables/disables inclusion of debug symbols in .class files. -->
+    <property name="debug" value="true" />
+
+    <!-- How verbose should testng be? A value of 2 or greater logs tests that
+         are run and test failure stack traces to the console -->
+    <property name="testng.verbosity" value="1"/>
+
+    <path id="build.classpath">
+        <pathelement location="${src.build.dir}"/>
+        <fileset dir="${lib.build.dir}/build" includes="*.jar"/>
+    </path>
+
+    <path id="test.classpath">
+        <path refid="build.classpath"/>
+        <pathelement location="${test.build.dir}"/>
+        <fileset dir="${lib.build.dir}/test" includes="*.jar"/>
+    </path>
+
+    <target name="bootstrap" unless="bootstrap.done">
+        <mkdir dir="${lib.build.dir}"/>
+
+        <!-- Pull down IVY and load taskdefs -->
+        <get src="${ivy.jar.url}" dest="${ivy.jar.file}" usetimestamp="true" />
+        <taskdef resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant">
+            <classpath>
+                <fileset file="${ivy.jar.file}" />
+            </classpath>
+        </taskdef>
+
+        <ivy:resolve file="ivy.xml" conf="bootstrap"/>
+        <ivy:retrieve pattern="${ivy.lib.dir}/[conf]/[artifact].[ext]"/>
+
+        <!-- load testng taskdefs -->
+        <taskdef resource="testngtasks">
+            <classpath>
+                <fileset file="${lib.build.dir}/bootstrap/testng.jar"/>
+            </classpath>
+        </taskdef>
+
+        <property name="bootstrap.done" value="true"/>
+    </target>
+
+    <target name="version-props" unless="version">
+        <loadproperties srcFile="${basedir}/version.properties"/>
+    </target>
+
+    <target name="prepare" depends="bootstrap, version-props">
+        <mkdir dir="${example.build.dir}" />
+        <mkdir dir="${src.build.dir}" />
+        <mkdir dir="${lib.build.dir}" />
+        <mkdir dir="${test.build.dir}" />
+        <mkdir dir="${test.result.dir}"/>
+        <mkdir dir="${doc.build.dir}" />
+        <mkdir dir="${dist.dir}" />
+
+        <ivy:resolve file="ivy.xml" conf="*"/>
+        <ivy:retrieve pattern="${ivy.lib.dir}/[conf]/[artifact].[ext]"/>
+    </target>
+
+    <target name="build-src" depends="prepare" description="Builds src and example files.">
+        <javac includeantruntime="false" destdir="${src.build.dir}" source="${javac.source}" target="${javac.target}" debug="${debug}">
+            <src path="${src.dir}"/>
+            <classpath refid="build.classpath"/>
+            <compilerarg value="-Xlint"/>
+        </javac>
+        <javac includeantruntime="false" destdir="${example.build.dir}" source="${javac.source}" target="${javac.target}" debug="${debug}">
+            <src path="${example.dir}"/>
+            <classpath refid="build.classpath"/>
+            <compilerarg value="-Xlint"/>
+        </javac>
+    </target>
+
+    <target name="jar-src" depends="build-src" description="Creates a JAR for src classes">
+        <make-jar destfile="${dist.dir}/${ant.project.name}-${version}.jar" basedir="${src.build.dir}" />
+    </target>
+
+    <target name="zip-src" depends="prepare" description="Creates a ZIP for the src files">
+        <make-jar destfile="${dist.dir}/${ant.project.name}-${version}-sources.jar" basedir="${src.dir}" />
+    </target>
+
+    <target name="tar-tracevis" depends="prepare, dist-tracevis" description="Creates a tarball of the tracevis tool">
+        <copy file="${tools.dir}/tracevis/dist/parseq-tracevis.tar.gz" tofile="${dist.dir}/parseq-tracevis-${version}.tar.gz"/>
+    </target>
+
+    <target name="doc" description="Build the javadoc." depends="build-src">
+        <javadoc destdir="${doc.build.dir}">
+            <packageset dir="${src.dir}">
+                <exclude name="com/linkedin/parseq/internal"/>
+            </packageset>
+            <classpath refid="build.classpath"/>
+        </javadoc>
+    </target>
+
+    <target name="zip-doc" depends="doc" description="Creates a ZIP for the javadoc files">
+        <make-jar destfile="${dist.dir}/${ant.project.name}-${version}-javadoc.jar" basedir="${doc.build.dir}" />
+    </target>
+
+    <target name="build-test" depends="build-src" description="Builds test files.">
+        <javac includeantruntime="false" destdir="${test.build.dir}" source="${javac.source}" target="${javac.target}" debug="${debug}">
+            <src path="${test.dir}"/>
+            <classpath refid="test.classpath"/>
+            <compilerarg value="-Xlint"/>
+        </javac>
+        <copy file="${test.dir}/log4j.properties" todir="${test.build.dir}"/>
+    </target>
+
+    <target name="test" depends="test-unit, test-tracevis"
+            description="Runs the unit and integration tests. Set property no.test.tracevis to skip visualization tests."/>
+
+    <target name="test-unit" depends="build-test" description="Runs the unit tests.">
+        <testng haltonfailure="true" outputDir="${test.result.dir}" verbose="${testng.verbosity}">
+            <classfileset dir="${test.build.dir}" includes="**/Test*.class"/>
+            <classpath refid="test.classpath"/>
+        </testng>
+    </target>
+
+    <target name="build" depends="build-src,build-test" description="Builds everything" />
+
+    <target name="dist" depends="jar-src, zip-src, tar-tracevis, zip-doc"
+            description="Builds all distributables to ${dist.dir}">
+        <ivy:deliver deliverpattern="${dist.dir}/[artifact]-[revision].[ext]" pubrevision="${version}" validate="true"/>
+
+        <ivy:resolve file="tracevis-ivy.xml" conf="default"/>
+        <ivy:deliver deliverpattern="${dist.dir}/tracevis-[artifact]-[revision].[ext]" pubrevision="${version}" validate="true"/>
+
+        <property name="ivy.pom.description" value="ParSeq is a framework that makes it easier to write and maintain fast, scalable applications in Java"/>
+        <property name="ivy.pom.url" value="https://github.com/linkedin/parseq"/>
+
+        <ivy:makepom ivyfile="${dist.dir}/ivy-${version}.xml" pomfile="${dist.dir}/parseq-${version}.pom" templatefile="${basedir}/build-templates/template.pom" conf="build">
+            <mapping conf="build" scope="compile"/>
+        </ivy:makepom>
+
+        <ivy:makepom ivyfile="${dist.dir}/tracevis-ivy-${version}.xml" pomfile="${dist.dir}/parseq-tracevis-${version}.pom" templatefile="${basedir}/build-templates/template.pom" conf="build">
+        </ivy:makepom>
+    </target>
+
+    <target name="bundle-parseq" depends="dist"
+            description="Builds a release bundle to ${dist.dir}/parseq-${version}-bundle.jar">
+        <sign file="${dist.dir}/parseq-${version}.pom"/>
+        <sign file="${dist.dir}/parseq-${version}.jar"/>
+        <sign file="${dist.dir}/parseq-${version}-sources.jar"/>
+        <sign file="${dist.dir}/parseq-${version}-javadoc.jar"/>
+        <jar destfile="${dist.dir}/parseq-${version}-bundle.jar" basedir="${dist.dir}">
+            <include name="parseq-${version}.pom"/>
+            <include name="parseq-${version}.pom.asc"/>
+            <include name="parseq-${version}.jar"/>
+            <include name="parseq-${version}.jar.asc"/>
+            <include name="parseq-${version}-sources.jar"/>
+            <include name="parseq-${version}-sources.jar.asc"/>
+            <include name="parseq-${version}-javadoc.jar"/>
+            <include name="parseq-${version}-javadoc.jar.asc"/>
+        </jar>
+    </target>
+
+    <target name="bundle-tracevis" depends="dist"
+	    description="Builds a release bundle to ${dist.dir}/parseq-tracevis-${version}-bundle.jar">
+        <sign file="${dist.dir}/parseq-tracevis-${version}.pom"/>
+        <sign file="${dist.dir}/parseq-tracevis-${version}.tar.gz"/>
+	<jar destfile="${dist.dir}/parseq-tracevis-${version}-bundle.jar" basedir="${dist.dir}">
+	    <include name="parseq-tracevis-${version}.pom"/>
+	    <include name="parseq-tracevis-${version}.pom.asc"/>
+	    <include name="parseq-tracevis-${version}.tar.gz"/>
+	    <include name="parseq-tracevis-${version}.tar.gz.asc"/>
+	</jar>
+    </target>
+
+    <target name="bundle" depends="bundle-parseq, bundle-tracevis"
+	    description="Builds all release bundsles to ${dist.dir}"/>
+
+    <target name="clean" description="Cleans build and dist dirs">
+        <delete dir="${build.dir}" />
+        <delete dir="${dist.dir}" />
+        <make dir="${tools.dir}/tracevis" >
+            <args>
+                <arg value="clean" />
+            </args>
+        </make>
+    </target>
+
+    <target name="test-tracevis" unless="no.test.tracevis" description="Run visualization tests">
+        <make dir="${tools.dir}/tracevis">
+            <args>
+                <arg value="test" />
+            </args>
+        </make>
+    </target>
+
+    <target name="dist-tracevis" description="Builds the tracevis package">
+        <make dir="${tools.dir}/tracevis">
+            <args>
+                <arg value="dist" />
+            </args>
+        </make>
+    </target>
+
+    <macrodef name="sign">
+        <attribute name="file"/>
+        <sequential>
+            <echo message="Signing @{file}"/>
+            <!-- Note: we currently use the default key for signing. We can add
+                 support for alternate keys using the -u option. -->
+            <exec executable="gpg" failonerror="true">
+                <arg value="-a"/>
+                <arg value="-b"/>
+                <arg value="@{file}"/>
+            </exec>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="make-jar">
+        <attribute name="destfile"/>
+        <attribute name="basedir"/>
+        <sequential>
+            <git-sha1 outputproperty="sha1"/>
+            <jar destfile="@{destfile}" basedir="@{basedir}">
+                <manifest>
+                    <attribute name="Implementation-Version" value="${sha1}"/>
+                </manifest>
+            </jar>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="make">
+        <attribute name="dir" />
+        <element name="args" />
+        <sequential>
+            <exec executable="make" failonerror="true" dir="@{dir}">
+                <args/>
+            </exec>
+        </sequential>
+    </macrodef>
+
+    <macrodef name="git-sha1">
+        <attribute name="outputproperty"/>
+        <sequential>
+            <exec executable="git" dir="${basedir}" outputproperty="@{outputproperty}">
+                <arg value="rev-parse"/>
+                <arg value="HEAD"/>
+            </exec>
+        </sequential>
+    </macrodef>
+</project>

@@ -1,0 +1,229 @@
+<?xml version="1.0"?>
+
+<!-- $This file is distributed under the terms of the license in /doc/license.txt$ -->
+
+<!-- ====================================================================== 
+	 Build script for the NIH VIVO product.
+	 
+	 The build.properties file contains build properties
+	 The runtime.properties file contains runtime properties.
+	     
+	 The required build properties are:
+	 	vitroCore.dir
+	    webapp.name
+	 A standard tomcat deploy also requires:
+	    vitro.home
+	    tomcat.home
+	     ====================================================================== -->
+<project name="nihvivo" default="describe">
+
+	<!-- 
+		The build directory goes in the product directory. 
+		Everything else hangs from the build directory. 
+	-->
+	<property name="build.dir" location="./.build" />
+	<property name="appbase.dir" location="${build.dir}/appBase" />
+
+	<!--
+		Load the properties from build.properties.
+	-->
+	<property name="build.properties.file" location="build.properties" />
+	<fail message="You must create a &quot;${build.properties.file}&quot; file.">
+		<condition>
+			<not>
+				<available file="${build.properties.file}" />
+			</not>
+		</condition>
+	</fail>
+	<property file="${build.properties.file}" />
+	<fail unless="vitro.core.dir" message="${build.properties.file} must contain a value for vitro.core.dir" />
+
+	<!--
+		Base it all on the core build file. 
+	-->
+	<import file="${vitro.core.dir}/webapp/build.xml" />
+
+	<!-- - - - - - - - - - - - - - - - - - 
+          target: prepare                      
+          
+          Override the core version, so we can merge the two levels before building.                      
+         - - - - - - - - - - - - - - - - - -->
+	<target name="prepare" depends="product-prepare,vitroCore.prepare" />
+
+	<!-- - - - - - - - - - - - - - - - - - 
+          target: product-prepare                      
+         - - - - - - - - - - - - - - - - - -->
+	<target name="product-prepare">
+		<mkdir dir="${appbase.dir}" />
+		<mkdir dir="${appbase.dir}/web" />
+
+		<copy todir="${appbase.dir}/web" includeemptydirs="true">
+			<fileset dir="${corebase.dir}/web">
+				<not>
+					<present targetdir="./productMods" />
+				</not>
+			</fileset>
+			<fileset dir="./productMods" />
+		</copy>
+
+		<patternset id="appbase.patterns">
+			<include name="src/**/*" />
+			<include name="lib/**/*" />
+			<include name="rdf/**/*" />
+			<include name="test/**/*" />
+			<include name="themes/**/*" />
+			<include name="languages/**/*" />
+			<include name="config/*.properties" />
+			<include name="config/*.txt" />
+			<include name="config/jarlist/*.txt" />
+			<include name="config/solr/*" />
+			<include name="context.xml" />
+		</patternset>
+
+		<copy todir="${appbase.dir}" includeemptydirs="true">
+			<fileset dir="${corebase.dir}/">
+				<patternset refid="appbase.patterns" />
+				<exclude name="themes/**/*" if="skip.core.themes" />
+				<not>
+					<present targetdir="." />
+				</not>
+			</fileset>
+			<fileset dir=".">
+				<patternset refid="appbase.patterns" />
+			</fileset>
+		</copy>
+	</target>
+
+	<import file="${vitro.core.dir}/webapp/build.xml" />
+
+	<!-- ================================= 
+	      target: revisionInfo              
+	     
+	      Override the core version, to get the 2-level effect.                      
+	     ================================= -->
+	<target name="revisionInfo" depends="vitroCore.revisionInfo" unless="skipinfo" description="--> Store revision info in build">
+		<addRevisionInfoLine productName="${ant.project.name}" productCheckoutDir="${basedir}" />
+	</target>
+
+	<!-- ================================= 
+          target: licenser             
+          
+          In regular use, checks that all appropriate source files have license tags.
+          At release time, applies license text to source files.
+          The files are handled as properties so they can be overridden from the command line, if desired.
+	     
+	      Override the core version, to get the 2-level effect.                      
+         ================================= -->
+	<target name="licenser" description="--> Check source files for licensing tags">
+		<property name="licenser.product.properties.file" location="./config/licenser/licenser.properties" />
+		<property name="licenser.core.properties.file" location="${corebase.dir}/config/licenser/licenser.properties" />
+		<runLicenserScript productname="${ant.project.name}" propertiesfile="${licenser.product.properties.file}" />
+		<runLicenserScript productname="Vitro core" propertiesfile="${licenser.core.properties.file}" />
+	</target>
+
+	<!-- ================================= 
+          target: deployTestApp              
+         ================================= -->
+	<target name="deployTestApp" depends="deployProperties" description="description">
+		<property name="testApp.webapp.dir" value="${tomcat.home}/webapps/testApp" />
+		<property name="testApp.source.dir" value="utilities/acceptance-tests/testApp" />
+
+		<mkdir dir="${testApp.webapp.dir}" />
+		<sync todir="${testApp.webapp.dir}" includeemptydirs="true">
+			<fileset dir="${testApp.source.dir}" />
+		</sync>
+	</target>
+
+</project>
+<?xml version="1.0"?>
+
+<!-- $This file is distributed under the terms of the license in /doc/license.txt$ -->
+
+<!-- ====================================================================== 
+	 Compile the JSPs to check for compile errors.
+	 
+	 As this stands, you need to be sure that the "war" or "deploy" step in the 
+	 main build has already happened. There is no check here to ensure that the 
+	 ".build/war" directory is current.
+	     ====================================================================== -->
+<project name="Check JSPs for compile errors" default="all" basedir="../..">
+	<!-- Get tomcat.home and webapp.name from the build.properties file. -->
+	<property name="build.properties.file" location="build.properties" />
+	<fail message="You must create a &quot;${build.properties.file}&quot; file.">
+		<condition>
+			<not>
+				<available file="${build.properties.file}" />
+			</not>
+		</condition>
+	</fail>
+	<property file="${build.properties.file}" />
+	<fail unless="tomcat.home"
+	      message="${build.properties.file} must contain a value for tomcat.home" />
+	<fail unless="webapp.name"
+	      message="${build.properties.file} must contain a value for webapp.name" />
+
+	<property name="build.jsp.dir" location=".build/jsp" />
+	<property name="build.webapp.dir" location=".build/main/webapp" />
+
+	<!-- Where are the Tomcat classes? -->
+	<path id="jasper.classpath">
+		<fileset dir="${tomcat.home}/bin">
+			<include name="*.jar" />
+		</fileset>
+		<fileset dir="${tomcat.home}/lib">
+			<include name="*.jar" />
+		</fileset>
+	</path>
+	
+	<!-- Add in the project classes -->
+	<path id="compile.classpath">
+		<path refid="jasper.classpath" />
+		<pathelement location="${build.webapp.dir}/WEB-INF/classes" />
+		<fileset dir="${build.webapp.dir}/WEB-INF/lib">
+			<include name="*.jar" />
+		</fileset>
+	</path>
+
+	<!-- Define the Jasper task -->
+	<taskdef classname="org.apache.jasper.JspC" name="jasper2">
+		<classpath refid="jasper.classpath" />
+	</taskdef>
+
+	<target name="clean"
+	        description="Delete all build artifacts, so the next build starts from a clean slate">
+		<delete dir="${build.jsp.dir}" />
+	</target>
+
+	<target name="prepare">
+		<mkdir dir="${build.jsp.dir}" />
+		<mkdir dir="${build.jsp.dir}/src" />
+		<mkdir dir="${build.jsp.dir}/classes" />
+	</target>
+
+	<target name="jspc" depends="prepare">
+		<jasper2 validateXml="false"
+		         uriroot="${build.webapp.dir}"
+		         webXmlFragment="${build.jsp.dir}generated_web.xml"
+		         outputDir="${build.jsp.dir}/src"
+		         trimSpaces="true"
+		         failOnError="true" />
+	</target>
+
+	<target name="compile" depends="jspc">
+		<javac destdir="${build.jsp.dir}/classes"
+		       optimize="off"
+		       debug="off"
+		       failonerror="true"
+			   includeantruntime="false"
+		       srcdir="${build.jsp.dir}/src"
+		       excludes="**/*.smap">
+			<classpath refid="compile.classpath" />
+			<include name="**" />
+			<exclude name="tags/**" />
+		</javac>
+	</target>
+
+	<target name="all"
+	        depends="clean, compile"
+	        description="Compile the JSPs to classfiles, just to check for compile errors." />
+</project>

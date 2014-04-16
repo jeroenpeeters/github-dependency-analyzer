@@ -1,0 +1,514 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="hadoop-vertica">
+	<description>
+		Apache Hadoop/Pig Vertica Project contains 
+		source code for the following JARs:
+		* Apache Hadoop to Vertica Connector.
+		* Apache Pig    to Vertica Connector.
+		* Example to use the Hadoop/Vertica connector.
+	</description>
+
+    <property environment="env"/>
+	<condition property="ispig07">
+		<contains string="${pig.jar}" substring="pig-0.7"/>
+	</condition>
+	<target name="executeRecursively">
+		<ant dir="hadoop-connector" target="${action}"/>
+		<ant dir="hadoop-example"   target="${action}"/>
+		<ant dir="pig-connector"    target="${action}"/>
+		<antcall target="executeOnSqueal">
+			<param name="action" value="${action}"/>
+		</antcall>
+	</target>
+	
+	<target name="executeOnSqueal" if="ispig07">
+		<ant dir="squeal" target="${action}"/>
+	</target>
+		
+	<target name="doc"
+		description="Generate Javadocs for ALL modules">
+		<antcall target="executeRecursively">
+			<param name="action" value="doc"/>
+		</antcall>
+	</target>
+	
+	<target name="jar" 
+		description="Compile JARs for ALL modules">
+		<antcall target="executeRecursively">
+			<param name="action" value="jar"/>
+		</antcall>
+	</target>
+	<target name="clean">
+		<antcall target="executeRecursively">
+			<param name="action" value="clean"/>
+		</antcall>
+	</target>
+
+	<target name="hadoop-connector"
+		description="Compile JAR for Hadoop/Vertica Connector">
+		<ant dir="hadoop-connector" target="jar"/>
+	</target>
+	<target name="hadoop-example" depends="hadoop-connector" 
+		description="Compile JAR for an example that uses Hadoop/Vertica Connector">
+		<ant dir="hadoop-example" target="jar"/>
+	</target>
+	<target name="pig-connector" 
+		description="Compile JAR for Pig/Vertica Connector">
+		<ant dir="pig-connector" target="jar"/>
+	</target>
+	<target name="squeal" if="ispig07">
+		<ant dir="squeal" target="jar"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="hadoop-connector">
+  <include file="../build-common.xml"/>
+
+    <property environment="env"/>
+	<!--Required parameters. You have to specify these on the ANT command line -->
+	<!--JUNIT jars should be in the lib path. For e.g. specify using -lib -->
+	<property name="vertica.jar" value = "" />
+	<property name="doc.dir" value="" />
+
+	<property name="jar.name" value="hadoop-vertica" />
+    <property name="debuglevel" value="source,lines,vars"/>
+	<property name="javac.source" value="1.6" />
+	<property name="javac.target" value="1.6" />
+	<property name="version" value="1.6.0" />
+
+    <property name="src.dir" location="${basedir}" />
+	<property name="test.dir" location="${basedir}/test" />
+
+	<property name="build.dir" location="${basedir}/build" />
+  <property name="dist" value="${build.dir}/hadoop-connector/jar"/>
+  <property name="jar.file" location="${dist}/${jar.name}-${build.version}.jar" />
+	<property name="build.classes" location="${build.dir}/hadoop-connector/classes"/>
+	<property name="build.test.classes" location="${build.dir}/hadoop-connector/tests" />
+    <property name="junit.output.dir" value="${build.dir}/hadoop-connector/junit"/>
+
+	<!-- Lesson: You can add location of jar files here -->
+    <path id="compile.classpath">
+		<pathelement location="${vertica.jar}"/>
+        <pathelement location="${build.classes}"/>
+		<fileset dir="${hadoop.dir}">
+			<include name="**/*.jar"/>
+			<exclude name="junit-3.8.1.jar"/>
+		</fileset>
+    </path>
+
+	<!-- Classpath for unit tests (superset of compile.classpath) -->
+	<path id="test.classpath">
+		<fileset dir="${hadoop.dir}">
+			<include name="*.jar"/>
+			<exclude name="junit-3.8.1.jar"/>
+		</fileset>
+		<pathelement location="${dist}/${jar.name}.jar" />
+		<pathelement location="${build.test.classes}" />
+	</path>
+
+    <target name="init">
+    	<available property="junit" classname="junit.framework.Test"/>
+	    <available property="junit.task" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask"/>
+
+    	<condition property="notJava6">
+			<not><equals arg1="${java.specification.version}" arg2="1.6"/></not>
+    	</condition>
+
+    	<fail if="notJava6" message="JDK 1.6 is required." />
+	</target>
+
+    <target name="clean">
+        <delete dir="${build.dir}/hadoop-connector"/>
+        <delete file="${jar.file}"/>
+        <delete dir="${doc.dir}/hadoop-connector"/>
+    </target>
+
+    <target depends="clean" name="cleanall"/>
+
+	<target depends="common.requirehadoopdir,init" name="compile">
+    <echo>hadoop.dir: ${hadoop.dir}</echo>
+    <echo></echo>
+		<mkdir dir="${build.classes}"/>
+        <echo message="${ant.project.name}: ${ant.file}"/>
+        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes}" 
+					source="${javac.source}" target="${javac.target}">
+            <src path="${src.dir}"/>
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+	
+	<target name="compile-test"
+		depends="jar"
+		description="Compile test classes">
+		<mkdir dir="${build.test.classes}" />
+		<javac srcdir="${test.dir}" includes="**/*.java" destdir="${build.test.classes}"
+				debug="${javac.debug}">
+			<classpath refid="test.classpath"/>
+		</javac>
+	</target>
+
+	<target name="doc">
+		<javadoc destdir="${doc.dir}/hadoop-connector" breakiterator="yes">
+            <classpath refid="compile.classpath"/>
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+	<target name="jar" depends="compile" description="Create main jar">
+		<mkdir dir="${dist}"/>
+    	<tstamp>
+	    	<format property="builtat" pattern="yyyy-MM-dd HH:mm:ss Z" timezone="America/New_York"/>
+		</tstamp>        
+		<exec executable="svnversion" outputproperty="svnversion"/>
+		<exec executable="uname" outputproperty="buildsystem"><arg value="-a"/></exec>
+    	<jar jarfile="${jar.file}" basedir="${build.classes}">
+			<manifest>
+				<attribute name="Built-By" value="${user.name}"/>
+			    <attribute name="Implementation-Vendor" value="Vertica Systems, Inc."/>
+			    <attribute name="Implementation-Title" value="Apache Hadoop - Vertica Connector"/>
+				<attribute name="Implementation-Version" value="${version}"/>
+				<attribute name="SVN-Revision" value="${svnversion}"/>
+				<attribute name="Build-System" value="${buildsystem}"/>
+				<attribute name="Build-Time" value="${builtat}"/>
+			</manifest>
+		</jar>
+	</target>
+	
+    <target name="run-test" depends="jar, compile-test">
+        <mkdir dir="${junit.output.dir}"/>
+        <junit fork="yes" printsummary="withOutAndErr" errorProperty="test.failed" failureProperty="test.failed"
+      		haltonfailure="no">
+			<syspropertyset>
+				<propertyref name="mapred.vertica.hostnames"/>
+				<propertyref name="mapred.vertica.port"/>
+				<propertyref name="mapred.vertica.database"/>
+				<propertyref name="mapred.vertica.username"/>
+				<propertyref name="mapred.vertica.password"/>
+			</syspropertyset>
+            <formatter type="xml"/>
+			<batchtest todir="${junit.output.dir}">
+				<fileset dir="${test.dir}"
+					 includes="**/Test*.java" excludes="**/${test.exclude}.java" />
+			</batchtest>
+            <classpath refid="test.classpath"/>
+        </junit>
+		<fail if="test.failed">Tests Failed!</fail>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="hadoop-example">
+  <include file="../build-common.xml"/>
+
+    <property environment="env"/>
+	<!--Required parameters. You have to specify these on the ANT command line -->
+	<!--JUNIT jars should be in the lib path. For e.g. specify using -lib -->
+	<property name="vertica.jar" value = "" />
+	<property name="hadoop.dir" value="" />
+	<property name="doc.dir" value="" />
+	
+	<property name="jar.name" value="hadoop-vertica-example" />
+    <property name="debuglevel" value="source,lines,vars"/>
+	<property name="javac.source" value="1.6" />
+	<property name="javac.target" value="1.6" />
+	<property name="version" value="1.6.0" />
+
+    <property name="src.dir" location="${basedir}" />
+
+	<property name="build.dir" location="${basedir}/build" />
+  <property name="dist" value="${build.dir}/hadoop-example/jar"/>
+  <property name="jar.file" location="${dist}/${jar.name}-${build.version}.jar" />
+	<property name="build.classes" location="${build.dir}/hadoop-example/" />
+
+	<!-- Lesson: You can add location of jar files here -->
+    <path id="compile.classpath">
+		<pathelement location="${vertica.jar}"/>
+		<pathelement location="${hadoop-connector.jar}"/>
+        <pathelement location="${build.classes}"/>
+		<fileset dir="${hadoop.dir}">
+			<include name="**/*.jar"/>
+			<exclude name="junit-3.8.1.jar"/>
+		</fileset>
+    </path>
+
+    <target name="init">
+    	<condition property="notJava6">
+			<not><equals arg1="${java.specification.version}" arg2="1.6"/></not>
+    	</condition>
+
+    	<fail if="notJava6" message="JDK 1.6 is required." />
+	</target>
+
+    <target name="clean">
+        <delete dir="${build.classes}"/>
+        <delete file="${jar.file}"/>
+        <delete dir="${doc.dir}/hadoop-examples"/>
+    </target>
+
+    <target depends="clean" name="cleanall"/>
+    
+	<target depends="common.requirehadoopdir,init" name="compile">
+		<mkdir dir="${build.classes}"/>
+        <echo message="${ant.project.name}: ${ant.file}"/>
+        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes}" 
+				source="${javac.source}" target="${javac.target}">
+            <src path="${src.dir}"/>
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+	
+	<target name="doc">
+		<javadoc destdir="${doc.dir}/hadoop-examples" breakiterator="yes">
+            <classpath refid="compile.classpath"/>
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+	<target name="jar" depends="compile" description="Create main jar">
+		<mkdir dir="${dist}"/>
+    	<tstamp>
+	    	<format property="builtat" pattern="yyyy-MM-dd HH:mm:ss Z" timezone="America/New_York"/>
+		</tstamp>        
+		<exec executable="svnversion" outputproperty="svnversion"/>
+    <delete file="${jar.file}"/>
+    <exec executable="uname" outputproperty="buildsystem"><arg value="-a"/></exec>
+    	<jar jarfile="${jar.file}" basedir="${build.classes}">
+			<manifest>
+				<attribute name="Built-By" value="${user.name}"/>
+			    <attribute name="Implementation-Vendor" value="Vertica Systems, Inc."/>
+			    <attribute name="Implementation-Title" value="Apache Hadoop - Vertica Connector Examples"/>
+				<attribute name="Implementation-Version" value="${version}"/>
+				<attribute name="SVN-Revision" value="${svnversion}"/>
+				<attribute name="Build-System" value="${buildsystem}"/>
+				<attribute name="Build-Time" value="${builtat}"/>
+			</manifest>
+		</jar>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="pig-vertica">
+  <include file="../build-common.xml"/>
+
+    <property environment="env"/>
+	<!--Required parameters. You have to specify these on the ANT command line -->
+	<!--JUNIT jars should be in the lib path. For e.g. specify using -lib -->
+	<property name="vertica.jar" value = "" />
+	<property name="doc.dir" value="" />
+	
+	<property name="jar.name" value="pig-vertica" />
+    <property name="debuglevel" value="source,lines,vars"/>
+	<property name="javac.source" value="1.6" />
+	<property name="javac.target" value="1.6" />
+	<property name="version" value="1.6.0" />
+
+    <property name="src.dir" location="${basedir}" />
+
+	<property name="build.dir" location="${basedir}/build" />
+  <property name="dist" value="${build.dir}/pig-connector/jar"/>
+  <property name="jar.file" location="${dist}/${jar.name}-${build.version}.jar" />
+	<property name="build.classes" location="${build.dir}/pig-connector/classes"/>
+
+	<!-- Lesson: You can add location of jar files here -->
+    <path id="compile.classpath">
+		<pathelement location="${vertica.jar}"/>
+		<pathelement location="${hadoop-connector.jar}"/>
+		<pathelement location="${pig.jar}"/>
+        <pathelement location="${build.classes}"/>
+		<fileset dir="${hadoop.dir}">
+			<include name="**/*.jar"/>
+			<exclude name="junit-3.8.1.jar"/>
+		</fileset>
+    </path>
+
+    <target name="init">
+    	<available property="junit" classname="junit.framework.Test"/>
+	    <available property="junit.task" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask"/>
+
+    	<condition property="notJava6">
+			<not><equals arg1="${java.specification.version}" arg2="1.6"/></not>
+    	</condition>
+
+    	<fail if="notJava6" message="JDK 1.6 is required." />
+	</target>
+
+    <target name="clean">
+        <delete dir="${build.dir}/pig-connector"/>
+        <delete file="${jar.file}"/>
+        <delete dir="${doc.dir}/pig-connector"/>
+    </target>
+
+	<target depends="common.requirehadoopdir,common.requirepigjar,init" name="compile">
+    <fail unless="hadoop.dir">Property hadoop.dir must be set.</fail>
+    <fail unless="pig.jar">Property pig.jar must be set.</fail>
+    <echo>hadoop.dir          : ${hadoop.dir}</echo>
+    <echo>pig.jar             : ${pig.jar}</echo>
+    <echo>hadoop-connector.jar: ${hadoop-connector.jar}</echo>
+    <echo></echo>
+		<mkdir dir="${build.classes}"/>
+        <echo message="${ant.project.name}: ${ant.file}"/>
+        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes}" 
+				source="${javac.source}" target="${javac.target}">
+			<compilerarg value="-Xlint:deprecation"/>
+			<compilerarg value="-Xlint:unchecked"/>
+            <src path="${src.dir}"/>
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+	
+	<target name="doc">
+		<javadoc destdir="${doc.dir}/pig-connector" breakiterator="yes">
+            <classpath refid="compile.classpath"/>
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+	<target name="jar" depends="compile" description="Create main jar">
+		<mkdir dir="${dist}"/>
+    	<tstamp>
+	    	<format property="builtat" pattern="yyyy-MM-dd HH:mm:ss Z" timezone="America/New_York"/>
+		</tstamp>        
+		<exec executable="svnversion" outputproperty="svnversion"/>
+		<exec executable="uname" outputproperty="buildsystem"><arg value="-a"/></exec>
+    	<jar jarfile="${jar.file}" basedir="${build.classes}">
+			<zipfileset src="${hadoop-connector.jar}"/>
+			<manifest>
+				<attribute name="Built-By" value="${user.name}"/>
+			    <attribute name="Implementation-Vendor" value="Vertica Systems, Inc."/>
+			    <attribute name="Implementation-Title" value="Apache Pig - Vertica Connector"/>
+				<attribute name="Implementation-Version" value="${version}"/>
+				<attribute name="SVN-Revision" value="${svnversion}"/>
+				<attribute name="Build-System" value="${buildsystem}"/>
+				<attribute name="Build-Time" value="${builtat}"/>
+			</manifest>
+		</jar>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="jar" name="squeal">
+  <include file="../build-common.xml"/>
+
+    <property environment="env"/>
+	<!--Required parameters. You have to specify these on the ANT command line -->
+	<!--JUNIT jars should be in the lib path. For e.g. specify using -lib -->
+	<property name="vertica.hostname" value="" />
+	<property name="vertica.port" value="" />
+	<property name="vertica.username" value="" />
+	<property name="vertica.password" value="" />
+	<property name="vertica.database" value="" />
+	<property name="vertica.jar" value = "" />
+	<property name="hadoop-connector.jar" value = "" />
+	<property name="pig-connector.jar" value = "" />
+	<property name="pig.jar" value="" />
+
+	<property name="jar.name" value="squeal" />
+    <property name="debuglevel" value="source,lines,vars"/>
+    <property name="target" value="1.6"/>
+    <property name="source" value="1.6"/>
+	<property name="version" value="0.1" />
+
+    <property name="src.dir" location="${basedir}/src" />
+
+	<property name="build.dir" location="${basedir}/build" />
+	<property name="build.classes" location="${build.dir}/squeal/classes"/>
+  <property name="dist" value="${build.dir}/squeal/jar"/>
+  <property name="jar.file" location="${dist}/${jar.name}-${build.version}.jar" />
+
+	<!-- Lesson: You can add location of jar files here -->
+    <path id="compile.classpath">
+		<pathelement location="${vertica.jar}"/>
+		<pathelement location="${hadoop-connector.jar}"/>
+		<pathelement location="${pig-connector.jar}"/>
+		<pathelement location="${pig.jar}"/>
+        <pathelement location="${build.classes}"/>
+		<fileset dir="${hadoop.dir}/lib">
+			<include name="*.jar"/>
+			<exclude name="junit-3.8.1.jar"/>
+		</fileset>
+		<fileset dir="${hadoop.dir}">
+			<include name="*.jar"/>
+		</fileset>
+    </path>
+
+    <target name="init">
+        <copy includeemptydirs="false" todir="${build.dir}">
+            <fileset dir="src" excludes="**/*.launch, **/*.java"/>
+        </copy>
+    	<available property="junit" classname="junit.framework.Test"/>
+	    <available property="junit.task" classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask"/>
+
+    	<condition property="notJava6">
+			<not><equals arg1="${java.specification.version}" arg2="1.6"/></not>
+    	</condition>
+
+    	<fail if="notJava6" message="JDK 1.6 is required." />
+	</target>
+
+    <target name="clean">
+        <delete dir="${build.dir}/squeal"/>
+        <delete file="${jar.file}"/>
+        <delete dir="${doc.dir}/squeal"/>
+    </target>
+
+  <target name="requirehadoopdir">
+    <fail message="Property &quot;hadoop.dir&quot; needs to be set to a value">
+      <condition>
+          <or>
+            <equals arg1="${hadoop.dir}" arg2=""/>
+            <not><isset property="hadoop.dir"/></not>
+            <not><available file="${hadoop.dir}" type="dir"/></not>
+         </or>
+     </condition>
+    </fail>
+  </target>
+
+	<target depends="common.requirehadoopdir,common.requirepigjar,init" name="compile">
+    <echo>hadoop.dir          : ${hadoop.dir}</echo>
+    <echo>pig.jar             : ${pig.jar}</echo>
+		<mkdir dir="${build.classes}"/>
+        <echo message="${ant.project.name}: ${ant.file}"/>
+        <javac debug="true" debuglevel="${debuglevel}" destdir="${build.classes}" source="${source}" target="${target}">
+            <src path="${src.dir}"/>
+            <classpath refid="compile.classpath"/>
+        </javac>
+    </target>
+	
+	<target name="doc">
+		<javadoc destdir="${doc.dir}/pig-connector" breakiterator="yes">
+            <classpath refid="compile.classpath"/>
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+	<target name="jar" depends="compile" description="Create main jar">
+		<mkdir dir="${dist}"/>
+    	<tstamp>
+	    	<format property="builtat" pattern="yyyy-MM-dd HH:mm:ss Z" timezone="America/New_York"/>
+		</tstamp>        
+		<exec executable="svnversion" outputproperty="svnversion"/>
+		<exec executable="uname" outputproperty="buildsystem"><arg value="-a"/></exec>
+    	<jar jarfile="${jar.file}" basedir="${build.classes}">
+			<zipfileset src="${hadoop-connector.jar}"/>
+			<zipfileset src="${pig-connector.jar}"/>
+			<zipfileset src="${pig.jar}"/>
+			<fileset dir="${build.classes}"/>
+			<fileset file="${basedir}/conf/verticafuncs.properties" />
+			<manifest>
+			  <attribute name="Main-Class" value="com.vertica.squeal.Squeal" />
+				<attribute name="Built-By" value="${user.name}"/>
+			    <attribute name="Implementation-Vendor" value="Vertica Systems, Inc."/>
+			    <attribute name="Implementation-Title" value="Squeal"/>
+				<attribute name="Implementation-Version" value="${version}"/>
+				<attribute name="SVN-Revision" value="${svnversion}"/>
+				<attribute name="Build-System" value="${buildsystem}"/>
+				<attribute name="Build-Time" value="${builtat}"/>
+			</manifest>
+		</jar>
+	</target>
+</project>

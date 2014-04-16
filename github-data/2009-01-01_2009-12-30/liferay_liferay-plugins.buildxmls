@@ -1,0 +1,2766 @@
+<?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="plugins" basedir="." default="all" xmlns:antelope="antlib:ise.antelope.tasks">
+	<import file="build-common.xml" />
+
+	<target name="all">
+		<antcall target="clean" />
+		<antcall target="deploy" />
+	</target>
+
+	<target name="build-service">
+		<ant dir="hooks" target="build-service" inheritAll="false" />
+		<ant dir="portlets" target="build-service" inheritAll="false" />
+		<ant dir="webs" target="build-service" inheritAll="false" />
+	</target>
+
+	<target name="build-summary">
+		<java
+			classname="com.liferay.portal.tools.PluginsSummaryBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<jvmarg value="-Dplugins.dir=${sdk.dir}" />
+		</java>
+
+		<java
+			classname="com.liferay.portal.tools.XSLTBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<arg value="${sdk.dir}/summary.xml" />
+			<arg value="${sdk.dir}/summary.xsl" />
+			<arg value="${sdk.dir}/summary.html" />
+		</java>
+	</target>
+
+	<target name="clean">
+		<for list="hooks,layouttpl,portlets,shared,themes,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="clean"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="compile">
+		<for list="hooks,layouttpl,portlets,shared,themes,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="compile"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="deploy">
+		<for list="hooks,layouttpl,portlets,shared,themes,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="deploy"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="direct-deploy">
+		<for list="hooks,layouttpl,portlets,themes,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="direct-deploy"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="ear">
+		<delete dir="dist/liferay-portal.ear" />
+		<delete dir="dist/modules" />
+
+		<copy todir="dist" overwrite="yes">
+			<fileset
+				dir="${sdk.dir}/tools/ear_tmpl"
+			/>
+		</copy>
+
+		<copy todir="dist/modules/APP-INF/lib">
+			<fileset dir="${app.server.lib.global.dir}">
+				<include name="*.jar" />
+			</fileset>
+		</copy>
+
+		<fileset dir="dist/modules" id="ear.dependency.libraries">
+			<include name="APP-INF/lib/*.jar" />
+		</fileset>
+
+		<pathconvert pathsep=" " property="ear.dependency.libraries.converted" refid="ear.dependency.libraries">
+			<mapper>
+				<chainedmapper>
+					<flattenmapper />
+					<globmapper from="*.jar" to="APP-INF/lib/*.jar" />
+				</chainedmapper>
+			</mapper>
+		</pathconvert>
+
+		<war
+			basedir="${app.server.portal.dir}"
+			destfile="dist/modules/liferay-portal.war"
+		>
+			<manifest>
+				<attribute name="Class-Path" value="${ear.dependency.libraries.converted}" />
+			</manifest>
+		</war>
+
+		<for param="module.full.path">
+			<path>
+				<dirset
+					dir="${app.server.deploy.dir}"
+					excludes="${plugins.ear.excludes}"
+					includes="${plugins.ear.includes}"
+				/>
+			</path>
+			<sequential>
+				<antelope:stringutil string="@{module.full.path}" property="module.full.path.unix">
+					<antelope:replace regex="\\" replacement="/" />
+				</antelope:stringutil>
+
+				<antelope:grep in="${module.full.path.unix}" regex="(.*/)(.*)" group="2" property="module.name" />
+
+				<war
+					basedir="@{module.full.path}"
+					destfile="dist/modules/${module.name}.war"
+				/>
+			</sequential>
+		</for>
+
+		<fileset dir="dist/modules" id="ear.modules">
+			<include name="*.war" />
+		</fileset>
+
+		<pathconvert pathsep="," property="ear.modules.converted" refid="ear.modules">
+			<mapper>
+				<chainedmapper>
+					<flattenmapper />
+				</chainedmapper>
+			</mapper>
+		</pathconvert>
+
+		<java
+			classname="com.liferay.portal.tools.EARBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<arg value="${basedir}/dist/modules/META-INF/application.xml" />
+			<arg value="${ear.modules.converted}" />
+			<arg value="${plugins.ear.portal.context.path}" />
+		</java>
+
+		<ear
+			appxml="dist/modules/META-INF/application.xml"
+			basedir="dist/modules"
+			destfile="dist/liferay-portal.ear"
+			excludes="META-INF/application.xml"
+			includes="**/*.jar,*.war,META-INF/*.xml"
+		/>
+
+		<delete dir="dist/modules" />
+	</target>
+
+	<target name="extract-plugins-sdk">
+		<mkdir dir="dist" />
+
+		<delete file="dist/liferay-plugins-sdk-${lp.version}.zip" />
+
+		<ant dir="webs/resources-importer-web" target="clean" inheritAll="false" />
+
+		<zip destfile="dist/liferay-plugins-sdk-${lp.version}.zip">
+			<zipfileset
+				dir="."
+				excludes="*.iml,.git/**,.ivy/**,build.*.properties,dist/**,ext/*-ext/**,hooks/*-hook/**,lib/**,ivy.xml.MD5,layouttpl/*-layouttpl/**,portlets/*-portlet/**,private-plugins.txt,shared/*-shared/**,source_formatter_*,summary.*,themes/*-theme/**,webs/*-web/**"
+				prefix="liferay-plugins-sdk-${lp.version}"
+			/>
+			<zipfileset
+				dir="."
+				excludes="**/releng/**"
+				includes="webs/resources-importer-web/**"
+				prefix="liferay-plugins-sdk-${lp.version}"
+			/>
+			<zipfileset
+				dir="."
+				includes="lib/ant-contrib.jar,lib/antelopetasks.jar,lib/bcpg-jdk16.jar,lib/bcprov-jdk16.jar,lib/portal-ant-shared.jar"
+				prefix="liferay-plugins-sdk-${lp.version}"
+			/>
+		</zip>
+	</target>
+
+	<target name="format-javadoc">
+		<ant dir="hooks" target="format-javadoc" inheritAll="false" />
+		<ant dir="layouttpl" target="format-javadoc" inheritAll="false" />
+		<ant dir="portlets" target="format-javadoc" inheritAll="false" />
+		<ant dir="themes" target="format-javadoc" inheritAll="false" />
+		<ant dir="webs" target="format-javadoc" inheritAll="false" />
+	</target>
+
+	<target name="setup-eclipse">
+		<for list="hooks,portlets,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="clean"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+
+		<for list="hooks,portlets,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="compile"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+
+		<ant dir="hooks" target="setup-eclipse" inheritAll="false" />
+		<ant dir="portlets" target="setup-eclipse" inheritAll="false" />
+		<ant dir="webs" target="setup-eclipse" inheritAll="false" />
+	</target>
+
+	<target name="test">
+		<for list="hooks,portlets,shared,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="test"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="test-integration">
+		<for list="hooks,portlets,shared,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="test-integration"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="test-unit">
+		<for list="hooks,portlets,shared,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="test-unit"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="war">
+		<for list="hooks,layouttpl,portlets,shared,themes,webs" param="loop.modules.dir">
+			<sequential>
+				<loop-modules
+					loop.modules.cmd="war"
+					loop.modules.dir="@{loop.modules.dir}"
+				/>
+			</sequential>
+		</for>
+	</target>
+
+	<target name="zip-portal">
+		<if>
+			<not>
+				<equals arg1="${app.server.type}" arg2="tomcat" />
+			</not>
+			<then>
+				<fail>
+.
+
+This task only works when the property "app.server.type" is "tomcat". However,
+the outputted files will work in any supported application server.
+				</fail>
+			</then>
+		</if>
+
+		<tstamp>
+			<format property="tstamp.value" pattern="yyyyMMddkkmmssSSS" />
+		</tstamp>
+
+		<zip destfile="dist/liferay-portal-dependencies-${tstamp.value}.zip">
+			<zipfileset
+				dir="${app.server.lib.global.dir}"
+				prefix="liferay-portal-dependencies-${tstamp.value}"
+			/>
+		</zip>
+
+		<delete file="dist/liferay-portal-${lp.version}.war" failonerror="false" />
+
+		<zip
+			basedir="${app.server.portal.dir}"
+			destfile="dist/liferay-portal-${tstamp.value}.war"
+			excludes="html/js/editor/_fckeditor/**,html/js/editor/fckeditor/_samples/**"
+		/>
+
+		<copy todir="${tstamp.value}/WEB-INF/lib">
+			<fileset
+				dir="lib"
+				includes="ccpp.jar"
+			/>
+		</copy>
+
+		<zip
+			basedir="${tstamp.value}"
+			destfile="dist/liferay-portal-${tstamp.value}.war"
+			update="yes"
+		/>
+
+		<delete dir="${tstamp.value}" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ext" basedir="." default="deploy">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<not>
+				<isset property="ext.name" />
+			</not>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="ext.parent.dir" value="${user.dir}" />
+		<property name="ext.plugin.dir" value="${ext.parent.dir}/${ext.name}-ext" />
+
+		<if>
+			<available file="${ext.plugin.dir}" />
+			<then>
+				<fail>${ext.name}-ext already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${ext.plugin.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/ext_tmpl"
+			/>
+		</copy>
+
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-impl/src" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-lib/global" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-lib/portal" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-service/src" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-util-bridges/src" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-util-java/src" />
+		<mkdir dir="${ext.plugin.dir}/docroot/WEB-INF/ext-util-taglib/src" />
+
+		<replace dir="${ext.plugin.dir}">
+			<replacefilter token="@ext.display.name@" value="${ext.display.name}" />
+			<replacefilter token="@ext.name@" value="${ext.name}" />
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+		</replace>
+	</target>
+
+	<target name="upgrade-ext">
+		<if>
+			<not>
+				<isset property="ext.name" />
+			</not>
+			<then>
+				<fail>
+.
+
+Usage: ant upgrade-ext -Dext.dir=C:\ext -Dext.name=hello-world -Dext.display.name="Hello World"
+
+The arguments "ext.dir", "ext.name", and "ext.display.name" are not properly
+specified.
+
+This task will build an EXT plugin from a legacy EXT environment. The files in
+the directory denoted by "ext.dir" will be copied into the EXT plugin directory
+called "ext.name"-ext. The property "ext.dir" must point to a legacy EXT
+environment and the EXT plugin directory called "ext-name"-ext must not already
+exist.
+				</fail>
+			</then>
+		</if>
+
+		<if>
+			<available file="${ext.name}-ext" />
+			<then>
+				<fail>${ext.name}-ext already exists.</fail>
+			</then>
+		</if>
+
+		<antcall target="create">
+			<param name="ext.display.name" value="${ext.display.name}" />
+			<param name="ext.name" value="${ext.name}" />
+		</antcall>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-impl/src" failonerror="false">
+			<fileset dir="${ext.dir}/ext-impl/src" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-lib/global" failonerror="false">
+			<fileset dir="${ext.dir}/ext-lib/global" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-lib/portal" failonerror="false">
+			<fileset dir="${ext.dir}/ext-lib/portal" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-service/src" failonerror="false">
+			<fileset dir="${ext.dir}/ext-service/src" />
+		</copy>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot" failonerror="false" overwrite="true">
+			<fileset
+				dir="${ext.dir}/ext-web/docroot"
+				excludes="**/struts-config.xml,**/tiles-defs.xml"
+			/>
+		</copy>
+
+		<copy
+			file="${ext.dir}/ext-web/docroot/WEB-INF/struts-config.xml"
+			tofile="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot/WEB-INF/struts-config-ext.xml"
+		/>
+
+		<copy
+			file="${ext.dir}/ext-web/docroot/WEB-INF/tiles-defs.xml"
+			tofile="${ext.name}-ext/docroot/WEB-INF/ext-web/docroot/WEB-INF/tiles-defs-ext.xml"
+		/>
+
+		<copy todir="${ext.name}-ext/docroot/WEB-INF/sql" failonerror="false">
+			<fileset dir="${ext.dir}/sql" />
+		</copy>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="antisamy-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<target name="compile">
+		<compile
+			module.dir="."
+		/>
+
+		<if>
+			<not>
+				<available file="docroot/WEB-INF/classes/sanitizer-configuration.xml" />
+			</not>
+			<then>
+
+				<!--
+				See http://code.google.com/p/owaspantisamy/downloads/list for a
+				complete list.
+				-->
+
+				<get
+					dest="docroot/WEB-INF/classes/sanitizer-configuration.xml"
+					src="http://owaspantisamy.googlecode.com/files/antisamy-ebay-1.3.xml"
+				/>
+
+				<replace file="docroot/WEB-INF/classes/sanitizer-configuration.xml">
+					<replacetoken><![CDATA[directive name="maxInputSize" value="20000"]]></replacetoken>
+					<replacevalue><![CDATA[directive name="maxInputSize" value="200000"]]></replacevalue>
+				</replace>
+			</then>
+		</if>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="hooks" basedir="." default="deploy">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="hook.display.name" />
+				</not>
+				<not>
+					<isset property="hook.name" />
+				</not>
+			</or>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="hook.parent.dir" value="${user.dir}" />
+		<property name="hook.dir" value="${hook.parent.dir}/${hook.name}-hook" />
+
+		<if>
+			<available file="${hook.dir}" />
+			<then>
+				<fail>${hook.name}-hook already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${hook.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/hook_tmpl"
+			/>
+		</copy>
+
+		<replace dir="${hook.dir}">
+			<replacefilter token="@hook.display.name@" value="${hook.display.name}" />
+			<replacefilter token="@hook.name@" value="${hook.name}" />
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+		</replace>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="default-web-content-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="deploy-listener-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="deploy-listener-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="email-to-mb-filter-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="google-login-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="google-mail-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="google-apps-connector-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="localization-ja-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="localization-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="localization-zh-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="localization-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="mongodb-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-application-adapter-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-authverifier-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-expando-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-scripting-executor-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-servlet-filter-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-struts-action-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-wrapper-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="shibboleth-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-activities-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="so-activities-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+
+	<property name="import.shared" value="deploy-listener-shared,so-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="social-bookmarks-hook" basedir="." default="deploy">
+	<import file="../build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="1-2-1-columns-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="1-3-1-columns-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="1-3-2-columns-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="2-1-2-columns-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="3-2-3-columns-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="layouttpl" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="layouttpl.display.name" />
+				</not>
+				<not>
+					<isset property="layouttpl.name" />
+				</not>
+			</or>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="layouttpl.parent.dir" value="${user.dir}" />
+		<property name="layouttpl.dir" value="${layouttpl.parent.dir}/${layouttpl.name}-layouttpl" />
+
+		<if>
+			<available file="${layouttpl.dir}" />
+			<then>
+				<fail>${layouttpl.name}-layouttpl already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${layouttpl.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/layouttpl_tmpl"
+			/>
+		</copy>
+
+		<antelope:stringutil string="${layouttpl.name}" property="layouttpl.template.name">
+			<replace regex="-" replacement="_" />
+		</antelope:stringutil>
+
+		<replace dir="${layouttpl.dir}">
+			<replacefilter token="@layouttpl.display.name@" value="${layouttpl.display.name}" />
+			<replacefilter token="@layouttpl.name@" value="${layouttpl.name}" />
+			<replacefilter token="@layouttpl.template.name@" value="${layouttpl.template.name}" />
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+		</replace>
+
+		<move
+			file="${layouttpl.dir}/docroot/blank_columns.png"
+			tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.png"
+		/>
+
+		<move
+			file="${layouttpl.dir}/docroot/blank_columns.tpl"
+			tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.tpl"
+		/>
+
+		<move
+			file="${layouttpl.dir}/docroot/blank_columns.wap.tpl"
+			tofile="${layouttpl.dir}/docroot/${layouttpl.template.name}.wap.tpl"
+		/>
+
+		<touch file="${layouttpl.dir}/docroot/${layouttpl.template.name}.wap.tpl" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="akismet-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<target name="build-lang">
+		<antcall target="build-lang-cmd">
+			<param name="lang.dir" value="docroot/WEB-INF/src/content" />
+			<param name="lang.file" value="Language" />
+			<param name="lang.translate" value="false" />
+		</antcall>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ams-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="alloy-mvc-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="analog-clock-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="bible-gateway-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portlets" basedir="." default="deploy" xmlns:antelope="antlib:ise.antelope.tasks">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="portlet.display.name" />
+				</not>
+				<not>
+					<isset property="portlet.name" />
+				</not>
+			</or>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="portlet.parent.dir" value="${user.dir}" />
+		<property name="portlet.dir" value="${portlet.parent.dir}/${portlet.name}-portlet" />
+
+		<if>
+			<available file="${portlet.dir}" />
+			<then>
+				<fail>${portlet.dir} already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${portlet.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/portlet_tmpl"
+			/>
+		</copy>
+
+		<antelope:stringutil string="${portlet.display.name}" property="portlet.java.class.name">
+			<antelope:replace regex="\s+" replacement="" />
+			<antelope:trim />
+		</antelope:stringutil>
+
+		<antelope:stringutil string="${portlet.name}" property="portlet.java.package.name">
+			<antelope:replace regex="-" replacement="" />
+			<antelope:trim />
+		</antelope:stringutil>
+
+		<if>
+			<not>
+				<or>
+					<not>
+						<isset property="portlet.framework" />
+					</not>
+					<equals arg1="${portlet.framework}" arg2="" />
+					<equals arg1="${portlet.framework}" arg2="mvc" />
+				</or>
+			</not>
+			<then>
+				<if>
+					<or>
+						<equals arg1="${portlet.framework}" arg2="icefaces" />
+						<equals arg1="${portlet.framework}" arg2="liferay_faces_alloy" />
+						<equals arg1="${portlet.framework}" arg2="primefaces" />
+						<equals arg1="${portlet.framework}" arg2="richfaces" />
+					</or>
+					<then>
+						<copy todir="${portlet.dir}">
+							<fileset
+								dir="${sdk.dir}/tools/portlet_jsf_tmpl"
+							/>
+						</copy>
+					</then>
+				</if>
+
+				<copy overwrite="true" todir="${portlet.dir}">
+					<fileset
+						dir="${sdk.dir}/tools/portlet_${portlet.framework}_tmpl"
+					/>
+				</copy>
+			</then>
+		</if>
+
+		<if>
+			<or>
+				<equals arg1="${portlet.framework}" arg2="icefaces" />
+				<equals arg1="${portlet.framework}" arg2="jsf" />
+				<equals arg1="${portlet.framework}" arg2="liferay_faces_alloy" />
+				<equals arg1="${portlet.framework}" arg2="primefaces" />
+				<equals arg1="${portlet.framework}" arg2="richfaces" />
+			</or>
+			<then>
+				<if>
+					<or>
+						<equals arg1="${portlet.framework}" arg2="jsf" />
+						<equals arg1="${portlet.framework}" arg2="liferay_faces_alloy" />
+						<equals arg1="${portlet.framework}" arg2="primefaces" />
+						<equals arg1="${portlet.framework}" arg2="richfaces" />
+					</or>
+					<then>
+						<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=commons-beanutils.jar,commons-collections.jar,commons-digester.jar,commons-fileupload.jar,commons-io.jar,commons-lang.jar
+
+speed-filters-enabled=false
+						</echo>
+					</then>
+					<else>
+						<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=commons-beanutils.jar,commons-collections.jar,commons-digester.jar,commons-lang.jar
+
+speed-filters-enabled=false
+						</echo>
+					</else>
+				</if>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/liferay-portlet.xml">
+					<replacetoken><![CDATA[</icon>]]></replacetoken>
+					<replacevalue><![CDATA[</icon>
+		<requires-namespaced-parameters>false</requires-namespaced-parameters>
+		<ajaxable>false</ajaxable>]]></replacevalue>
+				</replace>
+
+				<replaceregexp match="&lt;/header-portlet-css&gt;(.*)&lt;/footer-portlet-javascript&gt;" replace="&lt;/header-portlet-css&gt;" flags="s">
+					<fileset
+						dir="${portlet.dir}/docroot/WEB-INF"
+						includes="liferay-portlet.xml"
+					/>
+				</replaceregexp>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<portlet-class>com.liferay.util.bridges.mvc.MVCPortlet</portlet-class>]]></replacetoken>
+					<replacevalue><![CDATA[<portlet-class>javax.portlet.faces.GenericFacesPortlet</portlet-class>]]></replacevalue>
+				</replace>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<name>view-template</name>]]></replacetoken>
+					<replacevalue><![CDATA[<name>javax.portlet.faces.defaultViewId.view</name>]]></replacevalue>
+				</replace>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<value>/view.jsp</value>]]></replacetoken>
+					<replacevalue><![CDATA[<value>/views/view.xhtml</value>]]></replacevalue>
+				</replace>
+
+				<delete includeemptydirs="true">
+					<fileset
+						dir="${portlet.dir}/docroot"
+						includes="js/**,view.jsp"
+					/>
+				</delete>
+			</then>
+		</if>
+
+		<if>
+			<equals arg1="${portlet.framework}" arg2="scala" />
+			<then>
+				<move
+					file="${portlet.dir}/docroot/WEB-INF/src/ScalaPortlet.scala"
+					tofile="${portlet.dir}/docroot/WEB-INF/src/${portlet.java.package.name}/${portlet.java.class.name}ScalaPortlet.scala"
+				/>
+
+				<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=scala-library.jar</echo>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<portlet-class>com.liferay.util.bridges.mvc.MVCPortlet</portlet-class>]]></replacetoken>
+					<replacevalue><![CDATA[<portlet-class>@portlet.java.package.name@.@portlet.java.class.name@Portlet</portlet-class>]]></replacevalue>
+				</replace>
+
+				<replaceregexp match="&lt;/icon&gt;(.*)&lt;/footer-portlet-javascript&gt;" replace="&lt;/icon&gt;" flags="s">
+					<fileset
+						dir="${portlet.dir}/docroot/WEB-INF"
+						includes="liferay-portlet.xml"
+					/>
+				</replaceregexp>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/liferay-portlet.xml">
+					<replacetoken><![CDATA[</icon>]]></replacetoken>
+					<replacevalue><![CDATA[</icon>
+		<ajaxable>false</ajaxable>]]></replacevalue>
+				</replace>
+			</then>
+		</if>
+
+		<if>
+			<equals arg1="${portlet.framework}" arg2="vaadin" />
+			<then>
+				<move
+					file="${portlet.dir}/docroot/WEB-INF/src/Application.java"
+					tofile="${portlet.dir}/docroot/WEB-INF/src/${portlet.java.package.name}/${portlet.java.class.name}Application.java"
+				/>
+
+				<echo file="${portlet.dir}/docroot/WEB-INF/liferay-plugin-package.properties" append="true">
+
+portal-dependency-jars=vaadin.jar</echo>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<portlet-class>com.liferay.util.bridges.mvc.MVCPortlet</portlet-class>]]></replacetoken>
+					<replacevalue><![CDATA[<portlet-class>com.vaadin.terminal.gwt.server.ApplicationPortlet2</portlet-class>]]></replacevalue>
+				</replace>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<name>view-template</name>]]></replacetoken>
+					<replacevalue><![CDATA[<name>application</name>]]></replacevalue>
+				</replace>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/portlet.xml">
+					<replacetoken><![CDATA[<value>/view.jsp</value>]]></replacetoken>
+					<replacevalue><![CDATA[<value>@portlet.java.package.name@.@portlet.java.class.name@Application</value>]]></replacevalue>
+				</replace>
+
+				<replaceregexp match="&lt;/icon&gt;(.*)&lt;/footer-portlet-javascript&gt;" replace="&lt;/icon&gt;" flags="s">
+					<fileset
+						dir="${portlet.dir}/docroot/WEB-INF"
+						includes="liferay-portlet.xml"
+					/>
+				</replaceregexp>
+
+				<replace file="${portlet.dir}/docroot/WEB-INF/liferay-portlet.xml">
+					<replacetoken><![CDATA[</icon>]]></replacetoken>
+					<replacevalue><![CDATA[</icon>
+		<requires-namespaced-parameters>false</requires-namespaced-parameters>
+		<ajaxable>false</ajaxable>]]></replacevalue>
+				</replace>
+
+				<delete includeemptydirs="true">
+					<fileset
+						dir="${portlet.dir}/docroot"
+						includes="css/**,js/**,view.jsp"
+					/>
+				</delete>
+			</then>
+		</if>
+
+		<replace dir="${portlet.dir}">
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+			<replacefilter token="@portlet.display.name@" value="${portlet.display.name}" />
+			<replacefilter token="@portlet.java.class.name@" value="${portlet.java.class.name}" />
+			<replacefilter token="@portlet.java.package.name@" value="${portlet.java.package.name}" />
+			<replacefilter token="@portlet.name@" value="${portlet.name}" />
+		</replace>
+
+		<mkdir dir="${portlet.dir}/docroot/WEB-INF/tld" />
+
+		<copy todir="${portlet.dir}/docroot/WEB-INF/tld">
+			<fileset dir="${app.server.portal.dir}/WEB-INF/tld">
+				<include name="aui.tld" />
+				<include name="liferay-portlet.tld" />
+				<include name="liferay-portlet-ext.tld" />
+				<include name="liferay-security.tld" />
+				<include name="liferay-theme.tld" />
+				<include name="liferay-ui.tld" />
+				<include name="liferay-util.tld" />
+			</fileset>
+		</copy>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="calendar-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="chat-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="chat-video-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="contacts-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="contacts-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ddl-form-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="events-display-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="flash-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="google-adsense-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="google-maps-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="gospel-for-asia-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ip-geocoder-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="journal-police-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="knowledge-base-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="knowledge-base-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="logos-reftagger-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="mail-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="marketplace-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="mb-subscription-manager-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="mentions-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="microblogs-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="microblogs-shared" />
+</project><?xml version="1.0"?>
+
+<project name="modules-admin-portlet" basedir="." default="compile">
+	<import file="../../build-common-osgi-plugin.xml" />
+
+	<property name="osgi.plugin.portal.lib.jars" value="bnd.jar,freemarker.jar" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="my-subscriptions-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="knowledge-base-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="netvibes-widget-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="notifications-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="notifications-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="opensocial-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="original.war.file" value="shindig-server-2.0.2.war" />
+
+	<target name="merge">
+
+		<!-- Delete unused Shindig directories -->
+
+		<delete dir="tmp/editor" />
+		<delete dir="tmp/samplecontainer" />
+		<delete dir="tmp/sampledata" />
+
+		<!-- Merge -->
+
+		<merge
+			module.dir="."
+		/>
+
+		<!-- Configure Modules -->
+
+		<copy
+			file="tmp/WEB-INF/web.xml.original"
+			tofile="tmp/WEB-INF/web.xml"
+			overwrite="true"
+		/>
+
+		<replace file="tmp/WEB-INF/web.xml">
+			<replacefilter
+				token="org.apache.shindig.common.servlet.GuiceServletContextListener"
+				value="com.liferay.opensocial.shindig.servlet.GuiceServletContextListener"
+			/>
+			<replacefilter
+				token="org.apache.shindig.gadgets.oauth.OAuthModule"
+				value="com.liferay.opensocial.shindig.oauth.LiferayOAuthModule"
+			/>
+			<replacefilter
+				token="org.apache.shindig.sample.container.SampleContainerGuiceModule:"
+				value=""
+			/>
+			<replacefilter
+				token="org.apache.shindig.sample.shiro.ShiroGuiceModule:"
+				value=""
+			/>
+			<replacefilter
+				token="org.apache.shindig.social.sample.SampleModule"
+				value="com.liferay.opensocial.shindig.guice.LiferayModule"
+			/>
+		</replace>
+
+		<!-- Remove system.properties -->
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;context-param&gt;(\s*?)&lt;param-name&gt;system.properties(.*?)context-param&gt;"
+			replace=""
+		/>
+
+		<!-- Remove Shiro Filter -->
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;filter&gt;(\s*?)&lt;filter-name&gt;ShiroFilter(.*?)filter&gt;"
+			replace=""
+		/>
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;filter-mapping&gt;(\s*?)&lt;filter-name&gt;ShiroFilter(.*?)filter-mapping&gt;"
+			replace=""
+		/>
+
+		<!-- Convert Mappings for Servlet 2.4 Compliance -->
+
+		<replace file="tmp/WEB-INF/web.xml">
+			<replacefilter
+				token="http://java.sun.com/xml/ns/javaee/web-app_2_5.xsd"
+				value="http://java.sun.com/xml/ns/j2ee/web-app_2_4.xsd"
+			/>
+			<replacefilter
+				token="http://java.sun.com/xml/ns/javaee"
+				value="http://java.sun.com/xml/ns/j2ee"
+			/>
+			<replacefilter
+				token="id=&quot;Shindig&quot;"
+				value=""
+			/>
+			<replacefilter
+				token="version=&quot;2.5&quot;"
+				value="version=&quot;2.4&quot;"
+			/>
+		</replace>
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;filter-mapping&gt;(\s*?)&lt;filter-name&gt;authFilter(.*?)filter-mapping&gt;"
+			replace="@AUTH_FILTER_TOKEN@"
+		/>
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;servlet-mapping&gt;(\s*?)&lt;servlet-name&gt;jsonRpcServlet(.*?)servlet-mapping&gt;"
+			replace="@JSON_RPC_SERVLET_TOKEN@"
+		/>
+
+		<replaceregexp
+			flags="gs"
+			file="tmp/WEB-INF/web.xml"
+			match="&lt;servlet-mapping&gt;(\s*?)&lt;servlet-name&gt;restapiServlet(.*?)servlet-mapping&gt;"
+			replace="@REST_API_SERVLET_TOKEN@"
+		/>
+
+		<replace file="tmp/WEB-INF/web.xml" propertyFile="docroot/WEB-INF/web.xml.properties">
+			<replacefilter
+				token="@AUTH_FILTER_TOKEN@"
+				property="auth.filter.replace"
+			/>
+			<replacefilter
+				token="@JSON_RPC_SERVLET_TOKEN@"
+				property="json.rpc.servlet.replace"
+			/>
+			<replacefilter
+				token="@REST_API_SERVLET_TOKEN@"
+				property="rest.api.servlet.replace"
+			/>
+		</replace>
+
+		<!-- Merge web.xml -->
+
+		<java
+			classname="com.liferay.portal.tools.WebXMLBuilder"
+			classpathref="portal.classpath"
+			fork="true"
+			newenvironment="true"
+		>
+			<jvmarg value="-Dexternal-properties=com/liferay/portal/tools/dependencies/portal-tools.properties" />
+			<arg value="tmp/WEB-INF/web.xml" />
+			<arg value="docroot/WEB-INF/web.xml" />
+			<arg value="tmp/WEB-INF/web.xml" />
+		</java>
+
+		<!-- Configure container.js -->
+
+		<antcall target="merge-backup-file">
+			<param name="backup.file.name" value="tmp/WEB-INF/classes/containers/default/container.js" />
+		</antcall>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacefilter token="${SERVER_HOST}:${SERVER_PORT}" value="%host%" />
+			<replacefilter token="/gadgets/" value="/opensocial-portlet/gadgets/" />
+			<replacefilter token="/rpc" value="/opensocial-portlet/rpc" />
+		</replace>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacetoken>"profile" : {</replacetoken>
+			<replacevalue><![CDATA[
+				"home" : {
+					"isOnlyVisible" : true,
+					"urlTemplate" : "http://%host%/opensocial-portlet/gadgets/home{var}"
+				},
+				"profile" : {]]>
+			</replacevalue>
+		</replace>
+
+		<antcall target="strip-comments">
+			<param name="strip.comments.file" value="tmp/WEB-INF/classes/containers/default/container.js" />
+			<param name="strip.comments.encoding" value="utf-8" />
+		</antcall>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacetoken>"gadgets.uri.iframe.lockedDomainSuffix" :  "-a.example.com:8080",</replacetoken>
+			<replacevalue></replacevalue>
+		</replace>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacetoken>"gadgets.uri.iframe.unlockedDomain" : "www.example.com:8080",</replacetoken>
+			<replacevalue></replacevalue>
+		</replace>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacetoken>"gadgets.uri.js.host" : "http://www.example.com/",</replacetoken>
+			<replacevalue></replacevalue>
+		</replace>
+
+		<replace file="tmp/WEB-INF/classes/containers/default/container.js">
+			<replacetoken>"gadgets.uri.js.path" : "/opensocial-portlet/gadgets/js",</replacetoken>
+			<replacevalue></replacevalue>
+		</replace>
+
+		<replaceregexp match="(&quot;gadgets\.uri\.iframe\.basePath&quot; : &quot;.*?&quot;[\s\S]*)&quot;gadgets\.uri\.iframe\.basePath&quot; : &quot;.*?&quot;," replace="\1" flags="g" byline="false">
+			<fileset
+				dir="tmp/WEB-INF/classes/containers/default/"
+				includes="container.js"
+			/>
+		</replaceregexp>
+
+		<!-- Configure oauth.json -->
+
+		<antcall target="merge-backup-file">
+			<param name="backup.file.name" value="tmp/WEB-INF/classes/config/oauth.json" />
+		</antcall>
+
+		<replace file="tmp/WEB-INF/classes/config/oauth.json">
+			<replacefilter token="http://localhost:8080/" value="http://localhost:8080/opensocial-portlet/" />
+		</replace>
+
+		<!-- Configure shindig.properties -->
+
+		<if>
+			<not>
+				<available file="tmp/WEB-INF/classes/shindig.properties.original" />
+			</not>
+			<then>
+				<unzip
+					dest="tmp/WEB-INF/classes"
+					src="tmp/WEB-INF/lib/shindig-common-2.0.2.jar"
+				>
+					<patternset
+						includes="**/shindig.properties"
+					/>
+					<chainedmapper>
+						<flattenmapper />
+						<globmapper
+							from="shindig.properties"
+							to="shindig.properties.original"
+						/>
+					</chainedmapper>
+				</unzip>
+			</then>
+		</if>
+
+		<copy
+			file="tmp/WEB-INF/classes/shindig.properties.original"
+			tofile="tmp/WEB-INF/classes/shindig.properties"
+			overwrite="true"
+		/>
+
+		<replace file="tmp/WEB-INF/classes/shindig.properties">
+			<replacefilter token="/gadgets/" value="/opensocial-portlet/gadgets/" />
+			<replacefilter token="shindig.signing.viewer-access-tokens-enabled=false" value="shindig.signing.viewer-access-tokens-enabled=true" />
+		</replace>
+
+		<!-- Fix canonicaldb.json -->
+
+		<tstamp>
+			<format property="tstamp.value" pattern="yyyyMMddkkmmssSSS" />
+		</tstamp>
+
+		<unjar
+			dest="${tstamp.value}"
+			src="tmp/WEB-INF/lib/shindig-social-api-2.0.2.jar"
+		/>
+
+		<antcall target="strip-comments">
+			<param name="strip.comments.file" value="${tstamp.value}/sampledata/canonicaldb.json" />
+			<param name="strip.comments.encoding" value="utf-8" />
+		</antcall>
+
+		<delete file="tmp/WEB-INF/lib/shindig-social-api-2.0.2.jar" />
+
+		<jar
+			basedir="${tstamp.value}"
+			destfile="tmp/WEB-INF/lib/shindig-social-api-2.0.2.jar"
+		/>
+
+		<delete dir="${tstamp.value}" />
+
+		<!-- Fix shiro.tld -->
+
+		<tstamp>
+			<format property="tstamp.value" pattern="yyyyMMddkkmmssSSS" />
+		</tstamp>
+
+		<unjar
+			dest="${tstamp.value}"
+			src="tmp/WEB-INF/lib/shiro-web-1.0.0-incubating.jar"
+		/>
+
+		<replace file="${tstamp.value}/META-INF/shiro.tld">
+			<replacefilter token="&lt;short-name&gt;Apache Shiro&lt;/short-name&gt;" value="&lt;short-name&gt;shiro&lt;/short-name&gt;" />
+		</replace>
+
+		<delete file="tmp/WEB-INF/lib/shiro-web-1.0.0-incubating.jar" />
+
+		<jar
+			basedir="${tstamp.value}"
+			destfile="tmp/WEB-INF/lib/shiro-web-1.0.0-incubating.jar"
+		/>
+
+		<delete dir="${tstamp.value}" />
+
+		<!-- OpenAjax Hub -->
+
+		<if>
+			<not>
+				<available file="tmp/gadget/js/OpenAjax_Hub_2.0.5_r1293" />
+			</not>
+			<then>
+				<unzip
+					dest="tmp/gadget/js"
+					src="OpenAjax_Hub_2.0.5_r1293.zip"
+				/>
+			</then>
+		</if>
+
+		<!-- LPS-14616 -->
+
+		<antcall target="patch">
+			<param name="patch.destination" value="org/apache/shindig/social/opensocial/model/MediaItem.java" />
+			<param name="patch.original.lib.name" value="shindig-social-api" />
+			<param name="patch.original.lib.version" value="2.0.2" />
+			<param name="patch.original.lib.url" value="http://search.maven.org/remotecontent?filepath=org/apache/shindig" />
+			<param name="patch.source" value="patches/LPS-14616.patch" />
+		</antcall>
+
+		<!-- LPS-15003 -->
+
+		<antcall target="patch">
+			<param name="patch.destination" value="features/rpc/rpc.js" />
+			<param name="patch.original.lib.name" value="shindig-features" />
+			<param name="patch.original.lib.version" value="2.0.2" />
+			<param name="patch.original.lib.url" value="http://search.maven.org/remotecontent?filepath=org/apache/shindig" />
+			<param name="patch.source" value="patches/LPS-15003.patch" />
+		</antcall>
+
+		<!-- LPS-21488 -->
+
+		<antcall target="patch">
+			<param name="patch.destination" value="org/apache/shindig/gadgets/oauth/OAuthRequest.java" />
+			<param name="patch.original.lib.name" value="shindig-gadgets" />
+			<param name="patch.original.lib.version" value="2.0.2" />
+			<param name="patch.original.lib.url" value="http://search.maven.org/remotecontent?filepath=org/apache/shindig" />
+			<param name="patch.source" value="patches/LPS-21488.patch" />
+		</antcall>
+	</target>
+
+	<target name="merge-backup-file">
+		<if>
+			<not>
+				<available file="${backup.file.name}.original" />
+			</not>
+			<then>
+				<copy
+					file="${backup.file.name}"
+					tofile="${backup.file.name}.original"
+				/>
+			</then>
+		</if>
+
+		<copy
+			file="${backup.file.name}.original"
+			tofile="${backup.file.name}"
+			overwrite="true"
+		/>
+	</target>
+
+	<target name="merge-unzip">
+		<merge-unzip
+			module.dir="."
+		/>
+
+		<copy
+			file="tmp/WEB-INF/web.xml"
+			tofile="tmp/WEB-INF/web.xml.original"
+			overwrite="true"
+		/>
+	</target>
+
+	<target name="strip-comments">
+		<replaceregexp file="${strip.comments.file}"
+			encoding="${strip.comments.encoding}"
+			flags="gs"
+			match="\s*/[*].*?[*]/\s*"
+			replace=""
+		/>
+
+		<replaceregexp file="${strip.comments.file}"
+			byline="true"
+			encoding="${strip.comments.encoding}"
+			match="^\s*(//)(.*)$$"
+			replace=""
+		/>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="private-messaging-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="private-messaging-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="random-bible-verse-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="release-tools-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ruby-console-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-dao-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-drools-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-form-navigator-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-groovy-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-hibernate-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-json-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-jsp-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-lar-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-paypal-classic-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-permissions-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-php-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-portal-client-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-portal-service-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-python-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-ruby-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-service-builder-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-sign-in-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-spring-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<!--
+	The original WAR file is generated by executing
+	C:\...\spring-framework-2.5.6\samples\petportal\warfile.bat.
+
+	See http://opensource.atlassian.com/confluence/spring/display/JSR168/Home
+	for more information.
+	-->
+
+	<property name="original.war.file" value="petportal.war" />
+
+	<target name="merge">
+		<merge
+			module.dir="."
+		/>
+
+		<delete file="tmp/WEB-INF/lib/log4j-1.2.15.jar" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-struts-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<target name="build-lang">
+		<antcall target="build-lang-cmd">
+			<param name="lang.dir" value="docroot/WEB-INF/src/content/test" />
+			<param name="lang.file" value="Language" />
+		</antcall>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-tapestry-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-ui-search-container-taglib-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-ui-taglibs-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-wap-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-announcements-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="so-announcements-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-configurations-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="notifications-shared,so-activities-shared,so-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="social-coding-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="social-networking-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<property name="import.shared" value="ip-geocoder-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="stocks-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sun-tour-ipc-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<!--
+	Download Tour IPC Portlets from
+	https://portlet-repository.dev.java.net/public/Download.html.
+	-->
+
+	<property name="original.war.file" value="touripcportlet.war" />
+
+	<target name="merge">
+		<merge
+			module.dir="."
+		/>
+
+		<replace file="tmp/WEB-INF/portlet.xml">
+			<replacefilter
+				token="/opt/SUNWportal/dtd/portlet.xsd"
+				value="http://java.sun.com/xml/ns/portlet/portlet-app_2_0.xsd"
+			/>
+		</replace>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="tasks-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-blob-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-cache-configuration-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-clp-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-able-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-baker-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-charlie-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-dog-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-easy-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-dependency-fox-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-event-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-hook-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-http-client-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-jsr-286-plt-26-6-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-kaleo-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-localized-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-log-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-misc-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-opensocial-pubsub-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-pacl-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-resources-importer-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-transaction-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-user-attributes-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="tich-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="twitter-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="vimeo-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="weather-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="web-form-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="westminster-catechism-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="wiki-navigation-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="wsrp-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+
+	<!--
+	See http://wiki.oasis-open.org/wsrp/WSRP_Producers for a list of demo
+	producers.
+	-->
+
+	<target name="build-wsdl">
+		<taskdef classpathref="portal.classpath" resource="axis-tasks.properties" />
+
+		<mkdir dir="docroot/WEB-INF/lib" />
+
+		<copy todir="docroot/WEB-INF/lib">
+			<fileset dir="${app.server.lib.portal.dir}" includes="${plugin.jars}" />
+		</copy>
+
+		<tstamp>
+			<format property="tstamp.value" pattern="yyyyMMddkkmmssSSS" />
+		</tstamp>
+
+		<mkdir dir="${tstamp.value}" />
+
+		<axis-wsdl2java nowrapped="true" output="${tstamp.value}" serverside="true" url="docroot/WEB-INF/wsdl/wsrp-1.0-service.wsdl" verbose="true">
+			<mapping namespace="urn:oasis:names:tc:wsrp:v1:bind" package="oasis.names.tc.wsrp.v1.bind" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v1:intf" package="oasis.names.tc.wsrp.v1.intf" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v1:types" package="oasis.names.tc.wsrp.v1.types" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v1:wsdl" package="oasis.names.tc.wsrp.v1.wsdl" />
+		</axis-wsdl2java>
+
+		<axis-wsdl2java nowrapped="true" output="${tstamp.value}" serverside="true" url="docroot/WEB-INF/wsdl/wsrp-2.0-service.wsdl" verbose="true">
+			<mapping namespace="urn:oasis:names:tc:wsrp:v2:bind" package="oasis.names.tc.wsrp.v2.bind" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v2:intf" package="oasis.names.tc.wsrp.v2.intf" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v2:types" package="oasis.names.tc.wsrp.v2.types" />
+			<mapping namespace="urn:oasis:names:tc:wsrp:v2:wsdl" package="oasis.names.tc.wsrp.v2.wsdl" />
+		</axis-wsdl2java>
+
+		<replaceregexp
+			match="super\(\s*errorCode,\s*reason,\s*resourceList,\s*extensions\)"
+			replace="super(reason, resourceList, extensions, errorCode)"
+		>
+			<fileset dir="${tstamp.value}/oasis/names/tc/wsrp/v2/types" includes="FailedPortlets.java,HandleEventsFailed.java,ImportPortletsFailed.java" />
+		</replaceregexp>
+
+		<replaceregexp
+			match="super\(\s*ccppProfileWarning,\s*useCachedItem,\s*mimeType,\s*itemString,\s*itemBinary,\s*locale,\s*requiresRewriting,\s*cacheControl,\s*clientAttributes,\s*extensions\);"
+			replace="super(useCachedItem,mimeType,itemString,itemBinary,locale,requiresRewriting,cacheControl,clientAttributes,extensions,ccppProfileWarning);"
+		>
+			<fileset dir="${tstamp.value}/oasis/names/tc/wsrp/v2/types" includes="MarkupContext.java,ResourceContext.java" />
+		</replaceregexp>
+
+		<replace
+			dir="${tstamp.value}/oasis/names/tc/wsrp"
+			includes="v1/types/LocalizedString.java,v1/types/ResourceValue.java,v1/types/Property.java,v2/types/LocalizedString.java,v2/types/ResourceValue.java,v2/types/Property.java"
+			summary="true"
+		>
+			<replacefilter token="attrField.setXmlName(new javax.xml.namespace.QName(&quot;&quot;, &quot;lang&quot;))" value="attrField.setXmlName(new javax.xml.namespace.QName(&quot;http://www.w3.org/XML/1998/namespace&quot;, &quot;lang&quot;));" />
+		</replace>
+
+		<compile-java
+			javac.classpathref="plugin.classpath"
+			javac.destdir="${tstamp.value}"
+			javac.srcdir="${tstamp.value}"
+		/>
+
+		<jar
+			basedir="${tstamp.value}"
+			jarfile="docroot/WEB-INF/lib/oasis-wsrp.jar"
+		/>
+
+		<delete dir="${tstamp.value}" />
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="wysiwyg-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="youtube-portlet" basedir="." default="deploy">
+	<import file="../build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="alloy-mvc-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="amazon-tools-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="json-web-service-client-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="shared" basedir="." default="deploy">
+	<import file="../build-common-plugins.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="cdi-portlet-bridge-shared" basedir="." default="deploy">
+	<property name="ivy.pom.description" value="The Liferay CDI Portlet Bridge provides the ability for portlet developers to use CDI." />
+	<property name="ivy.pom.developer.name" value="Neil Griffin" />
+	<property name="ivy.pom.name" value="Liferay CDI Portlet Bridge" />
+
+	<property name="plugin.version" value="2" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="contacts-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="private-messaging-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="custom-sql-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="custom-sql-user-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="custom-sql-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="deploy-listener-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="dl-repository-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+
+<project name="gogo-commands-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="google-apps-connector-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+
+<project name="http-service-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+
+	<property name="osgi.plugin.portal.lib.jars" value="axis.jar" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="io-delta-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="ip-geocoder-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="json-web-service-client-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="knowledge-base-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="localization-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+
+<project name="log-bridge-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="microblogs-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="notifications-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="contacts-shared,so-announcements-shared,so-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portal-ant-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portal-compat-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portal-patcher-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portal-settings-impl-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="portal-settings-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="portal-settings-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="private-messaging-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+
+<project name="servlet-jsp-compiler-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+
+	<property name="original.lib.name" value="org.apache.jasper.glassfish" />
+	<property name="original.lib.url" value="http://search.maven.org/remotecontent?filepath=org/eclipse/jetty/orbit" />
+	<property name="original.lib.version" value="2.1.0.v201110031002" />
+
+	<property name="osgi.dependencies" value="phidias.jar" />
+
+	<property name="schemas.dir" value="src/javax/servlet/jsp/resources" />
+	<property name="schemas.url" value="http://svn.apache.org/repos/asf/tomcat/trunk/java/javax/servlet/jsp/resources" />
+
+	<target name="compile">
+		<antcall target="patch">
+			<param name="patch.destination" value="org/apache/jasper/EmbeddedServletOptions.java,org/apache/jasper/JspC.java,org/apache/jasper/Options.java,org/apache/jasper/compiler/Compiler.java,org/apache/jasper/compiler/Generator.java,org/apache/jasper/compiler/Jsr199JavaCompiler.java,org/apache/jasper/compiler/JspRuntimeContext.java,org/apache/jasper/compiler/TldLocationsCache.java,org/apache/jasper/runtime/PageContextImpl.java" />
+			<param name="patch.original.lib.name" value="${original.lib.name}" />
+			<param name="patch.original.lib.version" value="${original.lib.version}" />
+			<param name="patch.original.lib.url" value="${original.lib.url}" />
+			<param name="patch.source" value="patches/LPS-35513.patch" />
+		</antcall>
+
+		<if>
+			<not>
+				<available file="${schemas.dir}" />
+			</not>
+			<then>
+				<mkdir dir="${schemas.dir}" />
+
+				<get
+					dest="${schemas.dir}/jsp_2_0.xsd"
+					src="${schemas.url}/jsp_2_0.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/jsp_2_1.xsd"
+					src="${schemas.url}/jsp_2_1.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/jsp_2_2.xsd"
+					src="${schemas.url}/jsp_2_2.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/jsp_2_3.xsd"
+					src="${schemas.url}/jsp_2_3.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/jspxml.dtd"
+					src="${schemas.url}/jspxml.dtd"
+				/>
+
+				<get
+					dest="${schemas.dir}/jspmlx.xsd"
+					src="${schemas.url}/jspxml.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/web-jsptaglibrary_1_1.dtd"
+					src="${schemas.url}/web-jsptaglibrary_1_1.dtd"
+				/>
+
+				<get
+					dest="${schemas.dir}/web-jsptaglibrary_1_2.dtd"
+					src="${schemas.url}/web-jsptaglibrary_1_2.dtd"
+				/>
+
+				<get
+					dest="${schemas.dir}/web-jsptaglibrary_2_0.xsd"
+					src="${schemas.url}/web-jsptaglibrary_2_0.xsd"
+				/>
+
+				<get
+					dest="${schemas.dir}/web-jsptaglibrary_2_1.xsd"
+					src="${schemas.url}/web-jsptaglibrary_2_1.xsd"
+				/>
+			</then>
+		</if>
+
+		<compile
+			module.dir="."
+		/>
+	</target>
+</project><?xml version="1.0"?>
+
+<project name="servlet-jstl-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+
+	<property name="original.lib.name" value="org.apache.taglibs.standard.glassfish" />
+	<property name="original.lib.version" value="1.2.0.v201112081803" />
+	<property name="original.lib.url" value="http://search.maven.org/remotecontent?filepath=org/eclipse/jetty/orbit/" />
+
+	<target name="compile">
+		<antcall target="patch">
+			<param name="patch.destination" value="org/apache/taglibs/standard/tlv/JstlBaseTLV.java" />
+			<param name="patch.original.lib.name" value="${original.lib.name}" />
+			<param name="patch.original.lib.version" value="${original.lib.version}" />
+			<param name="patch.original.lib.url" value="${original.lib.url}" />
+			<param name="patch.source" value="patches/LPS-35466.patch" />
+		</antcall>
+
+		<compile
+			module.dir="."
+		/>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-activities-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-announcements-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="microblogs-shared,so-announcements-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="solr4-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+
+	<property name="original.war.file" value="solr-4.3.1.zip" />
+
+	<target name="compile-import-shared">
+		<unzip
+			dest="lib"
+			src="${original.war.file}"
+		>
+			<patternset includes="solr-4.3.1/dist/solr-core-*.jar,solr-4.3.1/dist/solr-solrj-*.jar,solr-4.3.1/dist/solrj-lib/commons-io*.jar,solr-4.3.1/dist/solrj-lib/httpclient*.jar,solr-4.3.1/dist/solrj-lib/httpcore*.jar,solr-4.3.1/dist/solrj-lib/httpmime*.jar,solr-4.3.1/dist/solrj-lib/noggit*.jar,solr-4.3.1/dist/solrj-lib/slf4j-api*.jar,solr-4.3.1/dist/solrj-lib/slf4j-log4j12*.jar,solr-4.3.1/dist/solrj-lib/wstx-asl*.jar,solr-4.3.1/dist/solrj-lib/zookeeper*.jar" />
+			<mapper type="flatten" />
+		</unzip>
+
+		<compile-import-shared
+			module.dir="."
+		/>
+	</target>
+
+	<target name="shrink-zip">
+		<antcall target="shrink-zip-cmd">
+			<param name="zip.file.name" value="${original.war.file}" />
+			<param name="zip.includes" value="solr-4.3.1/dist/solr-core-*.jar,solr-4.3.1/dist/solr-solrj-*.jar,solr-4.3.1/dist/solrj-lib/commons-io*.jar,solr-4.3.1/dist/solrj-lib/httpclient*.jar,solr-4.3.1/dist/solrj-lib/httpcore*.jar,solr-4.3.1/dist/solrj-lib/httpmime*.jar,solr-4.3.1/dist/solrj-lib/noggit*.jar,solr-4.3.1/dist/solrj-lib/slf4j-api*.jar,solr-4.3.1/dist/solrj-lib/slf4j-log4j12*.jar,solr-4.3.1/dist/solrj-lib/wstx-asl*.jar,solr-4.3.1/dist/solrj-lib/zookeeper*.jar" />
+		</antcall>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sync-engine-shared" basedir="." default="compile">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-shared.xml" />
+
+	<property name="import.shared" value="io-delta-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-module-framework-shared" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../../build-common-osgi-plugin.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="themes" basedir="." default="deploy">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="theme.display.name" />
+				</not>
+				<not>
+					<isset property="theme.name" />
+				</not>
+			</or>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="theme.parent.dir" value="${user.dir}" />
+		<property name="theme.dir" value="${theme.parent.dir}/${theme.name}-theme" />
+
+		<if>
+			<available file="${theme.dir}" />
+			<then>
+				<fail>${theme.name}-theme already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${theme.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/theme_tmpl"
+			/>
+		</copy>
+
+		<mkdir dir="${theme.dir}/docroot/_diffs" />
+		<mkdir dir="${theme.dir}/docroot/WEB-INF/src/resources-importer/document_library/documents" />
+		<mkdir dir="${theme.dir}/docroot/WEB-INF/src/resources-importer/journal/articles" />
+		<mkdir dir="${theme.dir}/docroot/WEB-INF/src/resources-importer/journal/structures" />
+		<mkdir dir="${theme.dir}/docroot/WEB-INF/src/resources-importer/journal/templates" />
+
+		<replace dir="${theme.dir}">
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+			<replacefilter token="@theme.display.name@" value="${theme.display.name}" />
+			<replacefilter token="@theme.name@" value="${theme.name}" />
+		</replace>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-html4-theme" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_unstyled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-styled-advanced-theme" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="classic" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-styled-minimal-theme" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-unstyled-theme" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_unstyled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sample-wap-theme" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="../build-common-theme.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="section-508-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="so-welcome-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="test-servlet-context-include-filter-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="classic" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="welcome-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="classic" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="zoe-brochure-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="zoe-healthcare-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="zoe-political-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="zoe-resort-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="zoe-tech-theme" basedir="." default="deploy">
+	<import file="../build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@ext.name@-ext" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-ext.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@hook.name@-hook" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-hook.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@layouttpl.name@-layouttpl" basedir="." default="deploy">
+	<property name="plugin.version" value="1" />
+
+	<import file="@plugin.type.dir@/build-common-layouttpl.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@portlet.name@-portlet" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-portlet.xml" />
+
+	<target name="compile">
+		<compile
+			module.dir="."
+		/>
+
+		<antcall target="scalac" />
+	</target>
+
+	<target name="fsc" depends="init-scala">
+		<mkdir dir="docroot/WEB-INF/classes" />
+
+		<fsc
+			classpathref="scala.classpath"
+			deprecation="true"
+			destdir="docroot/WEB-INF/classes"
+			srcdir="docroot/WEB-INF/src"
+		>
+			<include name="**/*.java" />
+			<include name="**/*.scala" />
+		</fsc>
+	</target>
+
+	<target name="fsc-reset" depends="init-scala">
+		<mkdir dir="docroot/WEB-INF/classes" />
+
+		<fsc
+			classpathref="scala.classpath"
+			deprecation="true"
+			destdir="docroot/WEB-INF/classes"
+			reset="true"
+			srcdir="docroot/WEB-INF/src"
+		>
+			<include name="**/*.java" />
+			<include name="**/*.scala" />
+		</fsc>
+	</target>
+
+	<target name="fsc-shutdown" depends="init-scala">
+		<mkdir dir="docroot/WEB-INF/classes" />
+
+		<fsc
+			classpathref="scala.classpath"
+			deprecation="true"
+			destdir="docroot/WEB-INF/classes"
+			shutdown="true"
+			srcdir="docroot/WEB-INF/src"
+		>
+			<include name="**/*.java" />
+			<include name="**/*.scala" />
+		</fsc>
+	</target>
+
+	<target name="init-scala">
+		<taskdef classpathref="lib.classpath" resource="scala/tools/ant/antlib.xml">
+			<classpath>
+				<pathelement location="docroot/WEB-INF/lib/scala-library.jar" />
+			</classpath>
+		</taskdef>
+	</target>
+
+	<target name="scalac" depends="init-scala">
+		<mkdir dir="docroot/WEB-INF/classes" />
+
+		<path id="plugin-lib.classpath">
+			<fileset dir="docroot/WEB-INF/lib" includes="*.jar" />
+			<pathelement location="docroot/WEB-INF/classes" />
+		</path>
+
+		<path id="scala.classpath">
+			<path refid="plugin.classpath" />
+		</path>
+
+		<scalac
+			classpathref="scala.classpath"
+			deprecation="true"
+			destdir="docroot/WEB-INF/classes"
+			srcdir="docroot/WEB-INF/src"
+		>
+			<include name="**/*.java" />
+			<include name="**/*.scala" />
+		</scalac>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@portlet.name@-portlet" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-portlet.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@theme.name@-theme" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-theme.xml" />
+
+	<property name="theme.parent" value="_styled" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="@web.name@-web" basedir="." default="deploy">
+	<import file="@plugin.type.dir@/build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="webs" basedir="." default="deploy">
+	<import file="../build-common-plugins.xml" />
+
+	<target name="create">
+		<if>
+			<or>
+				<not>
+					<isset property="web.display.name" />
+				</not>
+				<not>
+					<isset property="web.name" />
+				</not>
+			</or>
+			<then>
+				<fail>This task must be called by the create script.</fail>
+			</then>
+		</if>
+
+		<property name="web.parent.dir" value="${user.dir}" />
+		<property name="web.dir" value="${web.parent.dir}/${web.name}-web" />
+
+		<if>
+			<available file="${web.dir}" />
+			<then>
+				<fail>${web.name}-web already exists.</fail>
+			</then>
+		</if>
+
+		<copy todir="${web.dir}">
+			<fileset
+				dir="${sdk.dir}/tools/web_tmpl"
+			/>
+		</copy>
+
+		<replace dir="${web.dir}">
+			<replacefilter token="@plugin.type.dir@" value="${plugin.type.dir}" />
+			<replacefilter token="@web.display.name@" value="${web.display.name}" />
+			<replacefilter token="@web.name@" value="${web.name}" />
+		</replace>
+	</target>
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="cas-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+
+	<property name="original.war.file" value="cas-web.war" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="deployment-helper-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="elasticsearch-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="kaleo-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="resources-importer-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="scripting-executor-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="server-manager-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="solr4-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+
+	<property name="import.shared" value="solr4-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="sync-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+
+	<property name="import.shared" value="io-delta-shared" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="theme-loader-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="words-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project><?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="wurfl-web" basedir="." default="deploy">
+	<import file="../build-common-web.xml" />
+</project>

@@ -1,0 +1,76 @@
+allprojects {
+	repositories {
+		mavenCentral()
+	}
+}
+
+ext {
+	gradleDir = new File("../../tools/gradle")
+	wrapTasks = ["build", "clean", "compileJava", "deploy", "jar", "test"]
+}
+
+def wrapTask(String task) {
+	def newTasks = []
+
+	rootProject.subprojects.each {
+		project ->
+			def taskName = "$task${project.name}"
+
+			def taskWrapper = tasks.create(
+				name: taskName,
+				type: GradleBuild) {
+
+				dir = "${project.name}"
+				tasks = [ task ]
+			}
+
+			newTasks.add(taskWrapper)
+	}
+
+	newTasks
+}
+
+task installGradleWrapper(type: Wrapper) {
+	project.gradleDir.mkdir()
+
+	gradleVersion = "1.10"
+	jarFile	= "${project.gradleDir}/gradle-wrapper.jar"
+	scriptFile = "${project.gradleDir}/gradlew"
+}
+
+wrapTasks.each {
+	def wrappedTasks = wrapTask(it)
+
+	tasks.create(it) << {
+		wrappedTasks.each { 
+			wrappedTask ->
+				wrappedTask.execute()
+		}
+	}
+}subprojects {
+	apply from: '../../gradle/java.gradle'
+}project.ext.deployDir = project.hasProperty('globalLibDir') ? project.globalLibDir : nullevaluationDependsOn(':registry-api')
+
+dependencies {
+	compile fileTree(
+		dir: liferayProjectDir + '/osgi/lib/common/core',
+		include: '*.jar'
+	)
+
+	compile project(':registry-api')
+}
+
+project.ext.deployDir = project.hasProperty('osgiLibDir') ? project.osgiLibDir + "/core" : nullevaluationDependsOn(':registry-impl')
+
+dependencies {
+	compile fileTree(
+		dir: liferayProjectDir + '/osgi/lib/common/core',
+		include: '*.jar'
+	)
+
+	compile project(':registry-api')
+
+	compile project(':registry-impl')
+}
+
+test.finalizedBy(bndIntegrationTest)

@@ -1,0 +1,194 @@
+apply plugin: 'java'
+apply plugin: 'groovy'
+apply plugin: 'maven'
+apply plugin: 'uploadAuth'
+apply plugin: "sonar-runner"
+apply plugin: 'jacoco'
+apply plugin: 'pitest'
+apply plugin: 'idea'
+
+ext.isReleaseVersion = !project.version.endsWith("SNAPSHOT")
+ext.shouldJacocoBeEnabled = determineIfJacocoShouldBeEnabled()
+
+sourceCompatibility = 1.6
+
+buildscript {
+	repositories {
+		mavenCentral()
+		mavenLocal()
+	}
+	dependencies {
+		classpath 'info.solidsoft.gradle.pitest:gradle-pitest-plugin:0.32.0'
+		classpath 'org.hibernate.build.gradle:gradle-upload-auth-plugin:1.1.1'
+	}
+}
+
+repositories {
+	mavenCentral()
+	mavenLocal()
+}
+
+dependencies {
+	compile 'org.yaml:snakeyaml:[1.0,2.0)'
+	compile 'org.apache.commons:commons-lang3:3.1'
+	compile 'com.google.guava:guava:15.0'
+	compile 'org.slf4j:slf4j-api:1.7.5'
+	compile 'joda-time:joda-time:2.3'
+	compile 'com.google.inject:guice:3.0'
+	testCompile 'commons-validator:commons-validator:1.4.0'
+	testCompile 'ch.qos.logback:logback-classic:1.0.13'
+	testCompile 'org.codehaus.groovy:groovy-all:2.1.9'
+	testCompile 'org.spockframework:spock-core:0.7-groovy-2.0'
+	testCompile 'cglib:cglib-nodep:2.2.2'
+	testCompile 'org.objenesis:objenesis:2.0'
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+	classifier = 'javadoc'
+	from javadoc.destinationDir
+}
+task sourceJar(type: Jar) {
+	classifier = 'sources'
+	from sourceSets.main.allSource
+}
+artifacts {
+	archives jar
+	archives sourceJar
+	archives javadocJar
+}
+
+jar {
+	manifest {
+		attributes(
+				"Application-Name": "jFairy",
+				"Implementation-Title": "jFairy",
+				"Implementation-Version": version,
+				"Implementation-Vendor": 'Codearte',
+				'Built-Date': new Date(),
+				'Built-JDK': System.properties['java.version'],
+				'Built-Gradle': gradle.gradleVersion,
+				"Built-By": System.properties['user.name'])
+	}
+}
+
+if (isReleaseVersion) {
+	//activate signing only for release versions (it is not needed for 'gradle install')
+	apply plugin: 'signing'
+
+	signing {
+		sign configurations.archives
+	}
+
+	gradle.taskGraph.whenReady { taskGraph ->
+		if (taskGraph.allTasks.any { it instanceof org.gradle.plugins.signing.Sign }) {
+			if (!project.hasProperty("signing.keyId") || !project.hasProperty("signing.secretKeyRingFile")) {
+				throw new GradleException("signing.keyId and signing.secretKeyRingFile has to be configured (e.g. in ~/.gradle/gradle.properties)")
+			}
+			Console console = System.console()
+			if (console && !project.hasProperty("signing.password")) {
+				def keyPassword = console.readPassword("\nEnter a private key password: ")
+				ext."signing.password" = keyPassword
+			} else if (!project.hasProperty("signing.password")) {
+				throw new GradleException("No signing.password configured (e.g. in ~/.gradle/gradle.properties). Also unable to get console. Make sure to not running a signing task in a daemon mode (e.g. use --no-daemon).")
+			}
+		}
+	}
+}
+
+uploadArchives {
+	repositories {
+		mavenDeployer {
+			repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+				authentication(userName: sonatypeUsername, password: sonatypePassword)
+			}
+			name = 'Sonatype OSS'
+
+			beforeDeployment {
+				if (isReleaseVersion) {
+					signing.signPom it
+				}
+			}
+
+			pom.project {
+				name 'jFairy'
+				description 'jFairy - Java fake data generator'
+				packaging 'jar'
+				url 'http://www.jfairy.org'
+				licenses {
+					license {
+						name 'The Apache Software License, Version 2.0'
+						url 'http://www.apache.org/licenses/LICENSE-2.0'
+						distribution 'repo'
+					}
+				}
+				developers {
+					developer {
+						id 'jkubrynski'
+						name 'Jakub Kubryński'
+						email 'jkubrynski ATT gmail DOTT com'
+						roles {
+							role 'despot'
+							role 'developer'
+						}
+					}
+					developer {
+						id 'mariuszs'
+						name 'Mariusz Smykuła'
+						email 'mariuszs ATT gmail DOTT com'
+						roles {
+							role 'despot'
+							role 'developer'
+						}
+					}
+					developer {
+						id 'szpak'
+						name 'Marcin Zajączkowski'
+						email 'mszpak ATT wp DOTT pl'
+						roles {
+							role 'despot'
+							role 'developer'
+						}
+					}
+				}
+				scm {
+					connection 'scm:git:git@github.com:Codearte/jfairy.git'
+					developerConnection 'scm:git:git@github.com:Codearte/jfairy.git'
+					url 'https://github.com/Codearte/jfairy'
+				}
+
+			}
+		}
+	}
+}
+
+sonarRunner {
+	sonarProperties {
+		property "sonar.host.url", "http://localhost:9000"
+		property "sonar.jdbc.url", "jdbc:mysql://localhost/sonar"
+		property "sonar.jdbc.driverClassName", "com.mysql.jdbc.Driver"
+		property "sonar.jdbc.username", "sonar"
+	}
+}
+
+pitest {
+	threads = 4
+}
+
+test {
+	ignoreFailures = true
+	jacoco {
+		//Required to not measure code coverage in normal builds
+		enabled = shouldJacocoBeEnabled
+	}
+}
+
+wrapper {
+	gradleVersion '1.10'
+}
+
+boolean determineIfJacocoShouldBeEnabled() {
+    //MZA: A little bit fragile, Better ideas are welcome.
+    def shouldBeEnabled = gradle.startParameter.taskNames.contains("sonarRunner") || gradle.startParameter.taskNames.contains("jacocoTestReport")
+    logger.debug "Is JaCoCo enabled: $shouldBeEnabled"
+    shouldBeEnabled
+}

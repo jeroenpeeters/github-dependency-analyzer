@@ -1,0 +1,228 @@
+/*
+ * Copyright 2013-2014 Grzegorz Ligas <ligasgr@gmail.com> and other contributors
+ * (see the CONTRIBUTORS file).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+
+
+
+
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply from: 'idea.gradle'
+
+sourceCompatibility = 1.6
+
+// Update this path to point to your IDEA installation
+project.ext.userDefinedInstallationPath = ''
+project.ext.sdkDir = 'sdk'
+project.ext.sdkVersion = '133.331'
+project.ext.ideaSdk = 'idea-IC-' + project.ext.sdkVersion
+project.ext.ideaSdkName = 'IDEA IC-' + project.ext.sdkVersion
+if (project.ext.userDefinedInstallationPath)
+    project.ext.ideaInstallationPath = project.ext.userDefinedInstallationPath
+else
+    project.ext.ideaInstallationPath = project.ext.sdkDir + "/" + project.ext.ideaSdk
+project.ext.ideaInstallationSource = 'http://download.jetbrains.com/idea/ideaIC-13.0.1.tar.gz'
+project.ext.ideaArchiveFileName = project.ext.ideaInstallationSource.substring(project.ext.ideaInstallationSource.lastIndexOf('/'))
+
+configurations {
+    provided
+}
+
+sourceSets {
+    main {
+        java {
+            srcDirs 'gen'
+        }
+        compileClasspath += configurations.provided
+        test.compileClasspath += configurations.provided
+        test.runtimeClasspath += configurations.provided
+    }
+    testFunctional {
+        compileClasspath = sourceSets.main.output + configurations.testRuntime + configurations.provided
+        runtimeClasspath = output + sourceSets.main.output + configurations.testRuntime + configurations.provided
+    }
+    testGui {
+        compileClasspath = sourceSets.main.output + configurations.testRuntime + configurations.provided
+        runtimeClasspath = output + sourceSets.main.output + configurations.testRuntime + configurations.provided
+    }
+    testPerformance {
+        compileClasspath = sourceSets.main.output + configurations.testRuntime + configurations.provided
+        runtimeClasspath = output + sourceSets.main.output + configurations.testRuntime + configurations.provided
+    }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+
+    maven {
+        url "http://xqj.net/maven/"
+    }
+}
+
+dependencies {
+    compile project(':intellij-xquery-rt') {
+        ext.transitive = false
+    }
+    provided fileTree(dir: project.ext.ideaInstallationPath + '/lib', include: '*.jar')
+    provided files("${System.properties['java.home']}/../lib/tools.jar")
+    testCompile 'org.mockito:mockito-all:1.9.5'
+    testCompile('org.hamcrest:hamcrest-library:1.1') {
+        exclude group: 'org.hamcrest', module: 'hamcrest-core'
+    }
+    testCompile 'org.easytesting:fest-swing:1.2.1'
+    testCompile 'net.java.openjdk.cacio:cacio-tta:1.3'
+}
+
+test {
+    jvmArgs = ['-Didea.home.path=' + project.ext.ideaInstallationPath, '-Didea.test.group=ALL_EXCLUDE_DEFINED', '-Didea.config.path=sdk/config', '-Didea.system.path=sdk/system', '-ea']
+}
+
+task testFunctional(type: Test) {
+    testClassesDir = sourceSets.testFunctional.output.classesDir
+    classpath = sourceSets.testFunctional.runtimeClasspath
+}
+
+task testGui(type: Test, dependsOn: ':compileForms') {
+    testClassesDir = sourceSets.testGui.output.classesDir
+    classpath = sourceSets.testGui.runtimeClasspath
+}
+
+task testPerformance(type: Test) {
+    testClassesDir = sourceSets.testPerformance.output.classesDir
+    classpath = sourceSets.testPerformance.runtimeClasspath
+}
+
+tasks.withType(Compile) {
+    options.compilerArgs << "-Xlint:unchecked"
+}
+
+task downloadSdk(type: DownloadTask) {
+    sourceUrl = project.ext.ideaInstallationSource
+    target = file(project.ext.sdkDir + '/' + project.ext.ideaArchiveFileName)
+}
+
+task unzipSdk << {
+    copy {
+        from tarTree(resources.gzip(project.ext.sdkDir + '/' + project.ext.ideaArchiveFileName))
+        into file('sdk/')
+    }
+}
+
+class DownloadTask extends DefaultTask {
+    @Input
+    String sourceUrl
+
+    @OutputFile
+    File target
+
+    @TaskAction
+    void download() {
+        ant.get(src: sourceUrl, dest: target)
+    }
+}
+
+task dist(type: Zip) {
+    from(jar.outputs.files) {
+        into('intellij-xquery/lib')
+    }
+    from(configurations.runtime) {
+        into('intellij-xquery/lib')
+    }
+    from(projectDir) {
+        include 'licenses/**'
+        include 'NOTICE'
+        include 'LICENSE'
+        include 'CONTRIBUTORS'
+        into('intellij-xquery')
+    }
+    archiveName 'intellij-xquery.zip'
+}
+
+task compileForms(dependsOn: ':classes') << {
+    ant.taskdef(name: 'javac2', classname: 'com.intellij.ant.Javac2', classpath: configurations.provided.asPath)
+    ant.javac2(destdir: sourceSets.main.output.classesDir, srcdir: 'src/main/java;gen;src/main/resources', classpath: (configurations.provided + configurations.compile).asPath, debug: 'on', nowarn: 'on')
+}
+
+jar {
+    it.dependsOn compileForms
+}/*
+ * Copyright 2013-2014 Grzegorz Ligas <ligasgr@gmail.com> and other contributors
+ * (see the CONTRIBUTORS file).
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+
+
+
+
+
+
+
+
+apply plugin: 'java'
+apply plugin: 'idea'
+apply from: 'idea.gradle'
+
+sourceCompatibility = 1.6
+
+sourceSets {
+    testFunctional {
+        compileClasspath = sourceSets.main.output + configurations.testRuntime
+        runtimeClasspath = output + sourceSets.main.output + configurations.testRuntime
+    }
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+
+    maven {
+        url "http://xqj.net/maven/"
+    }
+}
+
+dependencies {
+    compile fileTree(dir: 'lib', include: '*.jar')
+    testCompile 'junit:junit-dep:4.10'
+    testCompile 'org.mockito:mockito-all:1.9.5'
+    testCompile('org.hamcrest:hamcrest-library:1.1') {
+        exclude group: 'org.hamcrest', module: 'hamcrest-core'
+    }
+}
+
+tasks.withType(Compile) {
+    options.compilerArgs << "-Xlint:unchecked"
+}
+
+task testFunctional(type: Test) {
+    testClassesDir = sourceSets.testFunctional.output.classesDir
+    classpath = sourceSets.testFunctional.runtimeClasspath
+}

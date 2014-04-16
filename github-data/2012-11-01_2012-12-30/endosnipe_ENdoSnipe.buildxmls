@@ -1,0 +1,1947 @@
+<project name="ens" default="dist" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- ★変数設定★ -->
+    <property name="app.name" value="ENdoSnipe"/>
+
+    <!-- パス設定 -->
+    <property name="src.path"           value="${basedir}/src/main/java"/>
+    <property name="src.test.dir"       value="${basedir}/src/test/java"/>
+    <property name="resource.path"      value="${basedir}/src/main/resources"/>
+    <property name="resources.test.dir" value="${basedir}/src/test/resources"/>
+    <property name="lib.path"           value="${basedir}/lib"/>
+    <property name="lib-dependency.dir" value="${lib.path}/dependency"/>
+    <property name="webroot.path"       value="${basedir}/WebContent"/>
+    <property name="weblib.path"        value="${webroot.path}/WEB-INF/lib"/>
+    <property name="webclass.path"      value="${webroot.path}/WEB-INF/classes"/>
+    <property name="report.dir"         value="${basedir}/junit-report" />
+    <property name="deploy.path"        value="${basedir}/target"/> 
+    <property name="classes.path"       value="${deploy.path}/classes"/>
+    <property name="test.dir"           value="classes-test"/>
+    <property name="classes.test.dir"   value="${deploy.path}/${test.dir}" />
+    <property name="jar.file"           value="${deploy.path}/endosnipe-${app.name}.jar"/> 
+    <property name="war.file"           value="${deploy.path}/${app.name}.war"/> 
+
+    <property name="javadoc.path"       value="${deploy.path}/docs"/>
+    <property name="javadoc.package"    value="jp.co.acroquest.*"/>
+    <property name="javadoc.title"      value="Acroquest Technology Project"/>
+    <property name="copyright"          value="Copyright (c) Acroquest Technology Co., Ltd. All rights reserved."/>
+
+    <path id="project.classpath">
+        <pathelement path ="${classes.path}"/>
+        <fileset dir="${weblib.path}">
+            <include name="**/*.jar"/>
+            <include name="**/*.zip"/>
+        </fileset>
+        <fileset dir="${lib.path}">
+            <include name="**/*.jar"/>
+            <include name="**/*.zip"/>
+            <exclude name="sources/*.jar"/>
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="compile.test.classpath">
+        <path refid="project.classpath"/>
+        <pathelement location="${classes.dir}"/>
+        <fileset dir="${lib-dependency.dir}">
+            <include name="junit-*.jar"/>
+        </fileset>
+    </path>
+
+    <!-- ディレクトリの作成 -->
+    <target name="prepare" description="プロジェクトに必要なディレクトリを作成する">
+        <mkdir dir="${classes.path}"/>
+        <mkdir dir="${classes.test.dir}"/>
+        <tstamp/>
+    </target>
+
+    <!-- 以前のビルドにより構築したクラスファイルの削除、
+         コピーしたプロパティファイルの削除 -->
+    <target name="clean" description="以前にビルドされたファイルを削除する">
+      <delete>
+        <fileset dir="${weblib.path}" includes="endosnipe-*.jar"/>
+        <fileset dir="${weblib.path}" includes="ENdoSnipe*.jar"/>
+      </delete>
+      <delete dir="${classes.path}"/>
+      <delete dir="${webclass.path}"/>
+    </target>
+
+    <!-- リソースファイルのビルドパスへのコピー -->
+    <target name="resources"
+            description="リソースファイルをビルドファイル配下にコピーします">
+        <copy todir="${classes.path}" includeEmptyDirs="no">
+            <fileset dir="${resource.path}"/>
+        </copy>
+    </target>
+
+    <!-- SQLファイルのビルドパスへのコピー -->
+    <target name="sql"
+            description="リソースファイルをビルドファイル配下にコピーします">
+        <copy todir="${classes.path}" includeEmptyDirs="no">
+            <fileset dir="${src.path}">
+                <include name="**/*.sql"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="compile" depends="clean,prepare,resources,sql" description="ソースファイルをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <copy file="${endosnipe-common.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-communicator.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-datacollector.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-reporter.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-report-command.jar}" todir="${weblib.path}" failonerror="yes" />
+        <copy file="${endosnipe-perfdoctor.jar}" todir="${weblib.path}" failonerror="yes" />
+        <javac srcdir       = "${src.path}"
+               destdir      = "${classes.path}"
+               encoding     = "UTF-8"
+               classpathref = "project.classpath"
+               debug        = "true"/>
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <javac srcdir="${src.test.dir}" destdir="${classes.test.dir}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="compile.test.classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test.dir}">
+            <fileset dir="${resources.test.dir}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <!--
+        <mkdir dir="${report.dir}" />
+
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="project.classpath" />
+                <pathelement location="${classes.dir}" />
+                <pathelement location="${classes.test.dir}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="no" todir="${report.dir}">
+                <fileset dir="${src.test.dir}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+     -->
+    </target>
+
+    <!-- JARファイル生成 -->
+    <target name="jar" depends="runtest" description="JARファイルを生成する">
+        <jar basedir="${classes.path}" jarfile="${jar.file}" excludes="env.txt,log4j.properties"/>
+    </target>
+
+    <!-- WARファイル生成 -->
+    <target name="war" depends="jar" description="WARファイルを生成する">
+        <copy file="${jar.file}" todir="${weblib.path}" overwrite="true"/>
+        <copy file="${classes.path}/EWDMessages_ja.properties" todir="${webroot.path}/WEB-INF/classes" overwrite="true"/>
+        <copy file="${classes.path}/log4j.xml" todir="${webroot.path}/WEB-INF/classes" overwrite="true"/>
+    	<mkdir dir="${webroot.path}/WEB-INF/classes/dashboard"/>
+    	<copy todir="${webroot.path}/WEB-INF/classes/dashboard" includeEmptyDirs="no">
+    	    <fileset dir="${resource.path}/dashboard"/>
+        </copy>
+        <war basedir="${webroot.path}"
+             destfile="${war.file}"
+             webxml="${webroot.path}/WEB-INF/web.xml">
+        </war>
+    </target>
+
+    <!-- リリースアーカイブの生成 -->
+    <target name="dist" depends="war" description="Build a zip distributable">
+        <!--
+        <copy file="tomcat_config/conf/server.xml" todir="${deploy.path}"/>
+        -->
+
+        <delete dir="${classes.path}" />
+        <delete file="${jar.file}" />
+    </target>
+    
+    <!-- Javadoc 生成 -->
+    <target name="javadoc" depends="prepare" description="Javadoc を生成する">
+        <mkdir dir="${javadoc.path}"/>
+
+        <!-- 過去に出力した Javadoc を削除 -->
+        <delete includeEmptyDirs="true" failonerror="false">
+            <fileset dir="${javadoc.path}"/>
+        </delete>
+
+        <!-- Javadoc 出力ディレクトリ作成 -->
+        <mkdir dir="${javadoc.path}" />
+
+        <!-- Javadoc 生成 -->
+        <javadoc packagenames  = "${javadoc.package}"
+                 sourcepath    = "${src.path}"
+                 classpathref  = "project.classpath"
+                 destdir       = "${javadoc.path}"
+                 access        = "protected"
+                 encoding      = "UTF-8"
+                 docencoding   = "Shift_JIS"
+                 locale        = "ja_JP"
+                 windowtitle   = "${javadoc.title}"
+                 bottom        = "${copyright}" />
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="ENdoSnipe" default="release" basedir="../">
+    <property file="ENdoSnipe/build.properties" />
+
+    <!-- プロパティ定義 -->
+    <property name="endosnipe-common.dir" value="ENdoSnipeCommon" />
+    <property name="endosnipe-communicator.dir" value="ENdoSnipeCommunicator" />
+    <property name="endosnipe-dataaccessor.dir" value="ENdoSnipeDataAccessor" />
+    <property name="endosnipe-datacollector.dir" value="ENdoSnipeDataCollector" />
+    <property name="endosnipe-reporter.dir" value="ENdoSnipeReporter" />
+    <property name="endosnipe-report-command.dir" value="ENdoSnipeReportCommand" />
+    <property name="endosnipe-perfdoctor.dir" value="ENdoSnipePerfDoctor" />
+    <property name="javelin.dir" value="Javelin" />
+    <property name="release.dir" value="ENdoSnipe/release" />
+    <property name="plugin.jar" value="jp.co.acroquest.*.jar" />
+    <property name="datacollector.zip" value="endosnipe-datacollector-*.zip" />
+    <property name="datacollector.tar.gz" value="endosnipe-datacollector-*.tar.gz" />
+    
+    <target name="prepare">
+        <mkdir dir="${release.dir}" />
+    </target>
+
+    <target name="clean">
+        <delete dir="${release.dir}" />
+    </target>
+
+    <!-- 各プロジェクトをビルドして成果物を dist 配下へコピーする -->
+    <target name="all_build" depends="clean, prepare,
+        build_ENdoSnipeCommon, build_ENdoSnipeDataAccessor,
+        build_ENdoSnipeCommunicator, build_ENdoSnipeDataCollector,
+        build_Javelin, build_ENdoSnipeReporter, build_ENdoSnipeReportCommand
+        , build_ENdoSnipePerfDoctor">
+        <copy todir="${release.dir}">
+            <fileset dir="${endosnipe-datacollector.dir}/dist">
+                <include name="${datacollector.zip}" />
+                <include name="${datacollector.tar.gz}" />
+            </fileset>
+            <fileset dir="${javelin.dir}/dist">
+                <include name="Javelin_*.zip" />
+            </fileset>
+        </copy>
+    </target>
+    
+    <!-- 各プロジェクトをビルドして成果物を dist 配下へコピーする -->
+    <target name="build_java5" depends="clean, prepare,
+        build_ENdoSnipeCommon, build_ENdoSnipeDataAccessor,
+        build_ENdoSnipeCommunicator, build_Javelin">
+    </target>
+
+    <!-- 各プロジェクトをビルドして成果物を dist 配下へコピーする -->
+    <target name="build_java6" depends="build_ENdoSnipePerfDoctor,
+        build_ENdoSnipeDataCollector,build_ENdoSnipeReporter,
+        build_ENdoSnipeReportCommand">
+        <copy todir="${release.dir}">
+            <fileset dir="${endosnipe-datacollector.dir}/dist">
+                <include name="${datacollector.zip}" />
+                <include name="${datacollector.tar.gz}" />
+            </fileset>
+            <fileset dir="${javelin.dir}/dist">
+                <include name="Javelin_*.zip" />
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- リリース物件を作成する -->
+    <target name="release" depends="build_java5" description="リリース物件を作成する" />
+
+    <!-- ENdoSnipeCommon をビルドする -->
+    <target name="build_ENdoSnipeCommon">
+        <ant antfile="build.xml" dir="${endosnipe-common.dir}" />
+    </target>
+
+    <!-- ENdoSnipeDataAccessor をビルドする -->
+    <target name="build_ENdoSnipeDataAccessor">
+        <ant antfile="build.xml" dir="${endosnipe-dataaccessor.dir}" inheritall="false"/>
+    </target>
+
+    <!-- ENdoSnipeCommunicator をビルドする -->
+    <target name="build_ENdoSnipeCommunicator">
+        <ant antfile="build.xml" dir="${endosnipe-communicator.dir}" inheritall="false"/>
+    </target>
+
+    <!-- ENdoSnipeDataCollector をビルドする -->
+    <target name="build_ENdoSnipeDataCollector">
+        <ant antfile="build.xml" dir="${endosnipe-datacollector.dir}" inheritall="false"/>
+    </target>
+
+    <!-- Javelin をビルドする -->
+    <target name="build_Javelin">
+        <ant antfile="build.xml" dir="${javelin.dir}" target="release" inheritall="false"/>
+    </target>
+
+    <!-- ENdoSnipeReporter をビルドする -->
+    <target name="build_ENdoSnipeReporter">
+        <ant antfile="build.xml" dir="${endosnipe-reporter.dir}" target="release" inheritall="false"/>
+    </target>
+    
+    <!-- ENdoSnipeReportCommand をビルドする -->
+    <target name="build_ENdoSnipeReportCommand">
+        <ant antfile="build.xml" dir="${endosnipe-report-command.dir}" target="release" inheritall="false"/>
+    </target>
+    
+    <!-- ENdoSnipePerfDoctor をビルドする -->
+    <target name="build_ENdoSnipePerfDoctor">
+        <ant antfile="build.xml" dir="${endosnipe-perfdoctor.dir}" target="release" inheritall="false"/>
+    </target>
+
+    <!-- WebDashboard をビルドする -->
+    <target name="build_WebDashboard">
+        <ant antfile="build.xml" dir="${endosnipe-webdashboard.dir}" inheritall="false"/>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeCommon" default="pluginDist" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-common" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.common" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resources" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="classes" location="classes_build" />
+    <property name="classes.test" location="classes-test_build" />
+    <property name="lib" location="lib" />
+    <property name="dist" location="dist" />
+    <property name="report" location="junit-report" />
+    <property name="plugin-temp" location="plugin-temp" />
+
+    <!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib}/dependency">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テスト用共通ライブラリコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+    </path>
+
+    <target name="init" depends="clean, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init" description="ソースをコンパイルする">
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+    </target>
+
+    <!-- テスト用共通ライブラリのコンパイル -->
+    <target name="compile-test" depends="compile" description="テスト用共通ライブラリをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report}" />
+            
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="yes" todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <!-- 配布物の生成 -->
+    <target name="dist" depends="runtest" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+        <jar jarfile="${dist}/${distname}-${version}.jar" basedir="${classes}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+        <!-- テスト用共通ライブラリjarを作成する -->
+        <jar jarfile="${dist}/${distname}-fortest-${version}.jar" basedir="${classes.test}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="pluginDist" depends="dist" description="プラグインを生成する">
+        <mkdir dir="${plugin-temp}" />
+        <copy todir="${plugin-temp}">
+            <fileset dir="${classes}" />
+        </copy>
+
+        <copy todir="${plugin-temp}/lib">
+            <fileset dir="${lib}">
+                <include name="*.jar" />
+                <exclude name="dependency/*.jar" />
+            </fileset>
+        </copy>
+
+        <copy todir="${plugin-temp}">
+            <fileset dir="." includes="plugin*.properties" />
+            <fileset dir="." includes="plugin.xml" />
+        </copy>
+
+        <jar jarfile="${dist}/${pluginname}_${version}.jar" basedir="${plugin-temp}" manifest="META-INF/MANIFEST.MF" />
+
+        <delete dir="${plugin-temp}" />
+    </target>
+
+    <target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${report}" />
+        <delete dir="${plugin-temp}" />
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeCommunicator" default="pluginDist" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-communicator" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.communicator" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resources" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="classes" location="classes_build" />
+    <property name="classes.test" location="classes-test_build" />
+    <property name="dist" location="dist" />
+    <property name="report" location="junit-report" />
+    <property name="plugin-temp" location="plugin-temp" />
+    <property name="lib.dir" value="lib" />
+    <property name="lib-dependency.dir" value="${lib.dir}/dependency" />
+    
+    <!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib.dir}">
+            <include name="**/*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+        <fileset dir="${lib-dependency.dir}">
+            <include name="junit-*.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" depends="clean, checkLog4jProperties, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init, compileENdoSnipeCommon, compileENdoSnipeDataAccessor" description="ソースをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <copy file="${endosnipe-common.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath refid="classpath" />
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+    </target>
+    
+    <!-- 配布物の生成 -->
+    <target name="dist" depends="runtest" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+
+        <!-- 依存ライブラリを一本化 -->
+
+        <jar jarfile="${dist}/${distname}-${version}.jar" basedir="${classes}" excludes="**/log4j.properties">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+    	<!-- テスト用共通ライブラリjarを作成する -->
+        <jar jarfile="${dist}/${distname}-fortest-${version}.jar" basedir="${classes.test}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report}" />
+
+<!--
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="no" todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+-->
+    </target>
+    
+    <!-- プラグインの生成 -->
+    <target name="pluginDist" depends="dist" description="プラグインを生成する">
+        <mkdir dir="${plugin-temp}" />
+        <copy todir="${plugin-temp}">
+            <fileset dir="${classes}" />
+        </copy>
+
+        <!-- 依存ライブラリを一本化 -->
+        <copy todir="${plugin-temp}">
+            <fileset dir="." includes="plugin*.properties" />
+        </copy>
+
+        <jar jarfile="${dist}/${pluginname}_${version}.jar" basedir="${plugin-temp}" manifest="META-INF/MANIFEST.MF" />
+
+        <delete dir="${plugin-temp}" />
+    </target>
+
+    <target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${r}" />
+        <delete dir="${plugin-temp}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeDataAccessor" default="pluginDist" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-dataaccessor" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.data" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resources" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="lib.dir" location="lib" />
+    <property name="lib-dependency.dir" value="${lib.dir}/dependency" />
+    <property name="classes" location="classes_build" />
+    <property name="classes.test" location="classes-test_build" />
+    <property name="dist" location="dist" />
+    <property name="plugin-temp" location="plugin-temp" />
+    <property name="report" location="junit-report" />
+
+    <!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib.dir}">
+            <include name="**/*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+        <fileset dir="${lib-dependency.dir}">
+            <include name="junit-*.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" depends="clean, checkLog4jProperties, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init, compileENdoSnipeCommon" description="ソースをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <mkdir dir="${lib-dependency.dir}" />
+        <copy file="${endosnipe-common.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-common-fortest.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report}" />
+
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="no" todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <!-- 配布物の生成 -->
+    <target name="dist" depends="compile" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+        <jar jarfile="${dist}/${distname}-${version}.jar" basedir="${classes}" excludes="**/log4j.properties">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- プラグインの生成 -->
+    <target name="pluginDist" depends="dist" description="プラグインを生成する">
+        <mkdir dir="${plugin-temp}" />
+        <copy todir="${plugin-temp}">
+            <fileset dir="${classes}" />
+        </copy>
+
+        <copy todir="${plugin-temp}/lib">
+            <fileset dir="${lib.dir}">
+                <exclude name="endosnipe-*.jar" />
+                <exclude name="junit-*.jar" />
+                <exclude name="source/**" />
+                <exclude name="dependency/*.jar" />
+            </fileset>
+        </copy>
+
+        <copy todir="${plugin-temp}">
+            <fileset dir="." includes="plugin*.properties" />
+        </copy>
+        <copy todir="${plugin-temp}">
+            <fileset file="plugin.xml" />
+        </copy>
+
+        <jar jarfile="${dist}/${pluginname}_${version}.jar" basedir="${plugin-temp}" manifest="META-INF/MANIFEST.MF" />
+
+        <delete dir="${plugin-temp}" />
+    </target>
+
+    <!-- クリーンアップ -->
+    <target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete failonerror="false" dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${report}" />
+        <delete dir="${plugin-temp}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeDataCollector" default="release" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-datacollector" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.collector" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resources" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="classes" location="classes_build" />
+    <property name="classes.test" location="classes-test_build" />
+    <property name="lib" location="lib" />
+    <!-- コンパイル時に必要なライブラリのディレクトリ -->
+    <property name="lib-dependency.dir" value="${lib}/dependency" />
+    <!-- DataCollectorサービス実行時に必要なライブラリのディレクトリ -->
+    <property name="lib-service.dir" value="${lib}/service" />
+    <property name="scripts.dir" value="scripts" />
+    <property name="conf.dir" value="conf" />
+    <property name="doc.dir" value="doc" />
+    <property name="licenses.dir" value="licenses" />
+    <property name="dist" location="dist" />
+    <property name="report" location="junit-report" />
+
+    <property name="plugin-temp" location="plugin-temp" />
+    <property name="service-temp" location="service-temp" />
+    <property name="service-temp-lib" location="service-temp/lib" />
+    <property name="service-temp-release" location="service-temp/release" />
+    <property name="unix-base.dir" value="ENdoSnipe/DataCollector" />
+
+	<taskdef classpath="${lib}\djunit.jar" resource="djunittasks.properties" />
+		
+	<!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib}">
+            <include name="**/*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+        <fileset dir="${lib-dependency.dir}">
+            <include name="junit-*.jar" />
+        </fileset>
+        <fileset dir="${lib-service.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <!-- サービス実行時のクラスパス -->
+    <path id="classpath-service">
+    	<!-- conf/log4j.properties をクラスパスに含める -->
+    	<pathelement path="${service-temp}/conf" />
+        <fileset dir="${service-temp-lib}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" depends="clean, doCheckLog4jProperties, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init, compileENdoSnipeCommon, compileENdoSnipeDataAccessor, compileENdoSnipeCommunicator" description="ソースをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <mkdir dir="${lib-dependency.dir}" />
+        <copy file="${endosnipe-common.jar}" todir="${lib-service.dir}" failonerror="yes" />
+        <copy file="${endosnipe-common-fortest.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-communicator.jar}" todir="${lib-service.dir}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}" todir="${lib-service.dir}" failonerror="yes" />
+    	<copy file="${endosnipe-perfdoctor.jar}" todir="${lib-service.dir}" failonerror="yes" />
+
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+        <copy todir="${classes.test}">
+            <fileset dir="${conf.dir}">
+                <include name="*.conf" />
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report}" />
+
+        <djunit printsummary="yes" virtualMock="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </djunit>
+    </target>
+
+    <!-- 配布物の生成 -->
+    <target name="dist" depends="runtest" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+        <jar jarfile="${dist}/${distname}-${version}.jar" basedir="${classes}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- プラグインの生成 -->
+    <target name="pluginDist" depends="dist" description="プラグインを生成する">
+        <mkdir dir="${plugin-temp}" />
+        <copy todir="${plugin-temp}">
+            <fileset dir="${classes}" />
+        </copy>
+
+        <copy todir="${plugin-temp}/lib">
+            <fileset dir="${lib}">
+                <exclude name="endosnipe-*.jar" />
+                <exclude name="junit-*.jar" />
+                <exclude name="source/**" />
+                <exclude name="dependency/*.jar" />
+            </fileset>
+        </copy>
+
+        <copy todir="${plugin-temp}">
+            <fileset dir="." includes="plugin*.properties" />
+        </copy>
+        <copy todir="${plugin-temp}">
+            <fileset file="plugin.xml" />
+        </copy>
+        <mkdir dir="${plugin-temp}conf" />
+        <copy todir="${plugin-temp}/conf">
+            <fileset dir="${conf.dir}">
+                <include name="*.properties" />
+                <include name="*.conf" />
+            </fileset>
+        </copy>
+
+        <jar jarfile="${dist}/${pluginname}_${version}.jar" basedir="${plugin-temp}" manifest="META-INF/MANIFEST.MF" />
+
+        <delete dir="${plugin-temp}" />
+    </target>
+
+    <!-- サービス配布パッケージの生成 -->
+    <target name="serviceDist" depends="dist" description="サービス配布パッケージを生成する">
+        <mkdir dir="${service-temp}" />
+        <mkdir dir="${service-temp-lib}" />
+        <mkdir dir="${service-temp-release}" />
+
+        <!-- 必要なライブラリをコピーする -->
+        <copy todir="${service-temp-lib}">
+            <fileset dir="${lib-service.dir}">
+                <include name="*.jar" />
+            	<exclude name="org.eclipse.*.jar" />
+            </fileset>
+            <fileset dir="${endosnipe-common.dir}/lib">
+                <include name="commons-logging-*.jar" />
+                <include name="log4j-*.jar" />
+            </fileset>
+            <fileset dir="${endosnipe-dataaccessor.dir}/lib">
+                <include name="commons-dbcp-*.jar" />
+                <include name="commons-io-*.jar" />
+                <include name="commons-pool-*.jar" />
+                <include name="h2-*.jar" />
+            </fileset>
+            <fileset dir="${endosnipe-perfdoctor.dir}/lib">
+                <include name="commons-lang-*.jar" />
+                <include name="commons-beanutils-core-*.jar" />
+            </fileset>
+            <fileset dir="${lib}/opt">
+                <include name="mail.jar" />
+                <include name="activation.jar" />
+                <include name="SNMP4J.jar" />
+                <include name="elasticsearch-*.jar" />
+                <include name="lucene-*.jar" />
+            </fileset>
+        </copy>
+
+    	<!-- サービス用jarに含めるクラスパスを作成する -->
+        <pathconvert property="service.class.path" refid="classpath-service" dirsep="/" pathsep=" ">
+            <map from="${service-temp-lib}/" to="" />
+        	<map from="${service-temp}" to=".." />
+        </pathconvert>
+
+        <!-- サービス用jarを作成する -->
+        <jar jarfile="${dist}/${distname}.jar" basedir="${classes}" excludes="**/log4j.properties">
+            <manifest>
+                <attribute name="Main-Class" value="jp.co.acroquest.endosnipe.collector.Bootstrap" />
+                <attribute name="Class-Path" value="${service.class.path}" />
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+        <!-- リリース用アーカイブの作成準備 -->
+        <mkdir dir="${service-temp-release}/DataCollector" />
+        <mkdir dir="${service-temp-release}/DataCollector/bin" />
+        <copy todir="${service-temp-release}/DataCollector/bin">
+            <fileset dir="${scripts.dir}/windows">
+                <include name="*.*" />
+            </fileset>
+        </copy>
+
+        <mkdir dir="${service-temp-release}/DataCollector/conf" />
+        <copy todir="${service-temp-release}/DataCollector/conf">
+            <fileset dir="${conf.dir}">
+                <include name="*.conf" />
+                <include name="*.properties" />
+                <include name="*.txt" />
+            </fileset>
+        	<fileset dir="${resources}">
+        		<include name="log4j.properties" />
+        	</fileset>
+        </copy>
+
+        <mkdir dir="${service-temp-release}/DataCollector/data" />
+        <touch file="${service-temp-release}/DataCollector/data/deleteMe" />
+
+        <copy todir="${service-temp-release}/DataCollector">
+            <fileset dir="${doc.dir}/windows">
+                <include name="*.txt" />
+            </fileset>
+        </copy>
+
+        <mkdir dir="${service-temp-release}/DataCollector/lib" />
+        <copy todir="${service-temp-release}/DataCollector/lib">
+            <fileset dir="${dist}">
+                <include name="${distname}.jar" />
+            </fileset>
+            <fileset dir="${service-temp-lib}">
+                <include name="*.jar" />
+            </fileset>
+        </copy>
+
+        <mkdir dir="${service-temp-release}/DataCollector/licenses" />
+        <copy todir="${service-temp-release}/DataCollector/licenses">
+            <fileset dir="${licenses.dir}">
+                <include name="*.*" />
+            </fileset>
+        </copy>
+
+        <mkdir dir="${service-temp-release}/DataCollector/logs" />
+        <touch file="${service-temp-release}/DataCollector/logs/deleteMe" />
+
+        <!-- ZIP アーカイブの生成 -->
+        <zip destfile="${dist}/${distname}-${version}.zip" basedir="${service-temp-release}" />
+
+        <!-- TAR アーカイブの生成 -->
+
+        <!-- ドキュメントを各種文字コードで生成 -->
+        <delete>
+            <fileset dir="${service-temp-release}/DataCollector">
+                <include name="*.txt" />
+            </fileset>
+        </delete>
+        <copy file="${doc.dir}/linux/INSTALL.txt" tofile="${service-temp-release}/DataCollector/INSTALL.euc.txt" />
+        <copy file="${doc.dir}/linux/INSTALL.txt" tofile="${service-temp-release}/DataCollector/INSTALL.utf8.txt" />
+        <fixcrlf srcdir="${service-temp-release}/DataCollector" includes="*.euc.txt" outputencoding="EUC-JP" eol="unix" />
+        <fixcrlf srcdir="${service-temp-release}/DataCollector" includes="*.utf8.txt" outputencoding="UTF-8" eol="unix" />
+
+        <tar destfile="${dist}/${distname}-${version}.tar.gz" compression="gzip">
+            <tarfileset prefix="${unix-base.dir}/bin" dir="${scripts.dir}/linux" mode="755">
+                <include name="*" />
+                <exclude name="*.tar.gz"/>
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/bin" dir="${scripts.dir}/linux" mode="644">
+                <include name="*.tar.gz"/>
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/conf" dir="${conf.dir}" mode="644">
+                <include name="*.conf" />
+                <include name="*.properties" />
+                <include name="*.txt" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/conf" dir="${resources}" mode="644">
+                <include name="log4j.properties" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/data" dir="${service-temp-release}/DataCollector/data" mode="644">
+                <include name="*" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}" dir="${service-temp-release}/DataCollector" mode="644">
+                <include name="*.txt" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/lib" dir="${service-temp-release}/DataCollector/lib" mode="644">
+                <include name="*.jar" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/licenses" dir="${licenses.dir}" mode="644">
+                <include name="*" />
+            </tarfileset>
+            <tarfileset prefix="${unix-base.dir}/logs" dir="${service-temp-release}/DataCollector/logs" mode="644">
+                <include name="*" />
+            </tarfileset>
+        </tar>
+
+        <delete dir="${service-temp}" />
+    </target>
+
+    <target name="release" depends="pluginDist, serviceDist" description="すべてのリリース配布物を生成する">
+    </target>
+
+    <target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${report}" />
+        <delete dir="${plugin-temp}" />
+        <delete dir="${service-temp}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="ENdoSnipePerfDoctor" default="release" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- Local system paths -->
+    <property name="src.dir" location="src/main/java" />
+    <property name="src.test.dir" location="src/test/java" />
+    <property name="resources.dir" location="src/main/resources" />
+    <property name="resources.test.dir" location="src/test/resources" />
+    <property name="classes.dir" location="classes_build" />
+    <property name="classes.test.dir" location="classes-test_build" />
+    <property name="lib.dir" value="lib" />
+    <property name="dist.dir" location="dist" />
+    <property name="temp.dir" value="temp" />
+    <property name="report.dir" location="junit-report" />
+
+    <!-- Project settings -->
+    <property name="jarname" value="ENdoSnipePerfDoctor" />
+
+    <!-- Javadoc settings -->
+    <property name="javadoc.package" value="*" />
+    <property name="javadoc.title" value="ENdoSnipePerfDoctor" />
+    <property name="copyright" value="Copyright (c) Acroquest Technology Co., Ltd. All rights reserved." />
+
+    <!-- classpath for compile -->
+    <path id="compile.classpath">
+        <fileset dir="${lib.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="compile.test.classpath">
+        <path refid="compile.classpath" />
+        <pathelement location="${classes.dir}" />
+    </path>
+
+    <target name="prepare" depends="clean">
+        <mkdir dir="${classes.dir}" />
+        <mkdir dir="${classes.test.dir}" />
+        <mkdir dir="${dist.dir}" />
+        <mkdir dir="${temp.dir}" />
+    </target>
+
+    <target name="clean">
+        <delete dir="${classes.dir}" />
+        <delete dir="${classes.test.dir}" />
+        <delete dir="${dist.dir}" />
+        <delete dir="${temp.dir}" />
+        <delete>
+            <fileset dir="${lib.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+
+    <!-- Normal build of application -->
+    <target name="compile" depends="prepare, compileENdoSnipeCommon, compileENdoSnipeDataAccessor">
+        <copy file="${endosnipe-common.jar}" todir="${lib.dir}" failonerror="yes" />
+        <!-- コンパイル実行 -->
+        <javac srcdir="${src.dir}" destdir="${classes.dir}" fork="false" debug="true" encoding="UTF-8">
+            <classpath refid="compile.classpath" />
+        </javac>
+
+        <!-- リソースファイルのコピー -->
+        <copy todir="${classes.dir}" includeEmptyDirs="no">
+            <fileset dir="${resources.dir}">
+                <patternset>
+                    <include name="**/*.properties" />
+                    <include name="**/*.xml" />
+                </patternset>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <javac srcdir="${src.test.dir}" destdir="${classes.test.dir}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="compile.test.classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test.dir}">
+            <fileset dir="${resources.test.dir}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report.dir}" />
+
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="compile.classpath" />
+                <pathelement location="${classes.dir}" />
+                <pathelement location="${classes.test.dir}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="no" todir="${report.dir}">
+                <fileset dir="${src.test.dir}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <!-- Jarの生成 -->
+    <target name="jar" depends="compile">
+        <jar basedir="${classes.dir}" jarfile="${dist.dir}/${jarname}.jar">
+            <exclude name="test/**" />
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>        </jar>
+    </target>
+
+    <target name="dist" depends="jar" description="Build">
+    </target>
+
+    <!-- リリース用ビルド-->
+    <target name="release" depends="dist" />
+
+    <!-- Javadoc 生成 -->
+    <target name="javadoc" depends="prepare" description="Javadoc を生成する">
+        <!-- 過去に出力した Javadoc を削除 -->
+        <delete includeEmptyDirs="true" failonerror="false">
+            <fileset dir="${doc.dir}" />
+        </delete>
+
+        <!-- Javadoc 出力ディレクトリ作成 -->
+        <mkdir dir="${doc.dir}" />
+
+        <!-- Javadoc 生成 -->
+        <javadoc packagenames="${javadoc.package}" sourcepath="${src.dir}" classpathref="project.classpath" destdir="${doc.dir}" access="protected" encoding="Windows-31J" docencoding="Shift_JIS" locale="ja_JP" windowtitle="${javadoc.title}" bottom="${copyright}" />
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeReportCommand" default="release" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-report-command" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.reportcommand" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resource" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="classes" location="classes" />
+    <property name="classes.test" location="classes-test" />
+    <property name="lib" location="lib" />
+    <property name="dist" location="dist" />
+    <property name="temp" location="${dist}/temp" />
+    <property name="report" location="junit-report" />
+    <property name="lib.dir" value="lib" />
+    <property name="lib-dependency.dir" value="${lib.dir}/dependency" />
+    <property name="script.dir" value="script" />
+
+    <property name="install.txt" value="doc/INSTALL.txt" />
+
+    <taskdef classpath="${lib-tool.dir}\djunit.jar" resource="djunittasks.properties" />
+
+    <!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib-dependency.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テスト用共通ライブラリコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+        <fileset dir="${lib-dependency.dir}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib-tool.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" depends="clean, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init" description="ソースをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <copy file="${endosnipe-common.jar}"          todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-reporter.jar}"        todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}"    todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-datacollector.jar}"   todir="${lib-dependency.dir}" failonerror="yes" />
+
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <!--
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+        -->
+    </target>
+
+    <!-- テスト用共通ライブラリのコンパイル -->
+    <target name="compile-test" depends="compile" description="テスト用共通ライブラリをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+         -->
+
+        <!-- リソースをコピーする
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+         -->
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <!--
+        <mkdir dir="${report}" />
+
+        <djunit printsummary="yes" virtualMock="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="yes" todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </djunit>
+        -->
+    </target>
+
+    <target name="obfuscate_mode">
+        <echo>[Obfuscating mode]</echo>
+        <!-- <property name="obfuscate_on" value="on" /> -->
+    </target>
+
+    <!-- 配布物の生成 -->
+    <target name="jar" depends="runtest" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+        <jar jarfile="${dist}/${distname}.jar" basedir="${classes}" manifest="META-INF/MANIFEST.MF">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+        <!-- テスト用共通ライブラリjarを作成する -->
+        <jar jarfile="${dist}/${distname}-fortest.jar" basedir="${classes.test}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- Jarの難読化 -->
+    <target name="obfuscate" depends="jar" if="obfuscate_on">
+        <exec executable="java" dir="${basedir}" failonerror="yes">
+            <arg line="-Xmx512m -jar ${lib-tool.dir}/proguard.jar @reporter.pro" />
+        </exec>
+
+        <delete file="${dist}/${distname}.jar" />
+        <rename dest="${dist}/${distname}.jar" src="${dist}/${distname}.obfuscate.jar" />
+    </target>
+
+    <target name="dist" depends="obfuscate" description="Build a plugin distributable">
+        <!-- 生成物のZIP化 -->
+        <mkdir dir="${temp}" />
+        <copy todir="${temp}" file="${install.txt}" />
+
+        <mkdir dir="${temp}/lib" />
+        <copy todir="${temp}/lib" file="${dist}/${distname}.jar">
+            <fileset dir="${lib.dir}" includes="*.jar" />
+            <fileset dir="${lib-dependency.dir}" includes="*.jar" />
+        </copy>
+
+        <mkdir dir="${temp}/bin" />
+        <copy todir="${temp}/bin">
+            <fileset dir="${script.dir}">
+                <include name="*.bat" />
+                <include name="*.sh" />
+            </fileset>
+        </copy>
+
+        <zip destfile="${dist}/${distname}-${version}.zip" basedir="${temp}" />
+
+        <delete dir="${temp}" />
+    </target>
+
+    <!-- デバッグ用ビルド(難読化なし) -->
+    <target name="debug" depends="dist" />
+
+    <!-- リリース用ビルド(難読化あり) -->
+    <target name="release" depends="obfuscate_mode, dist" />
+
+    <target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${report}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+<project name="ENdoSnipeReporter" default="debug" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- このビルド用のグローバルプロパティを設定する -->
+    <property name="distname" value="endosnipe-reporter" />
+    <property name="pluginname" value="jp.co.acroquest.endosnipe.reporter" />
+
+    <property name="src" location="src/main/java" />
+    <property name="src.test" location="src/test/java" />
+    <property name="resources" location="src/main/resource" />
+    <property name="resources.test" location="src/test/resources" />
+    <property name="classes" location="classes" />
+    <property name="classes.test" location="classes-test" />
+    <property name="lib" location="lib" />
+    <property name="dist" location="dist" />
+    <property name="report" location="junit-report" />
+    <property name="plugin-temp" location="plugin-temp" />
+    <property name="lib.dir" value="lib" />
+    <property name="lib-dependency.dir" value="${lib.dir}/dependency" />
+    <property name="lib-tool.dir" value="${lib.dir}/tool" />
+
+	<taskdef classpath="${lib-tool.dir}\djunit.jar" resource="djunittasks.properties" />
+
+	<!-- 本体コンパイル用のクラスパス -->
+    <path id="classpath">
+        <fileset dir="${lib}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib-dependency.dir}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib-tool.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テスト用共通ライブラリコンパイル用のクラスパス -->
+    <path id="classpath-test">
+        <path refid="classpath" />
+        <pathelement location="${classes}" />
+        <fileset dir="${lib-dependency.dir}">
+            <include name="*.jar" />
+        </fileset>
+        <fileset dir="${lib-tool.dir}">
+            <include name="*.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" depends="clean, copyVerToMANIFEST">
+        <!-- タイムスタンプを作成する -->
+        <tstamp />
+        <!-- コンパイルで使用するビルドディレクトリ構造を作成する -->
+        <mkdir dir="${classes}" />
+        <mkdir dir="${classes.test}" />
+    </target>
+
+    <!-- コンパイル -->
+    <target name="compile" depends="init" description="ソースをコンパイルする">
+        <!-- 依存ライブラリをコピー -->
+        <copy file="${endosnipe-common.jar}"          todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}"    todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-communicator.jar}"    todir="${lib-dependency.dir}" failonerror="yes" />
+
+        <!-- ${src}から${classes}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src}" destdir="${classes}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes}">
+            <fileset dir="${resources}" />
+        </copy>
+    </target>
+
+    <!-- テスト用共通ライブラリのコンパイル -->
+    <target name="compile-test" depends="compile" description="テスト用共通ライブラリをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test}" destdir="${classes.test}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="classpath-test" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test}">
+            <fileset dir="${resources.test}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report}" />
+            
+        <djunit printsummary="yes" virtualMock="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="classpath" />
+                <pathelement location="${classes}" />
+                <pathelement location="${classes.test}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="yes" todir="${report}">
+                <fileset dir="${src.test}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </djunit>
+    </target>
+
+    <target name="obfuscate_mode">
+        <echo>[Obfuscating mode]</echo>
+        <property name="obfuscate_on" value="on" />
+    </target>
+
+    <!-- Jarの難読化 -->
+    <target name="obfuscate" depends="jar" if="obfuscate_on">
+        <exec executable="java" dir="${basedir}" failonerror="yes">
+            <arg line="-Xmx512m -jar ${lib-tool.dir}/proguard.jar @reporter.pro" />
+        </exec>
+
+        <delete file="${dist}/${distname}.jar" />
+        <rename dest="${dist}/${distname}.jar" src="${dist}/${distname}.obfuscate.jar" />
+    </target>
+
+    <target name="dist" depends="obfuscate" description="Build a plugin distributable">
+    </target>
+
+
+	<!-- 配布物の生成 -->
+    <target name="jar" depends="runtest" description="配布物を生成する">
+        <!-- distributionディレクトリを作成する -->
+        <mkdir dir="${dist}" />
+
+        <!-- jarを作成する -->
+        <jar jarfile="${dist}/${distname}.jar" basedir="${classes}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+        <!-- テスト用共通ライブラリjarを作成する -->
+        <jar jarfile="${dist}/${distname}-fortest.jar" basedir="${classes.test}">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <target name="pluginDist" depends="dist" description="プラグインを生成する">
+        <mkdir dir="${plugin-temp}" />
+        <copy todir="${plugin-temp}/lib">
+            <fileset file="${dist}/${distname}.jar" />
+        </copy>
+
+        <copy todir="${plugin-temp}/lib">
+            <fileset dir="${lib}">
+                <include name="*.jar" />
+                <exclude name="dependency/*.jar" />
+            </fileset>
+        </copy>
+
+        <copy todir="${plugin-temp}">
+            <fileset dir="." includes="plugin*.properties" />
+            <fileset dir="." includes="plugin.xml" />
+        </copy>
+
+        <jar jarfile="${dist}/${pluginname}_${version}.jar" basedir="${plugin-temp}" manifest="META-INF/MANIFEST.MF" />
+
+        <delete dir="${plugin-temp}" />
+    </target>
+
+	<!-- デバッグ用ビルド(難読化なし) -->
+	<target name="debug" depends="pluginDist" />
+
+	<target name="release" depends="pluginDist" />
+	
+	<target name="clean" description="クリーンアップ">
+        <!-- ${classes}と${dist}のjarを削除する -->
+
+        <delete dir="${classes}" />
+        <delete dir="${classes.test}" />
+        <delete dir="${dist}" />
+        <delete dir="${report}" />
+        <delete dir="${plugin-temp}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Javelin" default="release" basedir=".">
+    <import file="../ENdoSnipe/build_common.xml" />
+
+    <!-- Project settings -->
+    <property name="jarname" value="javelin" />
+    <property name="zipname" value="Javelin" />
+
+    <!-- Local system paths -->
+    <property name="src.dir" location="src/main/java" />
+    <property name="src.test.dir" location="src/test/java" />
+    <property name="src.servlet-api.dir" location="src/main/servlet-api" />
+    <property name="src.jsonic.dir" location="src/main/jsonic" />
+    <property name="resources.dir" location="src/main/resources" />
+    <property name="resources.test.dir" location="src/test/resources" />
+    <property name="classes.dir" location="classes_build" />
+    <property name="classes.test.dir" location="classes-test_build" />
+    <property name="classes.servlet-api.dir" location="classes-servlet-api" />
+    <property name="classes.jsonic.dir" location="classes-jsonic" />
+    <property name="lib.dir" value="lib" />
+    <property name="lib-compile.dir" location="${lib.dir}/compile" />
+    <property name="lib-opt.dir" location="${lib.dir}/opt" />
+    <property name="lib-tool.dir" location="${lib.dir}/tool" />
+    <property name="lib-dependency.dir" location="${lib.dir}/dependency" />
+    <property name="license.dir" value="license" />
+    <property name="image.dir"   value="image" />
+    <property name="conf.dir"    value="conf" />
+    <property name="bin.dir"     value="sh" />
+    <property name="dist.dir"    location="dist" />
+    <property name="temp.dir"    value="${dist.dir}/temp" />
+    <property name="package.dir" value="package" />
+    <property name="doc.dir"     value="doc" />
+    <property name="report.dir" location="junit-report" />
+    <property name="servlet-api.jar" value="servlet.jar" />
+    <property name="jsonic.jar" value="jsonic.jar" />
+	
+
+    <!-- Javadoc settings -->
+    <property name="javadoc.package" value="*" />
+    <property name="javadoc.title" value="${ant.project.name}" />
+    <property name="copyright" value="Copyright (c) Acroquest Co., Ltd. All rights reserved." />
+
+
+    <!-- classpath settings -->
+    <path id="compile.classpath">
+        <fileset dir="${lib.dir}">
+            <include name="**/*.jar" />
+            <exclude name="${lib-tool.dir}/*.jar" />
+        </fileset>
+    </path>
+
+    <!-- テストクラスコンパイル用のクラスパス -->
+    <path id="compile.test.classpath">
+        <path refid="compile.classpath" />
+        <pathelement location="${classes.dir}" />
+        <fileset dir="${lib-tool.dir}">
+            <include name="junit-*.jar" />
+        </fileset>
+    </path>
+
+    <target name="prepare" depends="clean, copyVerToBuildProperties">
+        <mkdir dir="${classes.dir}" />
+        <mkdir dir="${classes.test.dir}" />
+        <mkdir dir="${classes.servlet-api.dir}" />
+        <mkdir dir="${classes.jsonic.dir}" />
+        <mkdir dir="${dist.dir}" />
+        <mkdir dir="${temp.dir}/${lib.dir}" />
+        <mkdir dir="${temp.dir}/${conf.dir}" />
+        <mkdir dir="${temp.dir}/${bin.dir}" />
+        <mkdir dir="${temp.dir}/${license.dir}" />
+        <mkdir dir="${temp.dir}/${package.dir}" />
+    </target>
+
+    <target name="clean">
+        <delete dir="${classes.dir}" />
+        <delete dir="${classes.test.dir}" />
+        <delete dir="${classes.servlet-api.dir}" />
+        <delete dir="${classes.jsonic.dir}" />
+        <delete dir="${dist.dir}" />
+        <delete dir="${report.dir}" />
+        <delete>
+            <fileset dir="${lib-dependency.dir}" includes="endosnipe-*.jar"/>
+        </delete>
+    </target>
+
+    <!-- ServletAPI のコンパイル -->
+    <target name="check-servlet-api-needs-compile">
+        <uptodate property="servlet-api.compiled" targetfile="${lib-opt.dir}/${servlet-api.jar}">
+            <srcfiles dir="${src.servlet-api.dir}" includes="**/*.*" />
+        </uptodate>
+    </target>
+
+    <target name="compileServletAPI" depends="prepare" unless="servlet-api.compiled">
+        <javac srcdir="${src.servlet-api.dir}" destdir="${classes.servlet-api.dir}" encoding="UTF-8" />
+        <copy todir="${classes.servlet-api.dir}">
+            <fileset dir="${src.servlet-api.dir}">
+                <exclude name="**/*.java" />
+            </fileset>
+        </copy>
+    </target>
+
+   	<!-- jsonic のコンパイル -->
+    <target name="check-jsonic-needs-compile">
+        <uptodate property="jsonic.compiled" targetfile="${lib.dir}/${jsonic.jar}">
+            <srcfiles dir="${src.jsonic.dir}" includes="**/*.*" />
+        </uptodate>
+    </target>
+
+    <target name="compileJsonic" depends="prepare" unless="jsonic.compiled">
+        <javac srcdir="${src.jsonic.dir}" destdir="${classes.jsonic.dir}" encoding="UTF-8" />
+        <copy todir="${classes.jsonic.dir}">
+            <fileset dir="${src.jsonic.dir}">
+                <exclude name="**/*.java" />
+            </fileset>
+        </copy>
+    </target>
+	
+    <!-- ServletAPI の Jar 生成 -->
+    <target name="jarServletAPI" depends="compileServletAPI">
+        <jar jarfile="${lib-opt.dir}/${servlet-api.jar}" basedir="${classes.servlet-api.dir}" />
+    </target>
+	
+    <!-- jsonic の Jar 生成 -->
+    <target name="jarJsonic" depends="compileJsonic">
+        <jar jarfile="${lib.dir}/${jsonic.jar}" basedir="${classes.jsonic.dir}" />
+    </target>
+
+	
+    <!-- Normal build of application -->
+    <target name="compile" depends="prepare, compileENdoSnipeCommon, compileENdoSnipeCommunicator, jarServletAPI, jarJsonic">
+        <!-- Copy depending libraries -->
+        <copy file="${endosnipe-common.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-communicator.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy file="${endosnipe-dataaccessor.jar}" todir="${lib-dependency.dir}" failonerror="yes" />
+        <copy todir="${lib-dependency.dir}">
+            <fileset dir="${endosnipe-common.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </copy>
+
+        <javac destdir="${classes.dir}" fork="true" debug="true" target="1.5" encoding="UTF-8">
+            <classpath refid="compile.classpath" />
+            <src>
+                <pathelement path="${src.dir}" />
+            </src>
+        </javac>
+        <copy todir="${classes.dir}" includeEmptyDirs="no">
+            <fileset dir="${resources.dir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+        <propertyfile file="${classes.dir}/version.properties">
+            <entry key="version" value="${version}" />
+        </propertyfile>
+
+    </target>
+
+    <!-- テストソースのコンパイル -->
+    <target name="compile-test" depends="compile" description="テストソースをコンパイルする">
+        <!-- ${src.test}から${classes.test}に、Javaコードをコンパイルする -->
+        <javac srcdir="${src.test.dir}" destdir="${classes.test.dir}" debug="on" encoding="UTF-8">
+            <classpath>
+                <path refid="compile.test.classpath" />
+            </classpath>
+        </javac>
+
+        <!-- リソースをコピーする -->
+        <copy todir="${classes.test.dir}">
+            <fileset dir="${resources.test.dir}" />
+        </copy>
+    </target>
+
+    <!-- JUnit テストの実行 -->
+    <target name="runtest" depends="compile-test">
+        <mkdir dir="${report.dir}" />
+
+        <junit printsummary="yes" haltonfailure="yes">
+            <classpath>
+                <path refid="compile.classpath" />
+                <pathelement location="${classes.dir}" />
+                <pathelement location="${classes.test.dir}" />
+            </classpath>
+            <formatter type="plain" />
+            <batchtest fork="no" todir="${report.dir}">
+                <fileset dir="${src.test.dir}">
+                    <include name="**/*Test.java" />
+                    <exclude name="**/Abstract*Test.java" />
+                </fileset>
+            </batchtest>
+        </junit>
+    </target>
+
+    <!-- Jarの生成 -->
+    <target name="jar" depends="compile">
+        <jar basedir="${classes.dir}" jarfile="${dist.dir}/${jarname}.jar" manifest="MANIFEST1.MF">
+            <exclude name="test/**" />
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    </target>
+
+    <!-- リリースアーカイブの生成 -->
+    <target name="dist" depends="jar" description="Build a plugin distributable">
+        <copy todir="${temp.dir}/${conf.dir}">
+            <fileset dir="${conf.dir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+        
+        <copy todir="${temp.dir}/bin">
+            <fileset dir="${bin.dir}">
+                <include name="**/*" />
+            </fileset>
+        </copy>
+
+        <copy todir="${temp.dir}/${lib.dir}">
+            <fileset file="${dist.dir}/${jarname}.jar" />
+            <fileset dir="${lib.dir}">
+                <include name="*.jar" />
+                <include name="license/*.*" />
+            </fileset>
+            <fileset dir="${lib.dir}/license">
+                <include name="*.*" />
+            </fileset>
+            <fileset dir="${lib-dependency.dir}">
+                <include name="endosnipe-*.jar" />
+            </fileset>
+        </copy>
+
+    	<!-- ライセンスをコピー -->
+        <copy todir="${temp.dir}/${license.dir}">
+            <fileset dir="${lib.dir}/license">
+                <include name="*.*" />
+            </fileset>
+        </copy>
+    	
+		<!-- 依存ライブラリをjavelin.jarに一本化する。 -->
+		<unjar dest="${temp.dir}/${package.dir}">
+		    <fileset dir="${temp.dir}/${lib.dir}">
+		        <include name="**/*.jar"/>
+		    </fileset>
+		</unjar>
+
+    	<!-- libディレクトリの内容をいったん、クリアする。 -->
+        <delete dir="${temp.dir}/${lib.dir}" />
+        <mkdir dir="${temp.dir}/${lib.dir}" />
+    	
+        <jar basedir="${temp.dir}/${package.dir}" 
+        	jarfile="${temp.dir}/${lib.dir}/${jarname}.jar" manifest="MANIFEST1.MF">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+
+        <!-- マニフェスト中のBoot-Class-Path属性に対応していないプラットフォーム用のjar作成。 -->
+        <jar basedir="${temp.dir}/${package.dir}" 
+        	jarfile="${temp.dir}/${lib.dir}/${jarname}-nobootpath.jar" manifest="MANIFEST2.MF">
+            <manifest>
+                <attribute name="Version" value="${version}_${build}" />
+            </manifest>
+        </jar>
+    	
+        <delete dir="${temp.dir}/${package.dir}" />
+    	
+        <copy todir="${temp.dir}/lib">
+            <fileset dir="${lib.dir}">
+                <include name="*.dll" />
+                <include name="*.so" />
+            </fileset>
+        </copy>
+    	
+        <copy todir="${temp.dir}/opt/lib">
+            <fileset dir="${lib-opt.dir}">
+                <include name="*.jar" />
+            </fileset>
+        </copy>
+    	
+        <mkdir dir="${temp.dir}/logs" />
+        <touch file="${temp.dir}/logs/deleteme.txt" />
+        <mkdir dir="${temp.dir}/traces" />
+        <touch file="${temp.dir}/traces/deleteme.txt" />
+        <mkdir dir="${temp.dir}/data" />
+        <touch file="${temp.dir}/data/deleteme.txt" />
+
+        <!-- Create zipfile. -->
+        <zip destfile="${dist.dir}/${zipname}_${version}.zip">
+            <zipfileset prefix="${zipname}" dir="${temp.dir}" includes="**" />
+        </zip>
+
+<!--
+    	<delete dir="${temp.dir}" />
+-->
+    	
+    </target>
+
+    <!-- ビルド -->
+    <target name="release" depends="dist" />
+
+    <!-- Javadoc 生成 -->
+    <target name="javadoc" depends="prepare" description="Javadoc を生成する">
+        <!-- 過去に出力した Javadoc を削除 -->
+        <delete includeEmptyDirs="true" failonerror="false">
+            <fileset dir="${doc.dir}" />
+        </delete>
+
+        <!-- Javadoc 出力ディレクトリ作成 -->
+        <mkdir dir="${doc.dir}" />
+
+        <!-- Javadoc 生成 -->
+        <javadoc packagenames="${javadoc.package}" sourcepath="${src.dir}" classpathref="project.classpath" destdir="${doc.dir}" access="protected" encoding="Windows-31J" docencoding="Shift_JIS" locale="ja_JP" windowtitle="${javadoc.title}" bottom="${copyright}" />
+    </target>
+
+</project>

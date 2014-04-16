@@ -1,0 +1,181 @@
+/**
+ * To release to Sonatype's central nexus, run:
+ *
+ *   gradle release -Prelease_to_central
+ */
+import org.gradle.api.internal.artifacts.publish.DefaultPublishArtifact
+
+apply plugin: 'groovy'
+apply plugin: 'signing'
+apply plugin: 'project-report'
+apply plugin: 'maven'
+
+// Artifact settings
+group = 'org.zeroturnaround'
+version = '1.1.3-SNAPSHOT'
+
+// Compiler settings
+targetCompatibility = "1.5"
+sourceCompatibility = "1.5"
+
+configurations {
+  deployerJars
+  published.extendsFrom archives, signatures
+}
+
+// === Dependency management
+
+dependencies {
+  compile gradleApi()
+  compile localGroovy()
+
+  compile 'commons-lang:commons-lang:2.4'
+  testCompile 'junit:junit:4.8.2'
+  testCompile 'xmlunit:xmlunit:1.4'
+  deployerJars 'org.apache.maven.wagon:wagon-webdav-jackrabbit:2.0'
+}
+
+repositories {
+  mavenCentral()
+}
+
+/**
+* This method helps to run certain parts of config only when these tasks are really going to be executed.
+* This is very useful as to not force somebody who just wants to build locally define nexus usernames/passwords, etc.
+*/
+def onlyFor(task, config) {
+ gradle.taskGraph.whenReady { graph ->
+   if (graph.hasTask(task)) {
+     project.configure(project, config)
+   }
+ }
+}
+
+// =========================== TESTING ===========================
+
+// Run tests before installing the artifact
+install.dependsOn(test)
+
+// =========================== PUBLISHING ===========================
+
+// Contents of pom.xml that will be created for publishing to the maven-style artifact repository
+def pomFile = pom {
+  project {
+    name 'ZeroTurnaround JRebel Gradle plugin'
+    description 'ZeroTurnaround JRebel Gradle plugin'
+    url 'http://www.zeroturnaround.com/jrebel'
+    licenses {
+      license {
+        name 'The Apache Software License, Version 2.0'
+        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+        distribution 'repo'
+      }
+    }
+    developers {
+      developer {
+        id 'IB'
+        name 'Igor Bljahhin'
+        email 'igor.bljahhin@zeroturnaround.com'
+      }
+      developer {
+        id 'sander24'
+        name 'Sander Sonajalg'
+        email 'sander.sonajalg@zeroturnaround.com'
+      }
+    }
+    inceptionYear '2011'
+    scm {
+      url 'https://github.com/zeroturnaround/gradle-jrebel-plugin'
+      connection 'scm:git:git@github.com:zeroturnaround/gradle-jrebel-plugin.git'
+      developerConnection 'scm:git:git@github.com:zeroturnaround/gradle-jrebel-plugin.git'
+    }
+  }
+}
+
+onlyFor(uploadPublished) {
+  if (version.contains("SNAPSHOT")) {
+    throw new GradleException("ERROR! You are not supposed to run 'release' task for a SNAPSHOT version! If releasing the plugin is " +
+        "what you really wanted to do, please first change the version!");
+  }
+    
+  uploadPublished {
+    repositories {
+      mavenDeployer {
+        configuration = configurations.deployerJars
+  
+        // Use sonatype central
+        if (project.getProperties().get("release_to_central") != null) {
+          repository(url: 'https://oss.sonatype.org/service/local/staging/deploy/maven2') {
+            authentication(userName: sonatypeNexusStagingUsername, password: sonatypeNexusStagingPassword)
+          }
+    
+          snapshotRepository(url: 'https://oss.sonatype.org/content/repositories/snapshots') {
+            authentication(userName: zeroturnaroundNexusSnapshotsUsername, password: zeroturnaroundNexusSnapshotsPassword)
+          }
+        }
+
+        // Use zeroturnaround central
+        else {
+          repository(url: 'http://repos.zeroturnaround.com/nexus/content/repositories/zt-public-releases/') {
+            authentication(userName: zeroturnaroundNexusReleasesUsername, password: zeroturnaroundNexusReleasesPassword)
+          }
+          
+          snapshotRepository(url: 'http://repos.zeroturnaround.com/nexus/content/repositories/zt-public-snapshots/') {
+            authentication(userName: zeroturnaroundNexusSnapshotsUsername, password: zeroturnaroundNexusSnapshotsPassword)
+          }
+        }
+  
+        pom = pomFile
+      }
+    }
+  }
+}
+
+signing {
+  sign configurations.archives
+}
+
+task release( dependsOn: uploadPublished ) {
+  description = 'Releases the plugin, sign artifacts and upload them to Nexus. The bundle with artifacts for Sonatype is included into release.'
+}
+
+// Prepare bundle for Sonatype
+
+task sourcesJar(type: Jar, dependsOn: classes) {
+  classifier = 'sources'
+  from sourceSets.main.allSource
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+  classifier = 'javadoc'
+  from javadoc.destinationDir
+}
+
+class GeneratePomTask extends DefaultTask {
+  File destFile
+}
+
+task generatePom(type: GeneratePomTask) {
+  destFile = file("${buildDir}/generatedPoms/${project.name}-${project.version}.pom")
+
+  inputs.file project.buildFile
+  outputs.file destFile
+
+  doLast {
+    println "Generate POM into " + destFile
+
+    pomFile.writeTo(destFile)
+  }
+}
+
+// Define list of artifacts
+artifacts {
+  archives (generatePom.destFile) {
+    name 'pom'
+    type 'pom'
+    builtBy generatePom
+  }
+  archives jar
+  archives sourcesJar
+  archives javadocJar
+}

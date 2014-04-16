@@ -1,0 +1,219 @@
+def teamDir = new File(buildscript.sourceFile.parentFile, 'team-props')
+ext.checkstyleConfigDir = "$teamDir"
+
+buildscript {
+    repositories {
+        maven {
+            url 'http://repo1.maven.org/maven2'
+        }
+        maven {
+            url 'https://oss.sonatype.org/content/repositories/snapshots/'
+        }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.6.+'
+        classpath 'com.squareup.gradle:gradle-android-test-plugin:0.9.1-SNAPSHOT'
+    }
+}
+
+allprojects {
+    version = '1.6.1'
+}
+
+subprojects {
+    repositories {
+        mavenCentral()
+        mavenLocal()
+        maven {
+            url "https://oss.sonatype.org/content/repositories/snapshots"
+        }
+        maven {
+            url "https://github.com/novoda/public-mvn-repo/raw/master/releases"
+        }
+    }
+
+    apply plugin: 'checkstyle'
+    checkstyle {
+        ignoreFailures = true
+        configFile = new File(teamDir, "checkstyle.xml")
+        configProperties.checkstyleConfigDir = checkstyleConfigDir
+    }
+
+    apply plugin: 'findbugs'
+    findbugs {
+        ignoreFailures = true
+    }
+
+    apply plugin: 'pmd'
+    pmd {
+        ignoreFailures = true
+    }
+}apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    compile 'com.google.android:android:2.2.1'
+    testCompile 'junit:junit:4.10'
+    testCompile 'org.robolectric:robolectric:2.2'
+    testCompile 'commons-io:commons-io:2.4'
+    testCompile 'org.mockito:mockito-core:1.9.5'
+    testCompile 'org.powermock:powermock-module-junit4:1.5'
+    testCompile 'org.powermock:powermock-classloading-objenesis:1.5'
+    testCompile 'org.powermock:powermock-api-mockito:1.5'
+    testCompile 'junit-addons:junit-addons:1.4'
+}
+
+tasks.withType(Test) {
+    testLogging {
+        exceptionFormat "full"
+        events "passed", "skipped", "failed"
+    }
+}
+
+group = 'com.novoda'
+ext.packaging = 'jar'
+
+def isDevBuild
+def isCiBuild
+def isReleaseBuild
+
+def sonatypeRepositoryUrl
+
+if (hasProperty("release")) {
+    isReleaseBuild = true
+    sonatypeRepositoryUrl = "https://oss.sonatype.org/service/local/staging/deploy/maven2/"
+} else if (hasProperty("ci")) {
+    isCiBuild = true
+    version += "-SNAPSHOT"
+    sonatypeRepositoryUrl = "https://oss.sonatype.org/content/repositories/snapshots/"
+} else {
+    isDevBuild = true
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+ 
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+if (isReleaseBuild) {
+    signing {
+        sign configurations.archives
+    }
+}
+
+uploadArchives {
+    repositories {
+        if (isDevBuild) {
+            mavenLocal()
+        } else {
+            mavenDeployer {
+
+
+                if (isReleaseBuild) {
+                    beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+                }
+
+                repository(url: sonatypeRepositoryUrl) {
+                    authentication(userName: sonatypeUsername, password: sonatypePassword)
+                }
+
+                pom.project {
+                    artifactId 'imageloader-core'
+                    groupId 'com.novoda.imageloader'
+
+
+                    name 'ImageLoader'
+                    packaging 'jar'
+                    description 'ImageLoader for Android'
+                    url 'http://github.com/novoda/ImageLoader'
+
+                    scm {
+                        url 'scm:git@github.com:novoda/ImageLoader.git'
+                        connection 'scm:git@github.com:novoda/ImageLoader.git'
+                        developerConnection 'scm:git@github.com:novoda/ImageLoader.git'
+                    }
+
+                    licenses {
+                        license {
+                            name 'The Apache Software License, Version 2.0'
+                            url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                            distribution 'repo'
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id 'luigiagosti'
+                            name 'Luigi Agosti'
+                        }
+                        developer {
+                            id 'charroch'
+                            name 'Carl-Gustaf Harroch'
+                        }
+                        developer {
+                            id 'frankiesardo'
+                            name 'Frankie Sardo'
+                        }
+                        developer {
+                            id 'ataulm'
+                            name 'Ataul Munim'
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+apply plugin: 'android'
+
+repositories {
+    mavenCentral()
+    maven {
+        url "http://www.bugsense.com/gradle/"
+    }
+}
+
+dependencies {
+    compile project(":core")
+    compile "com.bugsense.trace:bugsense:3.5"
+    instrumentTestCompile 'com.jayway.android.robotium:robotium-solo:3.6'
+}
+
+android {
+    compileSdkVersion 18
+    buildToolsVersion "18.1.0"
+
+    defaultConfig {
+        minSdkVersion 8
+        targetSdkVersion 18
+        testPackageName "com.novoda.imageloader.acceptance"
+    }
+
+    // define these in a local gradle.properties
+    if (hasProperty('signKeyStore')) {
+        signingConfigs {
+            release {
+                storeFile file(signKeyStore)
+                storePassword signStorePass
+                keyAlias signAlias
+                keyPassword signAliasPassword
+            }
+        }
+    }
+}

@@ -1,0 +1,883 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="db4o" default="jar" basedir=".">
+	<description>
+		DB4O doesn't provide a decent building script... here is the one we are going to use.
+	</description>
+
+	<!-- set global properties for this build -->
+	<property name="src" location="src"/>
+	<property name="build" location="build"/>
+	<property name="build-db4oj" location="build-db4oj"/>
+	<property name="build-db4ojdk1.2" location="build-db4ojdk1.2"/>
+	<property name="build-db4ojdk5" location="build-db4ojdk5"/>
+	<property name="jarfile" location="db4o.jar"/>
+	<property name="javac.target.version" value="1.5"/>
+
+	<assertions>
+		<enable/>
+	</assertions>
+
+	<target name="mkdir">
+		<mkdir dir="${build}"/>
+		<mkdir dir="${build-db4oj}"/>
+		<mkdir dir="${build-db4ojdk1.2}"/>
+		<mkdir dir="${build-db4ojdk5}"/>
+	</target>
+
+	<!-- ================================================== -->
+
+	<target name="compile" depends="mkdir">
+		<!-- Create the time stamp -->
+		<tstamp/>
+
+		<javac srcdir="${src}" destdir="${build-db4oj}" debug="on" optimize="on" source="${javac.target.version}">
+			<classpath>
+				<pathelement location="${freenet-ext.location}"/>
+			</classpath>
+
+			<include name="db4oj/**/*.java"/>
+			<exclude name="db4oj/test/**/*.java"/>
+		</javac>
+
+		<javac srcdir="${src}" destdir="${build-db4ojdk1.2}" debug="on" optimize="on" source="${javac.target.version}">
+			<classpath>
+				<pathelement location="${build-db4oj}"/>
+			</classpath>
+
+			<include name="db4ojdk1.2/**/*.java"/>
+			<exclude name="db4ojdk1.2/test/**/*.java"/>
+		</javac>
+
+		<javac srcdir="${src}" destdir="${build-db4ojdk5}" debug="on" optimize="on" source="${javac.target.version}">
+			<classpath>
+				<pathelement location="${build-db4oj}"/>
+				<pathelement location="${build-db4ojdk1.2}"/>
+			</classpath>
+
+			<include name="db4ojdk5/**/*.java"/>
+			<exclude name="db4ojdk5/test/**/*.java"/>
+		</javac>
+	</target>
+
+	<!-- ================================================== -->
+
+	<target name="mergeOptimizations" depends="compile">
+		<!-- yes, order matters! -->
+		<copy todir="${build}/" overwrite="true">
+			<fileset dir="${build-db4oj}"/>
+		</copy>
+		<copy todir="${build}/" overwrite="true">
+			<fileset dir="${build-db4ojdk1.2}"/>
+		</copy>
+		<copy todir="${build}/" overwrite="true">
+			<fileset dir="${build-db4ojdk5}"/>
+		</copy>
+	</target>
+
+	<!-- ================================================== -->
+
+	<target name="jar" depends="compile, mergeOptimizations"
+		description="generate the distribution" >
+		<!-- Create the distribution directory -->
+		<jar jarfile="${jarfile}" basedir="${build}"/>
+	</target>
+
+	<!-- ================================================== -->
+
+	<target name="clean" description="Delete class files and docs dir.">
+		<delete file="${jarfile}"/>
+		<delete dir="${build}"/>
+		<delete dir="${build-db4oj}"/>
+		<delete dir="${build-db4ojdk1.2}"/>
+		<delete dir="${build-db4ojdk5}"/>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Freenet dependencies" default="all" basedir=".">
+
+	<!-- =================================================================== -->
+	<!-- Global properties                                                   -->
+	<!-- =================================================================== -->
+
+	<!-- user overrides (properties are immutable, so set overrides first) -->
+	<property file="override.properties" />
+	<property file="build.properties" />
+	<property file="source.properties" />
+	<condition property="java.class.dirs" value="${java.class.dirs.user}" else="${java.home}/lib">
+		<available file="${java.class.dirs.user}" type="dir"/>
+	</condition>
+
+	<property name="pkg.base" value=".."/>
+	<property name="pkg.contrib" value="freenet-ext"/>
+	<property name="main.make" value="build"/>
+	<property name="main.src" value="src"/>
+	<property name="main.dst" value="dist"/>
+
+	<property name="tmp" value="tmp"/>
+	<property name="lib" value="lib"/>
+
+	<property name="version.src" value="freenet/node/ExtVersion.java" />
+	<property name="version.make" value="freenet/node/ExtVersion.class" />
+
+	<!-- set version string based on git-describe -->
+	<exec executable="git" failifexecutionfails="false"
+		errorProperty="git.errror" outputproperty="git.describe" resultproperty="git.result">
+		<arg value="describe" />
+		<arg value="--always" />
+		<arg value="--abbrev=4" />
+	</exec>
+	<condition property="git.revision" value="${git.describe}" else="@custom@">
+		<and>
+			<equals arg1="${git.result}" arg2="0" />
+			<isset property="git.describe" />
+		</and>
+	</condition>
+
+	<!-- =================================================================== -->
+	<!-- Miscellaneous                                                       -->
+	<!-- =================================================================== -->
+
+	<target name="dist" depends="clean-all, all" description="clean-build everything"/>
+
+	<target name="all" depends="package" description="build everything, incl. docs"/>
+
+	<target name="clean-all" depends="clean, clean-local, clean-libsrc" description="clean all build products and remote source code"/>
+
+	<target name="debug">
+		<echoproperties/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Standard build                                                      -->
+	<!-- =================================================================== -->
+
+	<target name="init">
+		<mkdir dir="${main.make}"/>
+		<mkdir dir="${main.dst}"/>
+	</target>
+
+	<target name="build" depends="init">
+		<!-- Create the time stamp -->
+		<tstamp/>
+
+		<!-- Create the Version file with patched revision number in ${main.make} -->
+		<copy file="${main.src}/${version.src}" tofile="${main.make}/${version.src}" overwrite="true" />
+		<delete file="${main.make}/${version.make}" quiet="true" />
+		<replace file="${main.make}/${version.src}">
+			<replacefilter token="@custom@" value="${git.revision}"/>
+		</replace>
+		<echo message="Updated build version to ${git.revision} in ${main.make}/${version.src}"/>
+
+		<javac srcdir="${main.make}" destdir="${main.make}" debug="on" optimize="on" source="1.5" target="1.5">
+			<compilerarg line="${javac.args}"/>
+			<include name="${version.src}"/>
+		</javac>
+	</target>
+
+	<target name="package" depends="build,prepare-local,package-lib" description="build standard binary packages">
+		<jar jarfile="${main.dst}/${pkg.contrib}.jar" basedir="${main.make}" includes="**" update="yes" duplicate="fail" level="9">
+			<exclude name="${version.src}"/>
+		</jar>
+		<lib-copy lib="wrapper"/>
+		<lib-copy lib="db4o"/>
+		<lib-copy lib="commons-compress"/>
+		<lib-copy lib="lzmajio"/>
+		<lib-copy lib="mantissa"/>
+		<lib-copy lib="bitcollider-core"/>
+	</target>
+
+	<target name="clean" description="clean standard build products">
+		<delete dir="${main.make}"/>
+		<delete dir="${main.dst}"/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Build local packages                                                -->
+	<!-- =================================================================== -->
+
+	<target name="prepare-local" depends="init,package-local">
+		<unjar dest="${main.make}" src="${pkg.base}/onion-common/lib/onion-common.jar"/>
+		<unjar dest="${main.make}" src="${pkg.base}/onion-fec/lib/onion-fec.jar"/>
+		<copy todir="${main.make}"><fileset dir="${pkg.base}/jcpuid/lib" includes="freenet/**" /></copy>
+		<copy todir="${main.make}"><fileset dir="${pkg.base}/NativeBigInteger/lib" includes="net/i2p/**" /></copy>
+		<copy todir="${main.make}"><fileset dir="${pkg.base}/NativeThread/lib" includes="freenet/**" /></copy>
+	</target>
+
+	<target name="package-local" description="build locally maintained packages">
+		<ant inheritAll="false" antfile="${pkg.base}/onion-common/build.xml"/>
+		<ant inheritAll="false" antfile="${pkg.base}/onion-fec/build.xml"/>
+		<!-- TODO build native binaries for the other libs -->
+	</target>
+
+	<target name="clean-local">
+		<ant inheritAll="false" antfile="${pkg.base}/onion-common/build.xml" target="clean" />
+		<ant inheritAll="false" antfile="${pkg.base}/onion-fec/build.xml" target="clean" />
+		<!-- TODO clean native binaries for the other libs -->
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Build remote packages                                               -->
+	<!-- =================================================================== -->
+
+	<target name="package-lib" depends="prepare-libsrc" description="build external packages">
+		<lib-sequential lib="wrapper">
+			<!-- TODO build native libs -->
+			<ant inheritAll="false" antfile="${pkg.base}/wrapper/build.xml" target="jar">
+				<property name="bits" value="${sun.arch.data.model}"/>
+				<property name="javac.target.version" value="${javac.target.version}"/>
+			</ant>
+		</lib-sequential>
+		<lib-sequential lib="db4o">
+			<ant inheritAll="false" antfile="${pkg.base}/db4o/build.xml" target="jar">
+				<property name="javac.target.version" value="${javac.target.version}"/>
+			</ant>
+		</lib-sequential>
+		<lib-sequential lib="commons-compress">
+			<maven basedir="${pkg.base}/commons-compress" goal="package"/>
+		</lib-sequential>
+		<lib-sequential lib="lzmajio">
+			<fail if="${extlib.lzma.suppress}" message="lzmajio requires lzma, but extlib.lzma.suppress is ON."/>
+			<copy todir="${pkg.base}/lzmajio">
+				<fileset dir="${pkg.base}/lzma/Java"><include name="SevenZip/**"/></fileset>
+			</copy>
+			<ant inheritAll="false" antfile="${pkg.base}/lzmajio/build.xml" target="jar"/>
+		</lib-sequential>
+		<lib-sequential lib="mantissa">
+			<!-- TODO run tests -->
+			<ant inheritAll="false" antfile="${pkg.base}/mantissa/build.xml" target="jar"/>
+		</lib-sequential>
+		<lib-sequential lib="bitcollider-core">
+			<ant inheritAll="false" antfile="${pkg.base}/${pkg.contrib}/generic-build.xml"
+			  dir="${pkg.base}/bitcollider-core" target="jar">
+				<property name="jar" value="bitcollider-core.jar"/>
+			</ant>
+		</lib-sequential>
+	</target>
+
+	<target name="clean-lib" depends="prepare-libsrc" description="clean build products of external packages">
+		<lib-sequential lib="wrapper">
+			<!--WORKAROUND bug in wrapper's build.xml-->
+			<mkdir dir="${pkg.base}/wrapper/bin"/>
+			<mkdir dir="${pkg.base}/wrapper/lib"/>
+			<mkdir dir="${pkg.base}/wrapper/test"/>
+			<ant inheritAll="false" antfile="${pkg.base}/wrapper/build.xml">
+				<property name="bits" value="${sun.arch.data.model}"/>
+				<target name="clean"/>
+				<target name="total-clean"/>
+			</ant>
+		</lib-sequential>
+		<lib-sequential lib="db4o">
+			<ant inheritAll="false" antfile="${pkg.base}/db4o/build.xml" target="clean"/>
+		</lib-sequential>
+		<lib-sequential lib="commons-compress">
+			<maven basedir="${pkg.base}/commons-compress" goal="clean"/>
+		</lib-sequential>
+		<lib-sequential lib="lzmajio">
+			<!-- TODO lzmajio doesn't have a "clean" target :/ -->
+			<!--<ant inheritAll="false" antfile="${pkg.base}/lzmajio/build.xml" target="clean"/>-->
+		</lib-sequential>
+		<lib-sequential lib="mantissa">
+			<ant inheritAll="false" antfile="${pkg.base}/mantissa/build.xml" target="clean"/>
+		</lib-sequential>
+		<lib-sequential lib="bitcollider-core">
+			<ant inheritAll="false" antfile="${pkg.base}/${pkg.contrib}/generic-build.xml"
+			  dir="${pkg.base}/bitcollider-core" target="clean">
+				<property name="jar" value="bitcollider-core.jar"/>
+			</ant>
+		</lib-sequential>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- Get remote packages                                                 -->
+	<!-- =================================================================== -->
+
+	<target name="get-libsrc">
+		<lib-getsrc lib="wrapper"/>
+		<lib-getsrc lib="db4o"/>
+		<lib-getsrc lib="commons-compress"/>
+		<lib-getsrc lib="lzma"/>
+		<lib-getsrc lib="lzmajio"/>
+		<lib-getsrc lib="mantissa"/>
+		<lib-getsrc lib="bitcollider-core"/>
+	</target>
+
+	<target name="prepare-libsrc" depends="get-libsrc" description="ensure that all remote source code is available">
+		<lib-unpacksrc lib="wrapper"/>
+		<lib-unpacksrc lib="db4o" dest="db4o.orig"/>
+		<lib-unpacksrc lib="commons-compress"/>
+		<lib-unpacksrc lib="lzma"/>
+		<lib-unpacksrc lib="lzmajio"/>
+		<lib-unpacksrc lib="mantissa"/>
+		<lib-unpacksrc lib="bitcollider-core"/>
+
+		<!-- extra massaging -->
+		<lib-sequential lib="db4o">
+			<copy todir="${pkg.base}/db4o">
+				<fileset dir="${pkg.base}/db4o.orig"><include name="src/db4oj*/**"/></fileset>
+			</copy>
+		</lib-sequential>
+	</target>
+
+	<target name="clean-libsrc" description="remove all remote source code">
+		<lib-delsrc lib="wrapper"/>
+		<lib-delsrc lib="db4o" dest="db4o.orig"/>
+		<lib-delsrc lib="commons-compress"/>
+		<lib-delsrc lib="lzma"/>
+		<lib-delsrc lib="lzmajio"/>
+		<lib-delsrc lib="mantissa"/>
+		<lib-delsrc lib="bitcollider-core"/>
+
+		<!-- undo massaging -->
+		<lib-delsrc lib="db4o" dest="db4o/src"/>
+	</target>
+
+	<!-- =================================================================== -->
+	<!-- ANT dependencies                                                    -->
+	<!-- =================================================================== -->
+
+	<!-- required to work with commons-compress -->
+	<include file="ant-task-maven.xml"/>
+
+	<!-- required for "lib-getsrc" macro -->
+	<taskdef resource="net/sf/antcontrib/antlib.xml">
+		<classpath><pathelement location="${java.class.dirs}/ant-contrib.jar"/></classpath>
+	</taskdef>
+
+	<macrodef name="lib-report">
+		<attribute name="lib" />
+		<sequential>
+			<if>
+				<istrue value="${extlib.@{lib}.suppress}"/>
+				<then><echo message="suppress @{lib} is ON"/></then>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="lib-sequential">
+		<attribute name="lib" />
+		<element name="tasks" implicit="true" optional="true" />
+		<sequential>
+			<if>
+				<istrue value="${extlib.@{lib}.suppress}"/>
+				<else><tasks/></else>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="lib-delsrc">
+		<attribute name="lib" />
+		<attribute name="dest" default="@{lib}"/>
+		<sequential>
+			<lib-sequential lib="@{lib}">
+				<delete dir="${pkg.base}/@{dest}"/>
+			</lib-sequential>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="lib-copy">
+		<attribute name="lib" />
+		<sequential>
+			<lib-sequential lib="@{lib}">
+				<copy tofile="${main.dst}/@{lib}.jar" file="${pkg.base}/@{lib}/${extlib.@{lib}.jar-dst}"/>
+			</lib-sequential>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="lib-unpacksrc">
+		<attribute name="lib" />
+		<attribute name="dest" default="@{lib}"/>
+		<sequential>
+			<lib-report lib="@{lib}"/>
+			<lib-sequential lib="@{lib}">
+				<basename property="extlib.@{lib}.filename" file="${extlib.@{lib}.location}"/>
+				<if>
+					<available file="${pkg.base}/@{dest}" type="dir"/>
+					<else>
+						<delete dir="${tmp}"/>
+						<mkdir dir="${tmp}"/>
+						<untar dest="${tmp}" compression="gzip">
+							<fileset dir="${lib}" includes="${extlib.@{lib}.filename}"><filename name="*.tar.gz"/></fileset>
+						</untar>
+						<untar dest="${tmp}" compression="bzip2">
+							<fileset dir="${lib}" includes="${extlib.@{lib}.filename}"><filename name="*.tar.bz2"/></fileset>
+						</untar>
+						<untar dest="${tmp}">
+							<fileset dir="${lib}" includes="${extlib.@{lib}.filename}"><filename name="*.tar"/></fileset>
+						</untar>
+						<unzip dest="${tmp}">
+							<fileset dir="${lib}" includes="${extlib.@{lib}.filename}"><filename name="*.zip"/></fileset>
+						</unzip>
+						<move file="${tmp}/${extlib.@{lib}.top-dir}" tofile="${pkg.base}/@{dest}"/>
+						<delete dir="${tmp}"/>
+					</else>
+				</if>
+			</lib-sequential>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="lib-getsrc">
+		<attribute name="lib" />
+		<sequential>
+			<lib-sequential lib="@{lib}">
+				<basename property="extlib.@{lib}.filename" file="${extlib.@{lib}.location}"/>
+				<for list="${extlib.use-mirrors}" param="mirror">
+					<sequential>
+						<nested-lib-getsrc-from lib="@{lib}" mirror="@{mirror}" />
+					</sequential>
+				</for>
+				<nested-lib-getsrc-from lib="@{lib}" mirror="upstream" location="${extlib.@{lib}.location}" />
+				<nested-lib-checksrc lib="@{lib}"/>
+				<fail unless="${extlib.@{lib}.available}"
+				  message="lib-getsrc: could not get ${extlib.@{lib}.filename} from any of the mirrors, or upstream."/>
+			</lib-sequential>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="nested-lib-checksrc">
+		<!-- check if a lib's source code is available.
+		  this macro does not have a lib-sequential wrapper, so should only
+		  be accessed from inside macros that do have that wrapper -->
+		<attribute name="lib" />
+		<sequential>
+			<condition property="extlib.@{lib}.available">
+				<and>
+					<available file="${lib}/${extlib.@{lib}.filename}"/>
+					<checksum file="${lib}/${extlib.@{lib}.filename}" algorithm="SHA-256"
+					  property="${extlib.@{lib}.sum-sha256}" />
+				</and>
+			</condition>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="nested-lib-getsrc-from">
+		<!-- get a lib's source code from a given location and mirror.
+		  this macro does not have a lib-sequential wrapper, so should only
+		  be accessed from inside macros that do have that wrapper -->
+		<attribute name="lib" />
+		<attribute name="mirror" />
+		<attribute name="location" default="${extlib.mirror.@{mirror}}/${extlib.@{lib}.filename}" />
+		<sequential>
+			<nested-lib-checksrc lib="@{lib}"/>
+			<if>
+				<istrue value="${extlib.@{lib}.available}"/>
+				<else>
+					<delete dir="${tmp}"/>
+					<mkdir dir="${tmp}"/>
+					<get src="@{location}" dest="${tmp}/${extlib.@{lib}.filename}"
+					  verbose="true" usetimestamp="true" ignoreerrors="true"/>
+					<condition property="extlib.@{lib}.available.@{mirror}">
+						<and>
+							<available file="${tmp}/${extlib.@{lib}.filename}"/>
+							<checksum file="${tmp}/${extlib.@{lib}.filename}" algorithm="SHA-256"
+							  property="${extlib.@{lib}.sum-sha256}"/>
+						</and>
+					</condition>
+					<if>
+						<istrue value="${extlib.@{lib}.available.@{mirror}}"/>
+						<then><move file="${tmp}/${extlib.@{lib}.filename}" todir="${lib}"/></then>
+						<else><echo message="failed checksum: @{location}"/></else>
+					</if>
+					<delete dir="${tmp}"/>
+				</else>
+			</if>
+		</sequential>
+	</macrodef>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project default="jar" basedir=".">
+	<description>A simple build file to build a generic library.</description>
+
+	<property name="class" value="class"/>
+	<property name="src" value="src"/>
+	<property name="lib" value="lib"/>
+	<fail unless="jar" message="Java property &quot;jar&quot; not set!"/>
+
+	<target name="init">
+		<mkdir dir="${class}"/>
+	</target>
+
+	<target name="build" depends="init">
+		<javac srcdir="${src}" destdir="${class}" optimize="on"/>
+	</target>
+
+	<target name="jar" depends="build">
+		<jar jarfile="${jar}" basedir="${class}" includes="**" update="yes" duplicate="fail" level="9"/>
+	</target>
+
+	<target name="clean">
+		<delete dir="${class}"/>
+		<delete file="${jar}"/>
+	</target>
+
+</project>
+<!--
+The default target is "all".
+
+Other targets:
+
+  clean         - Remove all generated files.
+  classes       - Builds the classes.
+  jars          - Creates the jars.
+  all           - builds everything
+  prepare       - Set up build directory structure.
+  dist          - Constructs a distribution file.
+  javadoc       - Builds the API documentation.
+  demo          - Runs the demo application.
+  test          - Runs the junit test harnesses.
+
+-->
+<project name="Common" default="all" basedir=".">
+  <property environment="env"/>
+  <property file="build.properties"/>
+
+  <!-- ==================================================================== -->
+  <target name="prepare">
+    <mkdir dir="${javadoc}" />
+    <mkdir dir="${classes}" />
+    <mkdir dir="${lib}" />
+
+    <available property="jdk1.4.available" 
+	       classname="java.util.logging.Handler" />
+
+    <available property="jsse.available" 
+	       classname="com.sun.net.ssl.internal.ssl.Provider" />
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="all" depends="jars,tools"/>
+
+  <!-- ==================================================================== -->
+  <target name="tidy"
+	  description="Remove generated files not needed for running">
+
+    <delete dir="${classes}" quiet="true"/>
+    <ant dir="${test}" inheritAll="true" target="tidy"/>
+    <ant dir="${tools}" inheritAll="true" target="tidy"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="clean" depends="tidy"
+	  description="Remove generated files">
+        
+    <delete dir="${javadoc}" quiet="true"/>
+    <delete file="${app.jar}" quiet="true"/>
+
+    <ant dir="${test}" inheritAll="true" target="clean"/>
+    <ant dir="${tools}" inheritAll="true" target="clean"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="classes" depends="prepare"
+   description="Compile the java classes" >
+    <copy todir="${classes}">
+      <fileset dir="${src}">
+        <include name="**/*.properties" />
+      </fileset>
+    </copy>
+    <javac srcdir="${src}"
+           destdir="${classes}"
+	   classpath="${classpath}"
+	   debug="${javac.debug}"
+           optimize="${javac.optimize}"
+           deprecation="${javac.deprecation}"
+           >
+       <include name="**/*.java"/>
+    </javac>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="classes1.4" depends="prepare" if="jdk1.4.available"
+   description="Compile the java 1.4 classes" >
+
+    <copy todir="${classes}">
+      <fileset dir="${src1.4}">
+        <include name="**/*.properties" />
+      </fileset>
+    </copy>
+    <javac srcdir="${src1.4}"
+           destdir="${classes}"
+	   classpath="${classpath}"
+           debug="${javac.debug}"
+           optimize="${javac.optimize}"
+           deprecation="${javac.deprecation}"
+           >
+       <include name="**/*.java"/>
+    </javac>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="jars" depends="classes"
+	  description="Build the jar files">
+    <jar jarfile="${app.jar}" basedir="${classes}"> 
+<!--	 manifest="${src}/MANIFEST.MF" -->
+
+       <include name="${packagepath}/**"/>
+    </jar>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="javadoc" depends="jars"
+   description="Build the javadoc">
+    <mkdir dir="${javadoc}"/>
+    <javadoc packagenames="${package}.*"
+             sourcepath="${src}"
+	     classpath="${classpath}"
+             destdir="${javadoc}"
+             author="true"
+             version="true"
+             public="true"
+             windowtitle="${ant.project.name} API"
+             doctitle="${ant.project.name}"
+             bottom="Copyright &#169; 2002 Onion Networks. All Rights Reserved.">
+      <link href="http://onionnetworks.com/fec/javadoc/"/>
+      <link href="http://java.sun.com/products/jdk/1.3/docs/api/"/>
+    </javadoc>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="test" depends="jars"
+   description="Build and run the test harnesses">
+    <ant dir="${test}" inheritAll="true" target="test"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="tools" depends="jars"
+	  description="builds the tools">
+    <ant dir="${tools}" inheritAll="true" target="jars"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="demo" depends="tools" 
+	  description="Build and run the demo">
+    
+    <ant dir="${tools}" inheritAll="true" target="demo"/>
+  </target>
+</project>
+<!--
+The default target is "test", which will build all tests and run them.
+
+Other targets:
+
+  clean         - Remove all generated files.
+  prepare       - Set up build directory structure.
+-->
+
+<project name="Tests" default="test" basedir="..">
+
+  <property environment="env"/>
+
+  <!-- ==================================================================== -->
+  <target name="prepare">
+    <mkdir dir="${test.classes}" />
+    <mkdir dir="${test.results}" />
+    <available property="junit.task.available" 
+               classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask" />
+    <available property="junit.available" 
+               classname="junit.framework.Test" />
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="tidy">
+    <delete dir="${test.classes}" quiet="true"/>
+    <delete dir="${test.results}" quiet="true"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="clean" depends="tidy">
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="classes" depends="prepare">
+    <javac srcdir="${test.src}"
+           destdir="${test.classes}"
+	   classpath="${test.classpath}"
+           debug="true"
+           optimize="false"
+           deprecation="${javac.deprecation}">
+       <include name="**/*.java"/>
+    </javac>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="test" depends="junit"/>
+
+  <!-- ==================================================================== -->
+  <target name="junit" depends="prepare,check.junit.task,check.junit,classes">
+    <echo>
+Test results in ${test.results}
+    </echo>
+    <delete file="${test.results}/*" quiet="true" />
+    <junit fork="no" printsummary="yes" haltonerror="yes" haltonfailure="yes" >
+      <formatter type="plain" usefile="true" />                  
+      <classpath> 
+         <pathelement path="${test.classpath}" />
+         <pathelement location="${junit.jar}" />     
+         <pathelement location="${test.classes}" />     
+      </classpath>        
+      <batchtest fork="no" todir="${test.results}">
+        <fileset dir="${test.src}">
+          <include name="**/*Test*.java" />
+        </fileset>
+      </batchtest>   
+    </junit>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="check.junit.task" unless="junit.task.available" >
+    <fail message="
+ The &lt;junit&gt; task is not available.
+ You need to install the Ant optional tasks .jar in the [ant]/lib directory."
+   />
+  </target>
+
+  <target name="check.junit" unless="junit.available" >
+    <fail message="
+  The junit .jar is not in the Ant class path.
+  You need to place a copy junit.jar in the [ant]/lib directoy." 
+    />
+  </target>
+</project>
+
+
+
+
+
+
+
+<!--
+The default target is "jars".
+
+Other targets:
+
+  clean         - Remove all generated files.
+  classes       - Builds the classes.
+  jars          - Creates the jars.
+  prepare       - Set up build directory structure.
+  javadoc       - Builds the API documentation.
+  demo          - Runs the demo application.
+
+-->
+<project name="Tools" default="jars" basedir="..">
+  <property environment="env"/>
+
+  <!-- ==================================================================== -->
+  <target name="prepare">
+    <mkdir dir="${tools.javadoc}" />
+    <mkdir dir="${tools.classes}" />
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="tidy"
+	  description="Remove generated files not needed for running">
+
+    <delete dir="${tools.classes}" quiet="true"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="clean" depends="tidy"
+	  description="Remove generated files">
+        
+    <delete dir="${tools.javadoc}" quiet="true"/>
+    <delete file="${tools.jar}" quiet="true"/>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="classes" depends="prepare"
+   description="Compile the java classes" >
+    <copy todir="${tools.classes}">
+      <fileset dir="${tools.src}">
+        <include name="**/*.properties" />
+      </fileset>
+    </copy>
+    <javac srcdir="${tools.src}"
+           destdir="${tools.classes}"
+	   classpath="${tools.classpath}"
+           debug="${javac.debug}"
+           optimize="${javac.optimize}"
+           deprecation="${javac.deprecation}"
+           >
+       <include name="**/*.java"/>
+    </javac>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="jars" depends="classes"
+	  description="Build the jar files">
+    <jar jarfile="${tools.jar}" basedir="${tools.classes}"> 
+
+       <include name="${packagepath}/**"/>
+    </jar>
+  </target>
+
+  <!-- ==================================================================== -->
+  <target name="javadoc" depends="jars"
+   description="Build the javadoc">
+    <mkdir dir="${tools.javadoc}"/>
+    <javadoc packagenames="${tools.package}.*"
+             sourcepath="${tools.src}"
+             destdir="${tools.javadoc}"
+	     classpath="${tools.classpath}"
+             author="true"
+             version="true"
+             public="true"
+             windowtitle="${ant.project.name} API"
+             doctitle="${ant.project.name}"
+             bottom="Copyright &#169; 2002 Onion Networks. All Rights Reserved.">
+      <link href="http://java.sun.com/products/jdk/1.3/docs/api/"/>
+    </javadoc>
+  </target>
+
+  <target name="demo" depends="jars" 
+   description="Build and run the demo">
+    <java classname="${tools.package}.Demo"
+          dir="${basedir}"
+	  classpath="${env.CLASSPATH};${tools.classpath}"
+          fork="yes"
+          failonerror="yes"
+          >
+    </java>
+  </target>
+</project>
+
+
+
+
+
+
+
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="Onion FEC library" default="jars" basedir=".">
+	<description>A simple build file to build the subset of the Onion FEC library required by Freenet.</description>
+
+	<property name="classes" value="classes"/>
+	<property name="bin" value="bin"/>
+	<property name="src" value="src"/>
+	<property name="lib" value="lib"/>
+
+	<target name="init">
+		<mkdir dir="${classes}"/>
+		<mkdir dir="${lib}"/>
+	</target>
+
+	<target name="build" depends="init">
+		<javac srcdir="${src}" destdir="${classes}" optimize="on">
+			<classpath path="../onion-common/lib/onion-common.jar"/>
+			<exclude name="csrc/**"/>
+		</javac>
+		<copy todir="${classes}" file="onion_LICENSE" />
+		<copy todir="${classes}"><fileset dir="${bin}" includes="lib/**"/></copy>
+	</target>
+
+	<target name="jars" depends="build">
+		<jar jarfile="${lib}/onion-fec.jar" basedir="${classes}" includes="**" update="yes" duplicate="fail" level="9">
+		</jar>
+	</target>
+
+	<target name="clean">
+		<delete dir="${classes}"/>
+		<delete dir="${lib}"/>
+	</target>
+
+</project>

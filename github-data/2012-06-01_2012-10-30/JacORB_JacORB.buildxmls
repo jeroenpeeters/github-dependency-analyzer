@@ -1,0 +1,3282 @@
+<?xml version="1.0"?>
+
+<project name="main" default="all" basedir=".">
+
+   <!-- ==================================================== -->
+   <!--            JacORB build file                         -->
+   <!-- $Id$ -->
+   <!-- ==================================================== -->
+
+   <property file="${basedir}/build.properties" />
+   <property environment="env" />
+   <property name="jvm-name" value="java"/>
+
+   <import file="etc/common.xml"/>
+
+   <!-- top-level target -->
+   <target name="all" depends="init,src-check,copy-version-template,parse-version,compiler,omg_idl,jacorb,libs"
+           description="Build JacORB."/>
+
+   <target name="src-check">
+      <fail message="Unable to find src files. Is this a binary distribution?">
+         <condition>
+            <not>
+               <available file="${src}/org/jacorb/build.xml"/>
+            </not>
+         </condition>
+      </fail>
+   </target>
+
+   <!-- Note: only copy the template file if this is a standalone Ant build. The standalone build -->
+   <!--       is NOT suitable for release. Only the Maven build fills in the template Version     -->
+   <!--       information correctly.                                                              -->
+   <target name="copy-version-template" unless="maven.home">
+       <copy file="${src}/main/resources/org/jacorb/util/Version.java" tofile="${src.generated}/org/jacorb/util/Version.java" overwrite="true"/>
+   </target>
+
+   <target name="parse-version" >
+        <loadfile srcFile="${src}/generated/org/jacorb/util/Version.java" property="JVERSION">
+          <filterchain>
+            <containsregex pattern=".*version = &quot;(.*)&quot;;"
+                           replace="\1"/>
+            <striplinebreaks/>
+          </filterchain>
+        </loadfile>
+
+        <echo>
+using JacORB Version: ${JVERSION}
+        </echo>
+   </target>
+
+   <!-- ==================================================== -->
+   <!--                   IDL compiler                       -->
+   <!-- ==================================================== -->
+
+   <target name="compiler" depends="init,copy-version-template,parse-version,idlsrc,idllib"/>
+
+
+   <!-- package idl.jar -->
+   <target name="idllib" depends="idlsrc" >
+      <jar jarfile="${lib}/idl.jar"
+           basedir="${classdir}"
+           includes="org/jacorb/idl/**">
+         <manifest>
+           <attribute name="Implementation-Version" value="${JVERSION} ${jacorb_version_info}" />
+           <attribute name="Implementation-Title" value="JacORB"/>
+           <attribute name="Implementation-URL" value="www.jacorb.org"/>
+         </manifest>
+      </jar>
+   </target>
+
+   <target name="idlsrc">
+      <ant antfile="${src}/org/jacorb/idl/build.xml" dir="${basedir}" />
+   </target>
+
+
+
+   <!-- ==================================================== -->
+   <!--                   OMG IDL files                      -->
+   <!-- ==================================================== -->
+
+   <target name="omg_idl" depends="compiler">
+      <ant antfile="${basedir}/idl/build.xml" dir="${basedir}"/>
+   </target>
+
+
+   <!-- ==================================================== -->
+   <!--                   JacORB implementation              -->
+   <!-- ==================================================== -->
+
+   <target name="jacorb" depends="init">
+      <ant antfile="${src}/org/jacorb/build.xml" dir="${basedir}"/>
+   </target>
+
+
+   <!-- ==================================================== -->
+   <!--                  Libraries                           -->
+   <!-- ==================================================== -->
+
+   <target name="libs" depends="init,jar"/>
+
+   <target name="jar" depends="init">
+      <delete file="${lib}/jacorb.jar" quiet="true"/>
+      <delete file="${lib}/jacorb-services.jar" quiet="true"/>
+      <jar jarfile="${lib}/jacorb.jar"
+           index="true"
+           basedir="${classdir}"
+           includes="org/jacorb/**,ImplementationRepository/**"
+           excludes="org/jacorb/idl/**,
+                     org/jacorb/demo/**,
+                     org/jacorb/test/**,
+                     org/jacorb/concurrency/**,
+                     org/jacorb/collection/**,
+                     org/jacorb/dds/**,
+                     org/jacorb/events/**,
+                     org/jacorb/notification/**,
+                     org/jacorb/transaction/**,
+                     ">
+         <manifest>
+           <attribute name="Implementation-Version" value="${JVERSION} ${jacorb_version_info}" />
+           <attribute name="Implementation-Title" value="JacORB"/>
+           <attribute name="Implementation-URL" value="www.jacorb.org"/>
+           <attribute name="Class-Path" value="slf4j-api-1.6.4.jar slf4j-jdk14-1.6.4.jar jacorb-omgapi.jar"/>
+         </manifest>
+      </jar>
+
+      <jar jarfile="${lib}/jacorb-omgapi.jar"
+           index="true"
+           basedir="${classdir}"
+           includes="org/omg/**"
+           excludes="org/omg/BridgeTransactionMgmt/**,
+                     org/omg/CosBridgeAdmin/**,
+                     org/omg/CosCollection/**,
+                     org/omg/CosConcurrencyControl/**,
+                     org/omg/CosEventChannelAdmin/**,
+                     org/omg/CosEventComm/**,
+                     org/omg/CosNotification/**,
+                     org/omg/CosNotifyChannelAdmin/**,
+                     org/omg/CosNotifyChannelAdminAck/**,
+                     org/omg/CosNotifyComm/**,
+                     org/omg/CosNotifyCommAck/**,
+                     org/omg/CosNotifyFilter/**,
+                     org/omg/CosTime/**,
+                     org/omg/CosTrading/**,
+                     org/omg/CosTransactions/**,
+                     org/omg/CosTypedEventChannelAdmin/**,
+                     org/omg/CosTypedEventComm/**,
+                     org/omg/CosTypedEventNotifyChannelAdmin/**,
+                     org/omg/CosTypedNotifyChannelAdmin/**,
+                     org/omg/CosTypedNotifyComm/**,
+                     org/omg/CosTypedEventNotifyComm/**,
+                     org/omg/dds/**
+                     ">
+         <manifest>
+           <attribute name="Implementation-Version" value="${JVERSION} ${jacorb_version_info}" />
+           <attribute name="Implementation-Title" value="JacORB"/>
+           <attribute name="Implementation-URL" value="www.jacorb.org"/>
+         </manifest>
+      </jar>
+
+      <jar jarfile="${lib}/jacorb-services.jar"
+           index="true"
+           basedir="${classdir}"
+           includes="org/jacorb/concurrency/**,
+                     org/jacorb/collection/**,
+                     org/jacorb/dds/**,
+                     org/jacorb/events/**,
+                     org/jacorb/notification/**,
+                     org/jacorb/transaction/**,
+                     org/omg/BridgeTransactionMgmt/**,
+                     org/omg/CosBridgeAdmin/**,
+                     org/omg/CosCollection/**,
+                     org/omg/CosConcurrencyControl/**,
+                     org/omg/CosEventChannelAdmin/**,
+                     org/omg/CosEventComm/**,
+                     org/omg/CosNotification/**,
+                     org/omg/CosNotifyChannelAdmin/**,
+                     org/omg/CosNotifyChannelAdminAck/**,
+                     org/omg/CosNotifyComm/**,
+                     org/omg/CosNotifyCommAck/**,
+                     org/omg/CosNotifyFilter/**,
+                     org/omg/CosTime/**,
+                     org/omg/CosTrading/**,
+                     org/omg/CosTransactions/**,
+                     org/omg/CosTypedEventChannelAdmin/**,
+                     org/omg/CosTypedEventComm/**,
+                     org/omg/CosTypedEventNotifyComm/**,
+                     org/omg/CosTypedEventNotifyChannelAdmin/**,
+                     org/omg/CosTypedNotifyChannelAdmin/**,
+                     org/omg/CosTypedNotifyComm/**,
+                     org/omg/dds/**
+                     ">
+         <manifest>
+           <attribute name="Implementation-Version" value="${JVERSION} ${jacorb_version_info}" />
+           <attribute name="Implementation-Title" value="JacORB"/>
+           <attribute name="Implementation-URL" value="www.jacorb.org"/>
+           <attribute name="Class-Path" value="antlr-2.7.2.jar picocontainer-1.2.jar jacorb.jar"/>
+         </manifest>
+      </jar>
+      <jar jarfile="${lib}/jacorb-sources.jar">
+          <fileset dir="${src}/generated"/>
+          <fileset dir="${src}" excludes="generated/**,java_mapping/**,omg-03-01-02/**"/>
+          <manifest>
+              <attribute name="Implementation-Version" value="${JVERSION} ${jacorb_version_info}" />
+              <attribute name="Implementation-Title" value="JacORB"/>
+              <attribute name="Implementation-URL" value="www.jacorb.org"/>
+          </manifest>
+      </jar>
+   </target>
+
+
+   <!-- ==================================================== -->
+   <!--                   clean up                           -->
+   <!-- ==================================================== -->
+
+    <target name="clean" depends="init,src-check" description="Clean the checkout">
+        <delete quiet="true" includeemptydirs="true">
+            <fileset dir="${classdir}" includes="**/*" />
+        </delete>
+        <delete quiet="true" includeemptydirs="true">
+            <fileset dir="${src.generated}" includes="**/*" />
+        </delete>
+         <delete quiet="true" >
+            <fileset dir="${basedir}/src/org/jacorb/idl" >
+                <include name="**/parser.java"/>
+                <include name="**/sym.java"/>
+            </fileset>
+        </delete>
+    </target>
+
+    <target name="realclean" depends="clean" description="Clean the checkout including generated jars">
+        <delete quiet="true" >
+            <fileset dir="lib/" includes="jacorb.jar, idl.jar, jacorb-sources.jar, jacorb-services.jar"/>
+        </delete >
+    </target>
+
+   <!-- ==================================================== -->
+   <!--                  API documentation                   -->
+   <!-- ==================================================== -->
+
+   <target name="doc" depends="init" description="Create the Javadoc">
+        <property name="PKGNAMES" value="ImplementationRepository/*,org.jacorb.idl.*,org.jacorb.util.*,org.jacorb.orb.*,org.jacorb.imr.*,org.jacorb.tao_imr.*,org.jacorb.ir.*,org.jacorb.poa.*,org.jacorb.events.*,org.jacorb.naming.*,org.jacorb.security.sas.*,org.omg.*,org.jacorb.notification.*" />
+        <property name="PKGNAMES_EXCLUDED" value="org.jacorb.notification.filter.bsh" />
+        <property name="SRCDIR2" value="" />
+
+        <!-- ignore xdoclet tags -->
+        <property name="IGNORED_TAGS" value="-tag jmx.mbean:X -tag jboss.xmbean:X -tag jmx.managed-attribute:X -tag jmx.managed-operation:X" />
+
+        <mkdir dir="${basedir}/doc/api"/>
+
+        <javadoc destdir="${basedir}/doc/api"
+                 additionalparam="${IGNORED_TAGS}"
+                 classpathref="path.base"
+                 Splitindex="Yes"
+                 Use="Yes"
+                 maxmemory="256m"
+                 packagenames="${PKGNAMES}"
+                 excludepackagenames="${PKGNAMES_EXCLUDED}">
+            <sourcepath>
+                <path refid="sourcepath.base" />
+                <path path="${SRCDIR2}" />
+             </sourcepath>
+        </javadoc>
+   </target>
+
+   <!-- ==================================================== -->
+   <!--                  PMD                                 -->
+   <!-- ==================================================== -->
+
+    <target name="pmd-locate" if="env.PMD_HOME" >
+        <property name="pmd.home" value="${env.PMD_HOME}" />
+    </target>
+
+    <target name="pmd-path1" depends="pmd-locate" if="pmd.home">
+        <path id="pmd.path" >
+            <fileset dir="${pmd.home}/lib" >
+                <include name="*.jar" />
+            </fileset>
+        </path>
+    </target>
+
+    <target name="pmd-path2" depends="pmd-path1" unless="pmd.home">
+        <path id="pmd.path" >
+            <pathelement path="${java.class.path}"/>
+        </path>
+    </target>
+
+    <target name="pmd-check" depends="pmd-path2" >
+        <available classname="net.sourceforge.pmd.ant.PMDTask" property="pmd.isavailable" classpathref="pmd.path"/>
+
+        <fail unless="pmd.isavailable" >
+            error
+            unable to locate PMD (http://pmd.sourceforge.net).
+            either set the environment variable PMD_HOME,
+            set the ant property pmd.home or add the PMD
+            classes to your CLASSPATH.
+        </fail>
+
+        <pathconvert property="_pmd.cp" refid="pmd.path" />
+        <echo level="verbose">pmd is using classpath: ${_pmd.cp}</echo>
+    </target>
+
+    <target name="pmd-taskdef" depends="init, pmd-check">
+        <taskdef name="pmd" classname="net.sourceforge.pmd.ant.PMDTask" classpathref="pmd.path"/>
+    </target>
+
+
+    <target name="pmd" depends="init, pmd-taskdef">
+        <echo message="this might take some time..." />
+        <pmd rulesetfiles="${basedir}/etc/pmd-ruleset.xml" shortFilenames="true">
+            <formatter type="summaryhtml" toFile="pmd_report.html"/>
+            <fileset dir="${src}/org/jacorb">
+                <!-- So much is generated code is there much point? -->
+                <!--             <include name="idl/**/*.java"/>    -->
+                <include name="imr/**/*.java"/>
+                <include name="tao_imr/**/*.java"/>
+                <include name="orb/**/*.java"/>
+                <include name="poa/**/*.java"/>
+                <include name="security/**/*.java"/>
+                <include name="util/**/*.java"/>
+                <!-- Exclude tracing as very old unsupported code -->
+                <exclude name="util/tracing/*.java"/>
+             </fileset>
+        </pmd>
+    </target>
+
+
+   <!-- ==================================================== -->
+   <!--                FINDBUGS                              -->
+   <!-- ==================================================== -->
+
+    <target name="findbugs-locate" if="env.FINDBUGS_HOME">
+        <property name="findbugs.home" value="${env.FINDBUGS_HOME}" />
+    </target>
+
+    <target name="findbugs-path1" depends="findbugs-locate" if="findbugs.home" >
+        <path id="findbugs.path">
+            <fileset dir="${findbugs.home}/lib" >
+                <include name="*.jar" />
+            </fileset>
+        </path>
+    </target>
+
+    <target name="findbugs-path2" depends="findbugs-path1" unless="findbugs.home">
+        <echo message="findbugs-path2" />
+        <path id="findbugs.path" >
+            <pathelement path="${java.class.path}"/>
+        </path>
+    </target>
+
+    <target name="findbugs-check" depends="findbugs-path2">
+        <available classname="edu.umd.cs.findbugs.anttask.FindBugsTask" property="findbugs.isavailable" classpathref="findbugs.path"/>
+
+        <fail unless="findbugs.isavailable" >
+            error
+            unable to locate FindBugs (http://findbugs.sourceforge.net/).
+            either set the environment variable FINDBUGS_HOME,
+            set the ant property findbugs.home or add the FindBugs
+            classes to your CLASSPATH.
+        </fail>
+
+        <pathconvert property="_findbugs.cp" refid="findbugs.path" />
+        <echo level="verbose">findbugs is using classpath: ${_findbugs.cp}</echo>
+    </target>
+
+    <target name="findbugs-taskdef" depends="init, findbugs-check">
+        <pathconvert property="_findbugs.cp" refid="findbugs.path" />
+        <echo level="verbose">findbugs is using classpath: ${_findbugs.cp}</echo>
+
+        <taskdef name="findBugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask" classpathref="findbugs.path"/>
+    </target>
+
+    <target name="findbugs" depends="findbugs-taskdef">
+        <echo message="this might take some time..." />
+        <findBugs home="${findbugs.home}"
+                output="html"
+                outputFile="${basedir}/findbugs_report.html"
+                excludeFilter="${basedir}/etc/findbugs-ruleset.xml"
+                reportLevel="medium"
+                effort="default"
+                jvmargs="-Xmx500M"
+                timeout="12000000">
+            <sourcePath path="${src}"/>
+            <auxClasspath path="${classdir}"/>
+            <auxClasspath path="${basedir}/lib/slf4j-api-1.6.4.jar"/>
+            <systemProperty name="findbugs.de.comment" value="true"/>
+            <class location="${basedir}/classes/org/jacorb/imr"/>
+            <class location="${basedir}/classes/org/jacorb/orb"/>
+            <class location="${basedir}/classes/org/jacorb/poa"/>
+            <class location="${basedir}/classes/org/jacorb/security"/>
+            <class location="${basedir}/classes/org/jacorb/util"/>
+            <class location="${basedir}/classes/org/jacorb/tao_imr"/>
+        </findBugs>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB AMI demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="idl" depends="idl.taskdef">
+        <jacidl srcdir="${idl.dir}" destdir="${gen.dir}" includes="*.idl" ami_callback="true" />
+    </target>
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.ami.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.ami.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Any demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.any.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.any.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB arrays demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <jaco classname="demo.arrays.Server" >
+                    <arg value="${ior.file}" />
+                    <arg value="${killfile.file}" />
+                </jaco>
+            </run-server>
+
+            <run-client>
+                <jaco classname="demo.arrays.Client" >
+                    <arg value="${ior.file}" />
+                </jaco>
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Bank Concurrency demo" default="demo" basedir=".">
+
+    <property name="jacorb.dir" value="../../.."/>
+    
+    <import file="../../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+    	<!-- This demo intended to be run manually - it requires
+    	     NameServer functionality -->
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Bank Transaction Explicit demo" default="demo" basedir=".">
+
+    <property name="jacorb.dir" value="../../../.."/>
+    
+    <import file="../../../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+    	<!-- This demo intended to be run manually - it requires
+    	     NameServer functionality -->
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Bank Transaction Implicit demo" default="demo" basedir=".">
+
+    <property name="jacorb.dir" value="../../../.."/>
+    
+    <import file="../../../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+    	<!-- This demo intended to be run manually - it requires
+    	     NameServer functionality -->
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB benchmark demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <jaco classname="demo.benchmark.Server" >
+                    <arg value="${ior.file}" />
+                    <arg value="${killfile.file}" />
+                </jaco>
+            </run-server>
+
+            <run-client>
+                <jaco classname="demo.benchmark.Client" inputstring="auto:1000" >
+                    <arg value="${ior.file}" />
+                </jaco>
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB BiDir demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.bidir.ServerImpl" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.bidir.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<project name="JacORB demo's" default="compile" >
+
+    <macrodef name="iterate">
+        <attribute name="target"/>
+        <sequential>
+            <subant target="@{target}">
+                <fileset dir="." includes="*/build.xml"/>
+            </subant>
+        </sequential>
+    </macrodef>
+
+    <target name="compile">
+        <iterate target="compile"/>
+    </target>
+
+    <target name="demo">
+        <iterate target="demo"/>
+    </target>
+
+    <target name="clean">
+        <iterate target="clean"/>
+    </target>
+
+    <!-- more targets -->
+</project><?xml version="1.0"?>
+
+<project name="JacORB Concurrency demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile"/>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB corbaloc demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.corbaloc.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.corbaloc.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0" encoding="iso-8859-1"?>
+
+<project name="DDS-demo" default="compile" basedir=".">
+  
+  <property name="jacorb.dir" value="../../.."/>
+  
+  <import file="../../common/common-demo.xml" />
+  
+  <!-- ==================================================== -->
+  <!--             DDS demo build file                      -->
+  <!-- ==================================================== -->
+  
+
+  <!--===========================================================-->
+  <!--==========================    HELP    =====================-->
+  <!--===========================================================-->	
+  <target name="help">
+    <echo message="use the following targets:"/>
+    <echo message="- idl : to manage idl files and compile all files"/>
+    <echo message="- compile : to compile all files"/>
+    <echo message="- foo : to compile and run the foo example"/>
+  </target>
+
+  <!--===========================================================-->
+  <!--======================    Foo Example    ==================-->
+  <!--===========================================================-->		
+  <target name="foo" >
+    <parallel>	
+      <exec executable="ns" vmlauncher="false">
+      </exec>			
+      <sequential>
+        <sleep seconds="3" />
+        <exec executable="jaco" vmlauncher="false" >
+          <arg line="-cp ${build.dir}/classes demo.dds.dcps.Server" />
+        </exec>	
+      </sequential> 			
+      <sequential>
+        <sleep seconds="6" />
+        <parallel>
+          <exec executable="jaco" vmlauncher="false" >
+            <arg line="-cp ${build.dir}/classes demo.dds.dcps.foosample.FooProducer" />
+          </exec>
+          
+          <exec executable="jaco" vmlauncher="false" >
+            <arg line="-cp ${build.dir}/classes demo.dds.dcps.foosample.FooConsumer" />
+          </exec>
+        </parallel>	
+      </sequential>
+    </parallel>		 
+  </target>
+  
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB DII demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.dii.DiiServer" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.dii.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB DynAny demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.dynany.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.dynany.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Events demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB grid demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.grid.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.grid.Client" />
+            </run-client>
+        </run-demo>
+
+        <delete file="${ior.file}" />
+        <delete file="${killfile.file}" />
+
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.grid.TieServer" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.grid.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB hello demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.hello.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.hello.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB IMR demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile"/>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB interceptor demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+
+        <mkdir dir="${tmp.dir}" />
+        <tempfile property="killfile.file" destdir="${tmp.dir}" prefix="kill" />
+        <tempfile property="ior1.file" destdir="${tmp.dir}" prefix="server" suffix=".ior" />
+        <tempfile property="ior2.file" destdir="${tmp.dir}" prefix="server" suffix=".ior" />
+
+        <parallel>
+            <sequential>
+                <jaco classname="demo.interceptors.Server1" >
+                    <arg value="${ior1.file}" />
+                    <arg value="${killfile.file}" />
+                </jaco>
+            </sequential>
+
+            <sequential>
+                <jaco classname="demo.interceptors.Server2" >
+                    <arg value="${ior2.file}" />
+                    <arg value="${killfile.file}" />
+                </jaco>
+            </sequential>
+
+            <sequential>
+                <waitfor maxwait="30" maxwaitunit="second">
+                    <and>
+                        <available file="${ior1.file}"/>
+                        <available file="${ior2.file}"/>
+                    </and>
+                </waitfor>
+
+                <jaco classname="demo.interceptors.Client" >
+                    <arg value="${ior1.file}" />
+                    <arg value="${ior2.file}" />
+                </jaco>
+
+                <touch file="${killfile.file}" />
+            </sequential>
+
+        </parallel>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB MIOP demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.miop.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.miop.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Multiple Clients demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.mtclient.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.mtclient.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Notification Service Office demo" default="demo" basedir=".">
+
+	<property name="jacorb.dir" value="../../.."/>
+	
+    <import file="../../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Notification Service Whiteboard demo" default="demo" basedir=".">
+
+	<property name="jacorb.dir" value="../../.."/>
+	
+    <import file="../../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB outparam demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.outparam.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.outparam.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB policies demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.policies.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.policies.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB SAS demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" />
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB SSL Demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <jaco classname="demo.ssl.Server" >
+                    <jvmarg value="-Dcustom.props=${resources.dir}/jsse_server_props" />
+                    <arg value="${ior.file}" />
+                    <arg value="${killfile.file}" />
+                </jaco>
+            </run-server>
+
+            <run-client>
+                <echo message="first try without SSL (should fail)" />
+                <jaco classname="demo.ssl.Client" >
+                    <arg value="${ior.file}" />
+                </jaco>
+
+                <echo message="next try with SSL enabled (should succeed)" />
+                <jaco classname="demo.ssl.Client" >
+                    <jvmarg value="-Dcustom.props=${resources.dir}/jsse_client_props" />
+                    <arg value="${ior.file}" />
+                </jaco>
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB IMR demo" default="all" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="all" depends="clean,compile"/>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB union demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile">
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.unions.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-server classname="demo.unions.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB valuetype demo" default="demo" basedir=".">
+
+    <import file="../common/common-demo.xml" />
+
+    <target name="demo" depends="compile" >
+        <run-demo>
+            <run-server>
+                <run-default-server classname="demo.value.Server" />
+            </run-server>
+
+            <run-client>
+                <run-default-client classname="demo.value.Client" />
+            </run-client>
+        </run-demo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="idl" default="all" basedir="..">
+
+   <!-- ==================================================== -->
+   <!--            JacORB idl build file                     -->
+   <!-- $Id$ -->
+   <!-- ==================================================== -->
+
+   <import file="../etc/common.xml"/>
+
+   <target name="local-init" depends="init, load-taskdef" >
+      <presetdef name="idl-javac">
+         <jacorb-javac javac-src="${src.generated}" javac-xlint=""/>
+      </presetdef>
+
+      <presetdef name="idl-jacidl-jacorb">
+         <jacidl
+            srcdir="${idl}/jacorb"
+            includepath="${idl}/omg"
+            destdir="${src.generated}">
+            </jacidl>
+      </presetdef>
+
+      <presetdef name="idl-jacidl-omg">
+         <jacidl generateir="true"
+                 srcdir="${idl}/omg"
+                 sloppyforward="true"
+                 includepath="${idl}/omg"
+                 destdir="${src.generated}">
+            <i2jpackage names=":org.omg"/>
+         </jacidl>
+      </presetdef>
+
+      <presetdef name="idl-jacidl-tao">
+         <jacidl
+            srcdir="${idl}/tao_imr"
+            includepath="${idl}/omg"
+            destdir="${src.generated}">
+            <define key="JACORB" value="1"/>
+            <i2jpackage names=":org.jacorb.tao_imr"/>
+         </jacidl>
+      </presetdef>
+
+   </target>
+
+   <target name="all"
+      depends="local-init,orb,portableserver,messaging,giop,iop,rtcorba,ftcorba,interceptor,dynany,miop,etf,iiop,conf,sendingctx,services,notification,security,mapping,patches"
+       description="Compile all the IDL">
+
+      <idl-javac javac-includes="**" />
+
+      <antcall inheritRefs="true" target="jacorb"/>
+   </target>
+
+   <!-- ==================================================== -->
+   <!--                       CORBA                          -->
+   <!-- ==================================================== -->
+
+   <!-- Standard classes defined by the IDL language mapping      -->
+   <!-- are copied from a directory containing OMG-provided files -->
+   <!-- They will only be copied if we haven't managed to         -->
+   <!-- generate a version from the IDL                           -->
+   <target name="mapping">
+      <copy todir="${src.generated}">
+         <fileset dir="${src}/omg-03-01-02">
+            <include name="**/*.java"/>
+         </fileset>
+      </copy>
+      <!-- We need the mapping versions rather than the generated for these -->
+      <copy todir="${src.generated}" overwrite="true">
+         <fileset dir="${src}/omg-03-01-02">
+            <include name="**/UserException.java"/>
+            <include name="**/TypeCod*.java"/>
+            <include name="**/PortableServer/*Operations.java"/>
+         </fileset>
+      </copy>
+      <delete file="${src.generated}/org/omg/RTPortableServer/POALocalTie.java"/>
+   </target>
+
+   <!-- ==================================================== -->
+   <!--                      Patches                         -->
+   <!-- ==================================================== -->
+
+   <target name="patches">
+      <!-- Fixes for non-conformance in the supplied IDL compared to spec -->
+      <copy todir="${src.generated}/org/omg/CORBA"
+            overwrite="yes">
+         <fileset dir="${src}/java_mapping/CORBA" includes="**/*.java"/>
+      </copy>
+      <!-- Copy missing mapping code (From RT Specification 05-01-04 -->
+      <copy todir="${src.generated}/org/omg/RTCORBA"
+            overwrite="yes">
+         <fileset dir="${src}/java_mapping/RTCORBA" includes="**/*.java"/>
+      </copy>
+      <copy todir="${src.generated}/org/omg/PortableServer"
+            overwrite="yes">
+         <fileset dir="${src}/java_mapping/PortableServer" includes="**/*.java"/>
+      </copy>
+   </target>
+
+
+   <!-- standard classes defined by the IDL language mapping  -->
+   <!-- are copied from a directory containing OMG-provided files -->
+
+   <target name="orb">
+      <idl-jacidl-omg
+         all="true"
+         includes="orb.idl" />
+
+      <delete file="${src.generated}/org/omg/CORBA/TypeCodeHelper.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/TypeCodePOA.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/TypeCodePOATie.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/_TypeCodeStub.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/UserExceptionHelper.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/UserExceptionHolder.java"/>
+
+      <delete file="${src.generated}/org/omg/CORBA/ORBPOA.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/ORBPOATie.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/ORBHelper.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/ORBHolder.java"/>
+      <delete file="${src.generated}/org/omg/CORBA/_ORBStub.java"/>
+   </target>
+
+   <!-- Compile the PortableServer.idl file provided by the OMG. -->
+   <target name="portableserver">
+      <idl-jacidl-omg includes="PortableServer.idl"/>
+      <idl-jacidl-omg includes="BiDirPolicy.idl"/>
+
+      <delete file="${src.generated}/org/omg/PortableServer/CurrentLocalTie.java"/>
+      <delete file="${src.generated}/org/omg/PortableServer/POALocalTie.java"/>
+      <delete file="${src.generated}/org/omg/PortableServer/POAManagerLocalTie.java"/>
+      <delete
+           file="${src.generated}/org/omg/PortableServer/ServantActivatorLocalTie.java"/>
+      <delete
+           file="${src.generated}/org/omg/PortableServer/ServantLocatorLocalTie.java"/>
+   </target>
+
+   <!-- Compile the Messaging.idl file provided by the OMG. -->
+   <target name="messaging">
+      <idl-jacidl-omg includes="Messaging.idl"
+                      nostub="true"
+                      noskel="true"/>
+   </target>
+
+   <!-- Compile the GIOP.idl file provided by the OMG. -->
+   <target name="giop">
+      <!-- Compile two times with different preprocessor flags set, so structs -->
+      <!-- for both GIOP 1.0 / 1.1 and GIOP 1.2 get generated -->
+      <idl-jacidl-omg includes="GIOP.idl" >
+         <undefine key="GIOP_1_1"/>
+         <undefine key="GIOP_1_2"/>
+      </idl-jacidl-omg>
+      <idl-jacidl-omg includes="GIOP.idl" >
+      </idl-jacidl-omg>
+   </target>
+
+   <!-- Compile the IOP.idl file provided by the OMG. -->
+   <target name="iop">
+      <idl-jacidl-omg includes="IOP.idl" />
+   </target>
+
+   <target name="rtcorba">
+      <idl-jacidl-omg includes="RTCORBA.idl"/>
+   </target>
+
+   <target name="ftcorba">
+      <idl-jacidl-omg includes="FTCORBA.idl"/>
+    </target>
+
+   <target name="interceptor">
+      <idl-jacidl-omg includes="PortableInterceptor.idl"
+                      nostub="true"
+                      noskel="true"/>
+      <idl-jacidl-omg includes="Dynamic.idl"
+                      nostub="true"
+                      noskel="true"/>
+   </target>
+
+   <target name="dynany">
+      <idl-jacidl-omg includes="DynamicAny.idl"/>
+   </target>
+
+   <target name="miop" >
+      <idl-jacidl-omg includes="MIOP.idl"/>
+
+      <idl-jacidl-omg includes="PortableGroup.idl"/>
+      <delete file="${src.generated}/org/omg/PortableGroup/GOALocalTie.java"/>
+   </target>
+
+   <target name="etf">
+      <idl-jacidl-omg includes="ETF.idl"/>
+   </target>
+
+   <target name="iiop">
+      <idl-jacidl-omg includes="IIOP.idl"/>
+   </target>
+
+   <target name="conf">
+      <idl-jacidl-omg includes="CONV_FRAME.idl"/>
+   </target>
+
+   <target name="sendingctx">
+      <idl-jacidl-omg includes="SendingContext.idl">
+      </idl-jacidl-omg>
+  </target>
+
+
+   <!-- ==================================================== -->
+   <!--                   OMG Object services                -->
+   <!-- ==================================================== -->
+
+   <target name="services">
+      <idl-jacidl-omg includes="CosNaming.idl"/>
+      <idl-jacidl-omg includes="CosTrading.idl"/>
+      <idl-jacidl-omg includes="CosEventChannelAdmin.idl"/>
+      <idl-jacidl-omg includes="CosEventComm.idl"/>
+      <idl-jacidl-omg includes="CosTransactions.idl"/>
+      <idl-jacidl-omg includes="CosCollection.idl"/>
+      <idl-jacidl-omg includes="CosConcurrencyControl.idl"/>
+      <idl-jacidl-omg includes="TimeBase.idl, CosTime.idl"/>
+
+      <idl-jacidl-omg includes="dds_dcps.idl"/>
+
+      <delete file="${src.generated}/org/omg/CosTransactions/CurrentPOATie.java"/>
+   </target>
+
+   <!--                           -->
+   <!--     Notification service  -->
+   <!--                           -->
+
+   <target name="notification">
+      <idl-jacidl-omg includes="CosNotification.idl,
+                                CosNotifyChannelAdmin.idl,
+                                CosNotifyComm.idl,
+                                CosNotifyFilter.idl" />
+
+      <idl-jacidl-jacorb includes="notification.idl"/>
+
+      <idl-jacidl-omg includes="CosTypedNotifyChannelAdmin.idl,
+                                CosTypedNotifyComm.idl,
+                                CosTypedEventChannelAdmin.idl,
+                                CosTypedEventComm.idl"/>
+
+      <idl-jacidl-omg includes="CosBridgeAdmin.idl"/>
+   </target>
+
+   <!--                      -->
+   <!--    security service  -->
+   <!--                      -->
+
+   <target name="security">
+
+      <!-- Compile the CSI.idl file provided by the OMG. -->
+      <idl-jacidl-omg includes="CSI.idl"
+                      noskel="true"
+                      nostub="true"/>
+      <idl-jacidl-omg includes="CSIIOP.idl"
+                      noskel="true"
+                      nostub="true"/>
+
+      <!-- Compile the GSSUP.idl file provided by the OMG. -->
+      <idl-jacidl-omg includes="GSSUP.idl"
+                      noskel="true"
+                      nostub="true"/>
+      <idl-jacidl-omg includes="ATLAS.idl"/>
+
+      <idl-jacidl-omg
+              noskel="true"
+              nostub="true"
+              sloppynames="true"
+              includes="Security.idl"/>
+      <idl-jacidl-omg
+              noskel="true"
+              nostub="true"
+              sloppynames="true"
+              includes="SecurityLevel1.idl"/>
+      <idl-jacidl-omg
+              noskel="true"
+              nostub="true"
+              sloppynames="true"
+              includes="SecurityLevel2.idl"/>
+      <idl-jacidl-omg
+          noskel="true"
+          nostub="true"
+          sloppynames="true"
+          includes="SecurityAdmin.idl"/>
+      <idl-jacidl-omg
+          noskel="true"
+          nostub="true"
+          sloppynames="true"
+          includes="SecurityReplaceable.idl"/>
+      <idl-jacidl-omg
+          noskel="true"
+          nostub="true"
+          sloppynames="true"
+            includes="SSLIOP.idl" />
+   </target>
+
+
+   <!-- ==================================================== -->
+   <!--                       CORBA                          -->
+   <!-- ==================================================== -->
+
+   <target name="jacorb" depends="imr,tao_imr,proxy,sasPolicy,sslPolicy"/>
+
+
+   <target name="imr">
+      <idl-jacidl-jacorb
+              includes="imr.idl">
+      </idl-jacidl-jacorb>
+
+      <idl-javac
+         javac-includes="org/jacorb/imr/**" />
+   </target>
+
+   <target name="tao_imr">
+       <idl-jacidl-tao
+        includes="ServerObject.idl">
+      </idl-jacidl-tao>
+
+      <idl-jacidl-tao
+        noskel="true"
+        includes="ImplRepo.idl,AsyncStartupWaiter.idl,ImR_Activator.idl,ImR_Locator.idl">
+      </idl-jacidl-tao>
+
+      <idl-javac
+         javac-includes="org/tao_imr/**" />
+   </target>
+
+   <target name="proxy">
+      <idl-jacidl-jacorb
+              includes="Proxy.idl"/>
+      <idl-javac
+         javac-includes="org/jacorb/proxy/**" />
+   </target>
+
+
+   <target name="sasPolicy">
+      <idl-jacidl-jacorb
+              sloppynames="true"
+              includes="SASPolicy.idl" />
+
+      <idl-javac
+         javac-includes="org/jacorb/sasPolicy/**" />
+   </target>
+
+   <target name="sslPolicy">
+        <idl-jacidl-jacorb
+            sloppynames="true"
+            includes="SSLPolicy.idl"/>
+
+      <idl-javac
+         javac-includes="org/jacorb/ssl/**"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="libs" default="all" basedir="../..">
+
+    <import file="../../etc/common.xml"/>
+
+	<property name="dir.picocontainer" value="${basedir}/../picocontainer" />
+	<property name="dir.nanocontainer-remoting" value="${basedir}/../nanocontainer-remoting" />
+
+	<!-- picocontainer revision is the same as nanocontainer revision. -->
+	<!-- use 'svn status ++verbose' to find out the revision (replace + with -) -->
+	<property name="pico-revision" value="final" />
+
+	<property name="dir.mx4j" value="/Users/alf/Developer/Library/mx4j-3.0.1" />
+
+	<property name="dir.src" value="${basedir}/lib/src" />
+
+	<property name="file.pico-src" value="${dir.src}/picocontainer-1.2-src.zip" />
+
+	<target name="zip" description="zip external sources">
+		<zip destfile="${file.pico-src}" >
+			<zipfileset dir="${dir.picocontainer}/container/src/java">
+				<include name="org/picocontainer/**" />
+			</zipfileset>
+
+			<zipfileset dir="${dir.nanocontainer-remoting}/remoting/src/java">
+				<include name="org/nanocontainer/remoting/jmx/**"/>
+			</zipfileset>
+		</zip>
+        </target>
+
+	<target name="unzip" description="unzip external sources into src-generated" depends="init" >
+		<unzip dest="${src}/generated" src="${file.pico-src}" />
+	</target>
+
+	<target name="compile" description="compile external sources" depends="init, unzip" >
+		<path id="classpath">
+			<path refid="path.base" />
+
+			<fileset dir="${dir.mx4j}/lib">
+				<include name="**/*.jar"/>
+			</fileset>
+		</path>
+
+		<jacorb-javac javac-includes="org/picocontainer/**, org/nanocontainer/**" javac-src="${src}/generated" javac-classpathref="classpath" />
+		<jacorb-javac javac-includes="edu/emory/**/*.java, sun/misc/**/*.java" javac-src="${src}/generated" javac-classpathref="path.base" />
+	</target>
+
+	<target name="jar" description="create jars" depends="init, compile">
+		<jar destfile="${lib}/picocontainer-1.2.jar">
+			<fileset dir="${classdir}">
+				<include name="org/picocontainer/**" />
+				<include name="org/nanocontainer/**" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="clean" depends="base-init" >
+		<delete>
+			<fileset dir="${src}/generated">
+				<include name="org/picocontainer/**" />
+				<include name="org/nanocontainer/**" />
+				<include name="edu/**" />
+				<include name="sun/**" />
+			</fileset>
+
+			<fileset dir="${basedir}/classes" >
+				<include name="org/picocontainer/**" />
+				<include name="org/nanocontainer/**" />
+				<include name="edu/**" />
+				<include name="sun/**" />
+			</fileset>
+		</delete>
+	</target>
+
+	<target name="all" depends="jar" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="jacorb" default="all" basedir="../../..">
+
+  <!-- ==================================================== -->
+  <!--            JacORB ORB build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+  <import file="../../../etc/common.xml"/>
+
+   <!-- all -->
+
+   <target name="all" depends="init, subdirs" />
+
+   <!-- Do all the template copying first to avoid cross-dependacy problems -->
+   <target name="subdirs"
+      depends="config,
+   	           util,
+   	           transport,
+   	           orb,
+   	           poa,
+   	           ir,
+   	           imr,
+               tao_imr,
+   	           naming,
+   	           tracing,
+   	           security,
+   	           transaction,
+   	           collection,
+   	           concurrency,
+   	           events,
+   	           dds,
+   	           notification">
+   </target>
+
+   <target name="config" depends="init">
+      <ant antfile="${src}/org/jacorb/config/build.xml" dir="${basedir}"/>
+   </target>
+
+
+   <target name="util" depends="init">
+      <ant antfile="${src}/org/jacorb/util/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="poa" depends="init" >
+      <ant antfile="${src}/org/jacorb/poa/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="ir" depends="init">
+      <ant antfile="${src}/org/jacorb/ir/build.xml"  dir="${basedir}"/>
+   </target>
+
+   <target name="transaction" depends="init">
+      <ant antfile="${src}/org/jacorb/transaction/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="collection" depends="init">
+      <ant antfile="${src}/org/jacorb/collection/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="concurrency" depends="init">
+      <ant antfile="${src}/org/jacorb/concurrency/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="orb" depends="init">
+      <ant antfile="${src}/org/jacorb/orb/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="imr"  depends="init">
+      <ant antfile="${src}/org/jacorb/imr/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="tao_imr"  depends="init">
+      <ant antfile="${src}/org/jacorb/tao_imr/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="naming" depends="init">
+      <ant antfile="${src}/org/jacorb/naming/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="security" depends="init">
+      <ant antfile="${src}/org/jacorb/security/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="events" depends="init">
+      <ant antfile="${src}/org/jacorb/events/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="dds" depends="init">
+          <ant antfile="${src}/org/jacorb/dds/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="tracing" depends="init">
+      <ant antfile="${src}/org/jacorb/util/tracing/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="transport" depends="init">
+      <ant antfile="${src}/org/jacorb/transport/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="notification" depends="init">
+      <ant antfile="${src}/org/jacorb/notification/build.xml" dir="${basedir}"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="collection" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             Collection build file                    -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/collection/util/*.java,org/jacorb/collection/*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="concurrency" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             Concurrency build file                   -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/concurrency/**/*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="config" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             ORB build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,compile" description="Compile config files"/>
+
+   <target name="compile">
+      <jacorb-javac javac-includes="org/jacorb/config/*.java"/>
+   </target>
+
+
+   <target name="clean">
+      <delete file="${src}/org/jacorb/orb/Reference.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="dds" default="compile" basedir="../../../..">
+
+	  <!-- ==================================================== -->
+	  <!--             ORB build file                         -->
+	  <!-- $Id$ -->
+	  <!-- ==================================================== -->
+
+	   <import file="../../../../etc/common.xml"/>
+
+	   <target name="compile" depends="init,load-taskdef">
+	      <jacorb-javac javac-includes="org/jacorb/dds/**.java"/>
+	   </target>
+
+
+	<!--===========================================================-->
+	<!--========================   JAVA DOC    ====================-->
+	<!--===========================================================-->
+	<target name="javadoc" depends="compile">
+		<javadoc 
+			sourcepath="${src.dir}"
+			classpathref="project.path"
+			destdir="${apidoc.dir}"
+			author="true"
+			version="true"
+			use="true"
+			windowtitle="${project.fullname} API">
+			<link href="http://java.sun.com/j2se/1.4/docs/api/"/>
+		</javadoc>
+	 </target>
+	
+	
+</project>
+<?xml version="1.0"?>
+
+<project name="events" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             ORB build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,load-taskdef,idl,coscompile">
+      <jacorb-javac javac-includes="org/jacorb/events/**.java" javac-xlint=""/>
+   </target>
+
+
+   <target name="idl">
+      <jacidl srcdir="${idl}/jacorb"
+              destdir="${src}/generated"
+              includepath="${idl}/omg"
+              includes="channel.idl"/>
+      <jacorb-javac javac-src="${src}/generated"
+      	            javac-includes="org/jacorb/events/**.java"
+                    javac-xlint=""/>
+   </target>
+
+
+   <target name="coscompile">
+      <jacorb-javac javac-src="${src}/generated"
+      	            javac-includes="org/omg/CosEvent*/**.java"
+                    javac-xlint=""/>
+   </target>
+
+
+   <target name="clean" depends="init">
+           <delete dir="${src}/generated/org/omg/CosEventComm"/>
+           <delete dir="${src}/generated/org/omg/CosEventChannelAdmin"/>
+           <delete dir="${classdir}/org/jacorb/events"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="idl" default="all" basedir="../../../..">
+
+    <!-- TODO generate parser to src/generated -->
+    <!-- add a target to patch the version number -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init, check, parser" >
+      <!-- This replace is safety addition so if parser.cup has been -->
+      <!-- regenerated then it will still build. Normally this will  -->
+      <!-- have no affect and not alter parser.java                  -->
+      <replace file="${src}/org/jacorb/idl/parser.java" token="java_cup.runtime"
+               value="org.jacorb.idl.runtime" />
+      <jacorb-javac javac-includes="org/jacorb/idl/**/*.java"
+                    javac-xlint=""
+                    javac-antruntime="true"/>
+   </target>
+
+    <target name="check" depends="init" >
+        <uptodate property="parser.notRequired" srcfile="${src}/org/jacorb/idl/parser.cup">
+            <compositemapper>
+                <mergemapper to="${src}/org/jacorb/idl/parser.java" />
+                <mergemapper to="${src}/org/jacorb/idl/sym.java" />
+            </compositemapper>
+        </uptodate>
+    </target>
+
+    <target name="parser" unless="parser.notRequired" depends="init" >
+        <java classname="java_cup.Main" fork="true" dir="${src}/org/jacorb/idl" input="${src}/org/jacorb/idl/parser.cup" >
+           <arg value="-progress"/>
+           <arg value="-nosummary"/>
+            <classpath>
+                <pathelement path="${basedir}/lib/build/java_cup.jar" />
+            </classpath>
+        </java>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="imr" default="all" basedir="../../../..">
+
+    <!-- ==================================================== -->
+    <!--             ImR build file                           -->
+    <!-- $Id$ -->
+    <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,load-taskdef">
+      <jacorb-javac javac-includes="org/jacorb/imr/*.java,org/jacorb/imr/util/*.java"/>
+   </target>
+
+
+   <target name="clean" depends="init">
+        <delete dir="${classdir}/org/jacorb/imr" />
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="ir" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             Interface Repository build               -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,compile"/>
+
+   <target name="compile">
+      <jacorb-javac javac-includes="org/jacorb/ir/*.java, 
+      	                            org/jacorb/ir/**/*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="naming" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--            Naming build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,base"/>
+
+   <target name="base">
+      <jacorb-javac javac-includes="org/jacorb/naming/*.java, org/jacorb/naming/**/*.java"/>
+   </target>
+
+
+   <target name="clean">
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="notification" default="all" basedir="../../../..">
+
+	<!-- ============================================================= -->
+	<!--              JacORB - NotificationService build file          -->
+	<!-- $Id$ -->
+	<!-- ============================================================= -->
+
+        <import file="../../../../etc/common.xml"/>
+        <import file="../../../../etc/common-jmx.xml"/>
+        <import file="../../../../etc/common-xdoclet.xml"/>
+
+  	<property name="dir.notification" value="${basedir}/src/org/jacorb/notification" />
+
+	<target name="init.local" depends="init, jmx.init">
+
+		<!-- directory where the etcl grammar is located -->
+		<property name="dir.etcl.grammar" value="${dir.notification}/filter/etcl/grammar" />
+
+		<!-- package to which the parser classes are generated -->
+		<property name="etcl.target.package" value="org/jacorb/notification/filter/etcl" />
+
+		<mkdir dir="${src}/generated/${etcl.target.package}" />
+
+		<path id="path.antlr">
+			<pathelement path="${basedir}/lib/antlr-2.7.2.jar" />
+		</path>
+
+		<path id="classpath">
+			<path refid="path.base" />
+			<path refid="path.mx4j" />
+			<path refid="path.jboss" />
+			<pathelement location="${lib}/wrapper-3.1.0.jar" />
+		</path>
+
+		<macrodef name="jacorb-antlr">
+			<attribute name="source" />
+			<attribute name="todir" default="${src}/generated" />
+			<attribute name="package" />
+
+			<sequential>
+				<java classname="antlr.Tool" fork="yes" failonerror="yes" classpathref="path.antlr">
+					<arg line="-o @{todir}/@{package} @{source}" />
+				</java>
+			</sequential>
+		</macrodef>
+	</target>
+
+	<target name="all" depends="etcl, jmx, compile" />
+
+	<!-- =========== -->
+	<!-- ETCL Parser -->
+	<!-- =========== -->
+	<target name="etcl" description="Generate ETCL Parser" depends="init.local, etcl.depend, etcl.generate" />
+
+	<!-- check if parser needs to be generated -->
+	<target name="etcl.depend">
+		<uptodate property="etcl.generate.notRequired" targetfile="${src}/generated/${etcl.target.package}/TCLParser.java">
+			<srcfiles dir="${dir.etcl.grammar}" includes="**/*.g" />
+		</uptodate>
+	</target>
+
+	<!-- generate parser -->
+	<target name="etcl.generate" unless="etcl.generate.notRequired">
+		<delete>
+			<fileset dir="${src}/generated/${etcl.target.package}" includes="*.java, *.txt" />
+		</delete>
+
+		<copy file="${dir.etcl.grammar}/CommonTokenTypes.txt" todir="${src}/generated/${etcl.target.package}" />
+
+		<jacorb-antlr package="${etcl.target.package}" source="${dir.etcl.grammar}/tcl-lexer.g" />
+		<jacorb-antlr package="${etcl.target.package}" source="${dir.etcl.grammar}/comp-lexer.g" />
+
+		<echo message="*****************************************************************" />
+		<echo message="* The Warnings 'Redefinition of token in tokens {...}: TOKEN'   *" />
+		<echo message="* can be ignored. Unfortunately there is no way to disable them *" />
+		<echo message="*****************************************************************" />
+
+		<jacorb-antlr package="${etcl.target.package}" source="${dir.etcl.grammar}/tcl.g" />
+	</target>
+
+	<target name="jmx" depends="init.local, xdoclet.init-jmx, jmx.mbean, jmx.mx4j, jmx.jboss" description="Generate JMX Interfaces" />
+
+	<target name="jmx.mbean">
+		<!-- MBean Interfaces need to be generated always -->
+		<jacorb-jmxgen>
+			<files>
+				<exclude name="org/jacorb/notification/jmx/jboss/**" />
+				<exclude name="org/jacorb/notification/jmx/mx4j/**" />
+				<include name="org/jacorb/notification/**/*.java" />
+			</files>
+
+			<tasks>
+				<!-- Create the {0}MBean interface for the MBean -->
+				<mbeaninterface />
+			</tasks>
+		</jacorb-jmxgen>
+	</target>
+
+	<target name="jmx.mx4j" if="mx4j.home">
+		<!-- create mx4j specific MBean interfaces -->
+		<jacorb-jmxgen>
+			<files>
+				<include name="org/jacorb/notification/jmx/mx4j/**" />
+			</files>
+
+			<tasks>
+				<!-- Create the {0}MBean interface for the MBean -->
+				<mbeaninterface />
+			</tasks>
+		</jacorb-jmxgen>
+
+		<jacorb-jmxgen>
+			<files>
+				<include name="org/jacorb/notification/**/*.java" />
+				<exclude name="org/jacorb/notification/jmx/jboss/**" />
+			</files>
+
+			<tasks>
+				<!-- Create the MX4J specific description adaptor class for the MBean -->
+				<mx4jdescription />
+			</tasks>
+		</jacorb-jmxgen>
+               <echo message="Compiling mx4j"/>
+               <jacorb-javac javac-classpathref="classpath"
+                             javac-includes="org/jacorb/notification/**/*.java"
+                             javac-excludes="org/jacorb/notification/WrapperMain.java,
+                                             org/jacorb/notification/filter/bsh/**,
+                                             org/jacorb/notification/jmx/jboss/**"
+                             javac-xlint=""/>
+
+	</target>
+
+	<target name="jmx.jboss" if="jboss.home">
+		<!-- create JBoss specific MBean interfaces -->
+		<jacorb-jmxgen>
+			<files>
+				<include name="org/jacorb/notification/jmx/jboss/**" />
+			</files>
+
+			<tasks>
+				<!-- Create the {0}MBean interface for the MBean -->
+				<mbeaninterface />
+			</tasks>
+		</jacorb-jmxgen>
+		<jacorb-jmxgen>
+			<files>
+				<include name="org/jacorb/notification/**/*.java" />
+				<exclude name="org/jacorb/notification/jmx/mx4j/**" />
+			</files>
+
+			<tasks>
+				<!-- Create the JBoss specific XML descriptions for the MBean -->
+				<jbossxmbean destdir="${src}/generated" />
+			</tasks>
+		</jacorb-jmxgen>
+	</target>
+
+	<target name="compile" depends="init.local, compile.server" description="Compile JacORB Notification Service" />
+
+	<target name="compile.server" >
+		<jacorb-javac 	javac-classpathref="classpath"
+						javac-includes="org/jacorb/notification/**/*.java"
+					 	javac-excludes="org/jacorb/notification/WrapperMain.java,
+			                  			org/jacorb/notification/filter/bsh/**,
+                                                                org/jacorb/notification/jmx/mx4j/**,
+                                                                org/jacorb/notification/jmx/jboss/**"
+                                                javac-xlint=""/>
+
+		<jacorb-javac javac-classpathref="classpath" javac-includes="org/jacorb/notification/WrapperMain.java" javac-xlint=""/>
+
+		<antcall target="server.sar" />
+	</target>
+
+	<target name="server.sar" if="jboss.home">
+		<ant antfile="${basedir}/src/org/jacorb/notification/jmx/jboss/build.xml" />
+	</target>
+
+	<!-- clean -->
+	<target name="clean" depends="init, clean.classes" description="remove all compiled classes" />
+
+	<target name="realclean" depends="clean, clean.generated" description="remove all compiled classes and all generated files" />
+
+	<target name="clean.classes">
+		<delete>
+			<fileset dir="${classdir}" includes="org/jacorb/notification/**" />
+		</delete>
+	</target>
+
+	<target name="clean.generated">
+		<delete>
+			<fileset dir="${src}/generated" includes="org/jacorb/notification/**" />
+		</delete>
+	</target>
+
+	<target name="jar" depends="init.local" description="Build a JAR that only contains the NotificationService">
+		<jar destfile="${lib}/jacorb-notification.jar">
+			<fileset dir="${classdir}">
+				<include name="org/jacorb/notification/**/*.class" />
+			</fileset>
+		</jar>
+	</target>
+</project>
+<?xml version="1.0"?>
+
+<project name="JacORB Notify BSH Filter Plugin" default="all" basedir="../../../../../..">
+
+	<!-- ============================================================== -->
+	<!--               JacORB - NotificationService BSH Filter          -->
+	<!-- $Id$ -->
+	<!-- ============================================================== -->
+
+  <import file="../../../../../../etc/common.xml"/>
+
+  <property name="current.package" value="org/jacorb/notification/filter/bsh" />
+
+
+
+	<target name="local.init" depends="init">
+		<condition property="available.bsh" value="true">
+			<available classname="bsh.Interpreter" classpathref="path.base" />
+		</condition>
+	</target>
+
+	<target name="fail" unless="available.bsh">
+		<echo>Skipped build of optional BSH Filter Plugin because Beanshell is not
+      available (http://www.beanshell.org)</echo>
+	</target>
+
+	<target name="all" depends="local.init, fail" if="available.bsh">
+		<jacorb-javac javac-includes="${current.package}/*.java" />
+	</target>
+
+</project>
+<?xml version="1.0"?>
+
+<!-- $Id$ -->
+<project name="jboss-cosnotification" default="sar" basedir="../../../../../..">
+
+        <import file="../../../../../../etc/common.xml"/>
+        <import file="../../../../../../etc/common-jmx.xml"/>
+
+	<target name="init.local" depends="init, jmx.init">
+		<property name="pkg.project" value="org/jacorb/notification/jmx" />
+		<property name="dir.project" value="${src}/${pkg.project}" />
+
+		<property name="name.artifact" value="jboss-cosnotification" />
+		<property name="name.jar" value="${name.artifact}.jar" />
+		<property name="name.sar" value="${name.artifact}.sar" />
+
+		<property name="path.sar" value="${lib}/${name.sar}" />
+		<property name="path.jar" value="${lib}/${name.jar}" />
+
+		<path id="classpath">
+			<path refid="path.base" />
+			<path refid="path.jboss" />
+		</path>
+	</target>
+
+	<target name="compile" depends="init.local" if="jboss.home">
+		<jacorb-javac 	javac-includes="${pkg.project}/*.java, ${pkg.project}/jboss/*.java"
+						javac-excludes="**/*MBeanDescription.java"
+						javac-classpathref="classpath" />
+	</target>
+
+	<target name="jar" depends="init.local, compile" if="jboss.home">
+		<jar destfile="${path.jar}" basedir="${classdir}">
+			<include name="${pkg.project}/jboss/*.class" />
+
+			<fileset dir="${src}/generated">
+				<include name="${pkg.project}/jboss/*.xml" />
+			</fileset>
+		</jar>
+	</target>
+
+	<target name="sar" depends="init.local, jar" if="jboss.home" description="build the JacORB COSNotification JBoss-SAR" >
+		<jar destfile="${path.sar}">
+			<fileset dir="${lib}">
+				<include name="${name.jar}" />
+			</fileset>
+
+			<zipfileset dir="${src}/${pkg.project}/jboss" prefix="META-INF">
+				<include name="jboss-service.xml" />
+			</zipfileset>
+
+			<zipfileset file="${lib}/picocontainer-1.2.jar" />
+		</jar>
+		<delete file="${lib}/${name.jar}" />
+	</target>
+
+	<target name="deploy-cosnotification" depends="init.local, sar">
+		<copy todir="${jboss.dir.deploy}" file="${path.sar}" />
+	</target>
+
+	<target name="upgrade-jboss-jacorb" depends="init.local" >
+		<copy todir="${jboss.dir.lib}" file="${basedir}/lib/jacorb.jar" />
+	</target>
+
+	<target name="clean" depends="init.local">
+		<delete file="${path.sar}" />
+		<delete file="${path.jar}" />
+	</target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="orb" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             ORB build file                         -->
+  <!-- $Id$ -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init, compile, stdInterceptors" description="Compile the ORB files"/>
+
+   <target name="compile">
+      <jacorb-javac
+        javac-includes=
+            "org/jacorb/orb/buffermanager/*.java,
+             org/jacorb/orb/dii/*.java,
+             org/jacorb/orb/diop/*.java
+             org/jacorb/orb/dsi/*.java,
+             org/jacorb/orb/dynany/*.java,
+             org/jacorb/orb/etf/*.java,
+             org/jacorb/orb/factory/*.java,
+             org/jacorb/orb/giop/*.java,
+             org/jacorb/orb/iiop/*.java,
+             org/jacorb/orb/nio/*.java,
+             org/jacorb/orb/listener/*.java,
+             org/jacorb/orb/miop/*.java,
+             org/jacorb/orb/policies/*.java,
+             org/jacorb/orb/portableInterceptor/*.java,
+             org/jacorb/orb/rmi/*.java,
+             org/jacorb/orb/typecode/*.java,
+             org/jacorb/orb/util/*.java,
+             org/jacorb/orb/*.java"/>
+   </target>
+
+
+   <target name="stdInterceptors" >
+      <ant antfile="${src}/org/jacorb/orb/standardInterceptors/build.xml" dir="${basedir}"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="portableInterceptor" default="all" basedir="../../../../..">
+
+  <!-- ==================================================== -->
+  <!--          PortableInterceptor build file              -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../../etc/common.xml"/>
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/orb/portableInterceptor/*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="standardInterceptor" default="all" basedir="../../../../..">
+
+  <!-- ==================================================== -->
+  <!--      JacORB Standard Interceptors build file         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../../etc/common.xml"/>
+
+    <target name="_init" depends="init">
+        <available classname="org.ietf.jgss.GSSManager" property="jgss.present" />
+    </target>
+
+    <target name="compile">
+        <jacorb-javac
+            javac-includes="org/jacorb/orb/standardInterceptors/*.java"
+            javac-excludes="org/jacorb/orb/standardInterceptors/SASComponentInterceptor.java" />
+    </target>
+
+    <target name="compile-sas" if="jgss.present">
+        <jacorb-javac
+            javac-includes="org/jacorb/orb/standardInterceptors/SASComponentInterceptor.java"/>
+    </target>
+
+    <target name="all" depends="_init, compile, compile-sas" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="poa" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+
+   <target name="check-swing">
+      <available classname="javax.swing.JTree" property="swing.present" />
+   </target>
+
+
+   <target name="all" depends="init,base,check-swing,gui"/>
+
+
+   <target name="base">
+      <jacorb-javac javac-includes="org/jacorb/poa/except/*.java,org/jacorb/poa/policy/*.java,org/jacorb/poa/**.java,org/jacorb/poa/util/*.java"/>
+   </target>
+
+
+   <target name="gui" if="swing.present">
+      <jacorb-javac javac-includes="org/jacorb/poa/gui/**.java,org/jacorb/poa/gui/**/**.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="security" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             security build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,ssl,sas"/>
+
+   <target name="ssl">
+           <ant antfile="${src}/org/jacorb/security/ssl/build.xml" dir="${basedir}"/>
+   </target>
+
+   <target name="sas">
+           <ant antfile="${src}/org/jacorb/security/sas/build.xml" dir="${basedir}"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="sas" default="all" basedir="../../../../..">
+
+  <!-- ==================================================== -->
+  <!--                 sas build file                       -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../../etc/common.xml"/>
+
+   <target name="check-props">
+      <available classname="org.ietf.jgss.GSSManager" property="jgss.present" classpathref="bootclasspath" ignoresystemclasses="true" />
+      <available classname="com.tagish.auth.Utils" property="jaas.modules.present" classpathref="bootclasspath" ignoresystemclasses="true" />
+
+      <condition property="java7">
+          <equals arg1="${java-source-version}" arg2="1.7"/>
+      </condition>
+   </target>
+
+   <target name="prepatch" if="java7">
+       <!-- Unfortunately the API changed incompatibly in Java7 so we need to patch the source file -->
+     <replace summary="true"
+              file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+              token="java.lang.Enum"
+              value="com.sun.security.jgss.InquireType"/>
+   </target>
+
+   <target name="prepatch-ibm" if="java-ibm-vendor">
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPMechFactory.java"
+                value="com.ibm.security.jgss.spi"
+                token="sun.security.jgss.spi"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPCredentialSpi.java"
+                value="com.ibm.security.jgss.spi"
+                token="sun.security.jgss.spi"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+                value="com.ibm.security.jgss.InquireType"
+                token="com.sun.security.jgss.InquireType"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+                value="com.ibm.security.jgss.spi"
+                token="sun.security.jgss.spi"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPNameSpi.java"
+                value="com.ibm.security.jgss.spi"
+                token="sun.security.jgss.spi"/>
+   </target>
+
+   <target name="postpatch" if="java7">
+     <replace summary="true"
+              file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+              token="com.sun.security.jgss.InquireType"
+              value="java.lang.Enum"/>
+   </target>
+
+   <target name="postpatch-ibm" if="java-ibm-vendor">
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPMechFactory.java"
+                value="sun.security.jgss.spi"
+                token="com.ibm.security.jgss.spi"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPCredentialSpi.java"
+                value="sun.security.jgss.spi"
+                token="com.ibm.security.jgss.spi"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+                value="com.sun.security.jgss.InquireType"
+                token="com.ibm.security.jgss.InquireType"/>
+       <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPContextSpi.java"
+                value="sun.security.jgss.spi"
+                token="com.ibm.security.jgss.spi"/>
+      <replace summary="true"
+                file="${src}/org/jacorb/security/sas/GSSUPNameSpi.java"
+                value="sun.security.jgss.spi"
+                token="com.ibm.security.jgss.spi"/>
+   </target>
+
+   <target name="all" depends="init,check-props,prepatch,prepatch-ibm,compile,postpatch-ibm,postpatch,jaas" />
+
+   <target name="compile" if="jgss.present">
+      <jacorb-javac javac-includes="org/jacorb/security/sas/*.java"
+      	            javac-excludes="org/jacorb/security/sas/NT_*.java"/>
+   </target>
+
+
+   <target name="jaas" if="jaas.modules.present">
+      <jacorb-javac javac-includes="org/jacorb/security/sas/NT_*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="ssl" default="all" basedir="../../../../..">
+
+  <!-- ==================================================== -->
+  <!--               ssl build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../../etc/common.xml"/>
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/security/ssl/*.java"/>
+      <ant antfile="${src}/org/jacorb/security/ssl/sun_jsse/build.xml" dir="${basedir}"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="sun_jsse" default="all" basedir="../../../../../..">
+
+  <!-- ==================================================== -->
+  <!--                 jsse build file                      -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../../../etc/common.xml"/>
+
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/security/ssl/sun_jsse/*.java"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="tao_imr" default="all" basedir="../../../">
+
+  <!-- ==================================================== -->
+  <!--            JacORB ORB build file                         -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+  <import file="../../../../etc/common.xml"/>
+
+   <!-- all -->
+
+   <target name="all" depends="init,load-taskdef">
+      <jacorb-javac javac-includes="org/tao_imr/*.java"/>
+   </target>
+
+
+   <target name="clean" depends="init">
+        <delete dir="${classdir}/org/tao_imr" />
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="transaction" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--            TransactionService build file            -->
+  <!-- $Id$ -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init">
+      <jacorb-javac javac-includes="org/jacorb/transaction/**/*.java"/>
+   </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="naming" default="all" basedir="../../../..">
+
+	<!-- =======================================+============= -->
+	<!--            TransportCurrent build file                -->
+	<!-- $Id$ -->
+	<!-- ========================================+============ -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,load-taskdef,build" />
+
+	<target name="build" depends="idl">
+		<jacorb-javac javac-includes="org/jacorb/transport/*.java, org/jacorb/transport/**/*.java" />
+		<jacorb-javac javac-src="${src}/generated"
+			          javac-includes="org/jacorb/transport/**.java" />
+	</target>
+
+	<target name="idl">
+		<jacidl srcdir="${idl}/jacorb" 
+				destdir="${src}/generated" 
+				includepath="${idl}/jacorb:${idl}/omg" 
+				includes="*TransportCurrent.idl" />
+	</target>
+
+	<target name="clean">
+		<delete>
+			<fileset dir="${basedir}/classes">
+				<include name="org/jacorb/transport/**" />
+			</fileset>
+			<fileset dir="${basedir}/src/generated">
+				<include name="org/jacorb/transport/**" />
+			</fileset>
+		</delete>
+	</target>
+
+	<target name="realclean" depends="clean">
+		<delete>
+			<fileset dir="${basedir}/src/generated">
+				<include name="org/jacorb/transport/**" />
+			</fileset>
+		</delete>
+	</target>
+</project>
+<?xml version="1.0"?>
+
+<project name="util" default="all" basedir="../../../..">
+
+  <!-- ==================================================== -->
+  <!--             util build file                          -->
+  <!-- $Id$  -->
+  <!-- ==================================================== -->
+
+   <import file="../../../../etc/common.xml"/>
+
+   <target name="all" depends="init, compile">
+      <ant antfile="${src}/org/jacorb/util/tracing/build.xml" dir="${basedir}"/>
+   </target>
+
+    <target name="compile">
+        <jacorb-javac javac-includes="org/jacorb/util/*.java,
+                                      org/jacorb/util/**/*.java"
+                      javac-excludes="**/tracing/**" />
+
+        <jacorb-javac javac-includes="org/jacorb/util/*.java"
+                      javac-src="${src.generated}"/>
+
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="tracing" default="all" basedir="../../../../..">
+
+    <!-- ==================================================== -->
+    <!--             Tracing build file                       -->
+    <!-- ==================================================== -->
+
+   <import file="../../../../../etc/common.xml"/>
+
+   <target name="all" depends="init,load-taskdef,idl">
+      <jacorb-javac javac-src="${src}/generated" 
+         javac-includes="org/jacorb/util/tracing/*.java,org/jacorb/util/tracing/**/*.java"/>
+      <jacorb-javac javac-includes="org/jacorb/util/tracing/*.java"/>
+   </target>
+
+
+   <target name="idl" >
+        <jacidl srcdir="${idl}/jacorb"
+                destdir="${src}/generated"
+                includepath="${idl}/omg"
+                includes="Tracing.idl"/>
+    </target>
+
+
+    <target name="clean">
+        <delete dir="${classdir}/org/jacorb/util/tracing"/>
+        <delete dir="${dirs.base}/src/generated/org/jacorb/util/tracing"/>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="delegateSync" default="all" basedir="../..">
+
+  <!-- ==================================================== -->
+  <!--                  Test build file                     -->
+  <!-- ==================================================== -->
+
+  <import file="../../etc/common.xml"/>
+
+   <target name="local_init">
+       <property name="name" value="XYZ"/>
+       <property name="relative_src" value="test/delegateSync"/>
+       <property name="srcdir" value="${basedir}/${relative_src}"/>
+   </target>
+
+   <target name="all" depends="init, local_init">
+	<javac srcdir="${srcdir}"
+           destdir="${classdir}"
+	       includes="*.java"
+	        />
+   </target>
+
+   <target name="rename" depends="init, local_init">
+        <replace dir="${srcdir}" token="XYZ" value="delegateSync">
+                 <include name="*.java"/>
+                 <include name="*.idl"/>
+        </replace>
+  </target>
+
+   <target name="clean" depends="init, local_init">
+	   <delete dir="${classdir}/${relative_src}"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="bidir" default="compile">
+
+    <import file="../common/common-interop.xml" />
+
+    <target name="jacorb_server" depends="compile">
+        <run-java classname="test.interop.bidir.Server" argline="${build.dir}/ior.ior" />
+    </target>
+
+    <target name="jacorb_client" depends="compile">
+        <run-java classname="test.interop.bidir.Client" argline="${build.dir}/ior.ior" />
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="bug360" default="compile" basedir=".">
+
+    <import file="../common/common-interop.xml" />
+
+    <target name="jacorb_server" depends="compile">
+        <run-java classname="test.interop.bug360.Server" argline="${build.dir}/ior.ior" />
+    </target>
+
+    <target name="jacorb_client" depends="compile">
+        <run-java classname="test.interop.bug360.Client" argline="${build.dir}/ior.ior" />
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="Jacorb interoperability" default="compile" basedir=".">
+
+    <macrodef name="iterate">
+        <attribute name="target" />
+        <sequential>
+            <subant target="@{target}">
+                <fileset dir="." includes="*/build.xml" />
+            </subant>
+        </sequential>
+    </macrodef>
+
+    <target name="compile">
+        <iterate target="compile" />
+    </target>
+
+    <target name="clean">
+        <iterate target="clean" />
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="miop tao interoperability" default="compile">
+
+    <import file="../common/common-interop.xml" />
+
+    <target name="jacorb_server" depends="compile">
+        <run-java classname="test.interop.miop_tao_interop.Server"
+                  argline="-o ${build.dir}/server.ior -u corbaloc:miop:1.0@1.0-domain-1/225.10.10.10:17502 -s 1 -p 100000 -t 1 -c 10" />
+    </target>
+
+    <target name="jacorb_client" depends="compile">
+        <run-java classname="test.interop.miop_tao_interop.Client"
+                  argline="-k file://${build.dir}/server.ior -p 100000 -t 1 -c 10 -s 1000 -f 0" />
+    </target>
+
+    <target name="jacorb_server_stop" depends="compile">
+        <run-java classname="test.interop.miop_tao_interop.Client" argline="-k file://${build.dir}/server.ior -x" />
+    </target>
+
+    <property name="tao.src" value="${src.dir}/tao" />
+    <property name="tao.obj" value="${build.dir}/tao" />
+    <property environment="env" />
+    <property name="mpc" value="${env.TAO_ROOT}/bin/mwc.pl" />
+    <property name="mpc_args" value="-type gnuace -template prism" />
+
+    <target name="compile_tao">
+        <copy todir="${build.dir}">
+            <fileset dir="${src.dir}" includes="tao/**" />
+        </copy>
+
+        <exec dir="${tao.obj}" executable="${mpc}">
+            <arg line="${mpc_args}" />
+        </exec>
+
+        <exec dir="${tao.obj}" executable="make" />
+    </target>
+
+    <target name="tao_server" depends="compile_tao">
+        <exec dir="${tao.obj}" executable="${basedir}/${tao.obj}/server">
+            <arg line="-ORBSvcConf uipmc.conf -ORBMIOPFragmentsCleanupDelay 1000 -o ${basedir}/${build.dir}/server.ior -u corbaloc:miop:1.0@1.0-domain-1/225.10.10.10:17882 -s 1 -p 100000 -t 1 -c 10" />
+        </exec>
+    </target>
+
+    <target name="tao_client" depends="compile_tao">
+        <exec dir="${tao.obj}" executable="${basedir}/${tao.obj}/client">
+            <arg line="-ORBSvcConf uipmc.conf -k file://${basedir}/${build.dir}/server.ior -p 100000 -t 1 -c 10 -s 1000 -f 0" />
+        </exec>
+    </target>
+
+    <target name="tao_server_stop" depends="compile_tao">
+        <exec dir="${tao.obj}" executable="${basedir}/${tao.obj}/client">
+            <arg line="-ORBSvcConf uipmc.conf -k file://${basedir}/${build.dir}/server.ior -x" />
+        </exec>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="wchar tao interoperability" default="compile">
+
+    <import file="../common/common-interop.xml" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="listenendpoints-echo" default="all" basedir=".">
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+
+  <target name="init" >
+        <property name="jacorb.dir" value="../../.." />
+	<property name="build.dir" value="${basedir}/build"/>
+	<property name="classes.dir" value="${build.dir}/classes"/>
+
+        <path id="jacorb.classpath" >
+            <pathelement location="${jacorb.dir}/classes" />
+            <fileset dir="${jacorb.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+        <taskdef name="jacidl" classname="org.jacorb.idl.JacIDL" classpathref="jacorb.classpath"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+        <mkdir dir="${classes.dir}"/>
+
+	<javac destdir="${classes.dir}"
+	       debug="true"
+               includeantruntime="false">
+            <src path="${basedir}/src"/>
+            <src path="${basedir}/build/generated"/>
+            <classpath refid="jacorb.classpath"/>
+        </javac>
+   </target>
+
+   <target name="idl" depends="init">
+       <jacidl generateir="true"
+               srcdir="${basedir}/idl"
+               includepath="${jacorb.dir}/idl/omg"
+               destdir="${basedir}/build/generated">
+           <i2jpackage names=":org.jacorb"/>
+       </jacidl>
+   </target>
+
+   <target name="clean" depends="init">
+         <delete dir="${build.dir}"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="listenendpoints-echo_corbaloc" default="all" basedir=".">
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+
+    <target name="init">
+        <property name="jacorb.dir" value="../../.." />
+	<property name="build.dir" value="${basedir}/build"/>
+	<property name="classes.dir" value="${build.dir}/classes"/>
+
+        <path id="jacorb.classpath" >
+            <pathelement location="${jacorb.dir}/classes" />
+            <fileset dir="${jacorb.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+        <taskdef name="jacidl" classname="org.jacorb.idl.JacIDL" classpathref="jacorb.classpath"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+        <mkdir dir="${classes.dir}"/>
+
+	<javac destdir="${classes.dir}"
+	       debug="true"
+               includeantruntime="false">
+            <src path="${basedir}/src"/>
+            <src path="${build.dir}/generated"/>
+            <classpath refid="jacorb.classpath"/>
+        </javac>
+   </target>
+
+   <target name="idl" depends="init">
+       <jacidl generateir="true"
+               srcdir="${basedir}/idl"
+               includepath="${jacorb.dir}/idl/omg"
+               destdir="${build.dir}/generated">
+           <i2jpackage names=":org.jacorb"/>
+       </jacidl>
+   </target>
+
+   <target name="clean" depends="init">
+         <delete dir="${build.dir}"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="demo" default="all" basedir="../../..">
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+   <target name="init">
+	<property name="dirs.base" value="${basedir}"/>
+	<property name="classdir" value="${dirs.base}/classes"/>
+	<property name="lib" value="${dirs.base}/lib"/>
+	<property name="include" value="${dirs.base}/idl"/>
+	<property name="idlflags" value="-I${include}/omg -ir  -d ${dirs.base}/test/load/imr/generated"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+	<javac srcdir="${dirs.base}/test/load/imr/generated"
+               destdir="${classdir}"
+	       includes="test/load/imr/*.java"
+	        />
+	<javac srcdir="${dirs.base}"
+               destdir="${classdir}"
+	       includes="test/load/imr/*.java"
+	        />
+   </target>
+
+   <target name="idl" depends="init">
+        <java classname="org.jacorb.idl.parser" 
+              fork="yes" 
+              classpath="${lib}/idl.jar;${java.class.path}">
+
+	      <arg line="${idlflags}
+	      ${dirs.base}/test/load/imr/server.idl"/>
+         </java>
+   </target>
+
+   <target name="clean">
+	   <deltree dir="${classdir}/test/load/imr"/>
+	   <deltree dir="${dirs.base}/test/load/imr/generated"/>
+   </target>
+
+</project>
+
+
+
+
+
+<?xml version="1.0"?>
+
+]>
+
+<project name="notification-load" default="all" basedir="../../..">
+
+	<import file="../../../etc/common.xml"/>
+		
+	<property name="dir.base" value="${basedir}/test/load/notification" />
+	<property name="dir.work" value="${dir.base}/work" />
+	<property file="${dir.base}/build.properties" />
+	<fail message="the property home.grinder must be set" unless="home.grinder" />
+
+	<path id="cp.grinder">
+		<pathelement location="${home.grinder}/lib/grinder.jar" />
+	</path>
+
+	<target name="all" description="Start Grinder Console and Agents" depends="console, supplier, consumer">
+	</target>
+
+	<target name="copy" depends="set-architecture">
+		<path id="cp.jacorb">
+			<fileset dir="${basedir}/lib">
+				<include name="*.jar" />
+				<exclude name="**/*wrapper*.jar" />
+			</fileset>
+		</path>
+
+		<pathconvert property="cp.string" targetos="${architecture}">
+			<path refid="cp.jacorb" />
+		</pathconvert>
+
+		<copy todir="${dir.work}">
+			<fileset dir="${dir.base}/scripts" />
+		</copy>
+
+		<copy todir="${dir.work}">
+			<fileset dir="${dir.base}">
+				<include name="*.properties.template" />
+			</fileset>
+			<mapper type="glob" from="*.properties.template" to="*.properties" />
+		</copy>
+
+		<replace dir="${dir.work}">
+			<include name="*.properties" />
+			<replacefilter token="@JACORB_HOME@" value="${basedir}" />
+			<replacefilter token="@JACORB_CP@" value="${cp.string}" />
+		</replace>
+	</target>
+
+	<target name="clean">
+		<delete>
+			<fileset dir="${dir.work}">
+				<include name="*" />
+			</fileset>
+		</delete>
+	</target>
+
+	<target name="console">
+		<property name="spawn" value="true" />
+
+		<java fork="true" spawn="true" classname="net.grinder.Console">
+			<classpath refid="cp.grinder" />
+		</java>
+
+		<sleep seconds="5" />
+	</target>
+
+	<macrodef name="grinder-start-agent">
+		<attribute name="file" />
+		<sequential>
+			<property name="spawn" value="false" />
+
+			<java fork="true" spawn="${spawn}" classname="net.grinder.Grinder" dir="${dir.work}">
+				<classpath refid="cp.grinder" />
+				<arg value="@{file}" />
+			</java>
+		</sequential>
+	</macrodef>
+
+	<target name="supplier" depends="copy">
+		<grinder-start-agent file="supplier.properties" />
+	</target>
+
+	<target name="consumer" depends="copy">
+		<grinder-start-agent file="consumer.properties"/>
+	</target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="demo" default="all" basedir="../../..">
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+   <target name="init">
+	<property name="dirs.base" value="${basedir}"/>
+	<property name="classdir" value="${dirs.base}/classes"/>
+	<property name="lib" value="${dirs.base}/lib"/>
+	<property name="include" value="${dirs.base}/idl"/>
+	<property name="idlflags" value="-I${include}/omg -ir  -d ${dirs.base}/test/load/simple/generated"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+	<javac srcdir="${dirs.base}/test/load/simple/generated"
+               destdir="${classdir}"
+	       includes="test/load/simple/*.java"
+	        />
+	<javac srcdir="${dirs.base}"
+               destdir="${classdir}"
+	       includes="test/load/simple/*.java"
+	        />
+   </target>
+
+   <target name="idl" depends="init">
+        <java classname="org.jacorb.idl.parser" 
+              fork="yes" 
+              classpath="${lib}/idl.jar;${java.class.path}">
+
+	      <arg line="${idlflags}
+	      ${dirs.base}/test/load/simple/server.idl"/>
+         </java>
+   </target>
+
+   <target name="clean">
+	   <deltree dir="${classdir}/test/load/simple"/>
+	   <deltree dir="${dirs.base}/test/load/simple/generated"/>
+   </target>
+
+</project>
+
+
+
+
+
+<?xml version="1.0"?>
+
+<project name="test" default="all" basedir="../..">
+
+  <import file="../../etc/common.xml"/>
+
+  <!-- ==================================================== -->
+  <!--             Test build file                         -->
+  <!-- ==================================================== -->
+
+   <target name="memoryusage.init">
+	<property name="name" value="memoryusage"/>
+	<property name="dirs.base" value="${basedir}"/>
+	<property name="classdir" value="${dirs.base}/classes"/>
+	<property name="lib" value="${dirs.base}/lib"/>
+	<property name="include" value="${dirs.base}/idl"/>
+        <property name="dest" value="${dirs.base}/test/${name}/generated"/>
+	<property name="idlflags" value="-d ${dirs.base}/test/${name}/generated"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+	<javac srcdir="${dirs.base}"
+               destdir="${classdir}"
+	       includes="test/${name}/generated/**/*.java,test/${name}/*.java"
+	        />
+   </target>
+
+
+
+   <target name="idl" depends="memoryusage.init,load-taskdef">
+        <mkdir dir="${dest}" />
+        <jacidl srcdir="test/${name}"
+                destdir="${dest}"
+                includepath="${include}"
+	        includes="*.idl"/>
+   </target>
+
+
+<!--
+   <target name="idl" depends="init">
+        <java classname="org.jacorb.idl.parser"
+              fork="yes"
+              classpath="${lib}/idl.jar">
+
+	      <arg line="${idlflags}
+	      ${dirs.base}/test/${name}/test.idl"/>
+         </java>
+   </target>
+-->
+
+   <target name="clean" depends="init">
+           <delete dir="${classdir}/test/memoryusage"/>
+           <delete dir="${dirs.base}/test/memoryusage/generated"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="orbreinvoke-jacorb_imr" default="all" basedir=".">
+
+    <import file="../../../etc/common.xml"/>
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+
+    <target name="init">
+        <property name="jacorb.dir" value="../../../"/>
+	<property name="build.dir" value="${basedir}/build"/>
+	<property name="classes.dir" value="${build.dir}/classes"/>
+
+        <path id="jacorb.classpath" >
+            <pathelement location="${jacorb.dir}/classes" />
+            <fileset dir="${jacorb.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+   </target>
+
+   <target name="all"
+           depends="init,compile-test-listenendpoints-echo_corbaloc,compile">
+   </target>
+
+   <target name="compile">
+        <mkdir dir="${classes.dir}"/>
+
+        <javac destdir="${classes.dir}"
+               debug="true" includeantruntime="false">
+            <src path="${basedir}/src"/>
+            <src path="${build.dir}"/>
+            <classpath refid="jacorb.classpath"/>
+	   </javac>
+
+   </target>
+
+   <target name="clean" depends="clean-test-listenendpoints-echo_corbaloc">
+       <delete dir="${build.dir}"/>
+   </target>
+
+   <target name="compile-test-listenendpoints-echo_corbaloc">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="all" dir="${jacorb.dir}/test/listenendpoints/echo_corbaloc"/>
+    </target>
+
+    <target name="clean-test-listenendpoints-echo_corbaloc" depends="init">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="clean" inheritAll="false"/>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="orbreinvoke-tao_imr" default="all" basedir=".">
+
+    <import file="../../../etc/common.xml"/>
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+    <target name="init">
+        <property name="jacorb.dir" value="../../../"/>
+        <property name="build.dir" value="${basedir}/build"/>
+	<property name="classes.dir" value="${build.dir}/classes"/>
+
+        <path id="jacorb.classpath" >
+            <pathelement location="${jacorb.dir}/classes" />
+            <fileset dir="${jacorb.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+    </target>
+
+    <target name="all"
+           depends="init,compile-test-listenendpoints-echo_corbaloc,compile">
+    </target>
+
+    <target name="compile">
+        <mkdir dir="${classes.dir}"/>
+
+        <javac destdir="${classes.dir}"
+               debug="true" includeantruntime="false">
+            <src path="${basedir}/src"/>
+            <src path="${build.dir}"/>
+            <classpath refid="jacorb.classpath"/>
+	   </javac>
+
+    </target>
+
+    <target name="clean"
+        depends="init,clean-test-listenendpoints-echo_corbaloc">
+       <delete dir="${build.dir}"/>
+    </target>
+
+    <target name="compile-test-listenendpoints-echo_corbaloc">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="all" dir="${jacorb.dir}/test/listenendpoints/echo_corbaloc"/>
+    </target>
+
+    <target name="clean-test-listenendpoints-echo_corbaloc" depends="init">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="clean" inheritAll="false"/>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="orbreinvoke-tao_ns" default="all" basedir=".">
+
+    <import file="../../../etc/common.xml"/>
+
+  <!-- ==================================================== -->
+  <!--                   build file                         -->
+  <!-- ==================================================== -->
+
+
+    <target name="init">
+        <property name="jacorb.dir" value="../../../"/>
+        <property name="build.dir" value="${basedir}/build"/>
+	<property name="classes.dir" value="${build.dir}/classes"/>
+
+        <path id="jacorb.classpath" >
+            <pathelement location="${jacorb.dir}/classes" />
+            <fileset dir="${jacorb.dir}/lib">
+                <include name="*.jar" />
+            </fileset>
+        </path>
+
+    </target>
+
+    <target name="all"
+           depends="init,compile-test-listenendpoints-echo_corbaloc,compile">
+    </target>
+
+    <target name="compile">
+        <mkdir dir="${classes.dir}"/>
+
+        <javac destdir="${classes.dir}"
+               debug="true" includeantruntime="false">
+            <src path="${basedir}/src"/>
+            <src path="${build.dir}"/>
+            <classpath refid="jacorb.classpath"/>
+	   </javac>
+
+    </target>
+
+    <target name="clean"
+        depends="init,clean-test-listenendpoints-echo_corbaloc">
+       <delete dir="${build.dir}"/>
+    </target>
+
+    <target name="compile-test-listenendpoints-echo_corbaloc">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="all" dir="${jacorb.dir}/test/listenendpoints/echo_corbaloc"/>
+    </target>
+
+    <target name="clean-test-listenendpoints-echo_corbaloc" depends="init">
+        <ant antfile="${jacorb.dir}/test/listenendpoints/echo_corbaloc/build.xml" target="clean" inheritall="false"/>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="test" default="all" basedir="../../../">
+
+  <!-- ==================================================== -->
+  <!--             Demo build file                         -->
+  <!-- ==================================================== -->
+
+    <import file="../../../etc/common.xml"/>
+
+   <target name="sas.init">
+	<property name="name" value="sas"/>
+	<property name="dirs.base" value="${basedir}"/>
+	<property name="classdir" value="${dirs.base}/classes"/>
+	<property name="lib" value="${dirs.base}/lib"/>
+        <property name="dest" value="${dirs.base}/test/${name}/generated"/>
+	<property name="include" value="${dirs.base}/idl/omg"/>
+   </target>
+
+   <target name="all" depends="sas.init,idl">
+	<javac srcdir="${dest}"
+               destdir="${classdir}"
+	       includes="**/*.java"
+	        />
+	<javac srcdir="${dirs.base}/test/${name}/src/"
+               destdir="${classdir}"
+	       includes="**/*.java"
+	        />
+   </target>
+
+   <target name="idl" depends="sas.init,load-taskdef">
+        <mkdir dir="${dest}" />
+        <jacidl srcdir="test/${name}/src"
+                destdir="${dest}"
+                includepath="${include}"
+	        includes="*.idl"/>
+   </target>
+
+   <target name="clean" depends="sas.init">
+           <delete dir="${classdir}/InterOpTest"/>
+           <delete dir="${classdir}/org/jacorb/test/${name}"/>
+           <delete dir="${dest}"/>
+   </target>
+
+</project>
+
+
+
+
+
+<?xml version="1.0"?>
+
+<project name="test" default="all" basedir="../..">
+
+  <import file="../../etc/common.xml"/>
+
+  <!-- ==================================================== -->
+  <!--             Test build file                         -->
+  <!-- ==================================================== -->
+
+   <target name="servantscaling.init">
+	<property name="name" value="servantscaling"/>
+	<property name="dirs.base" value="${basedir}"/>
+	<property name="classdir" value="${dirs.base}/classes"/>
+	<property name="lib" value="${dirs.base}/lib"/>
+	<property name="include" value="${dirs.base}/idl"/>
+        <property name="dest" value="${dirs.base}/test/${name}/generated"/>
+   </target>
+
+   <target name="all" depends="init,idl">
+	<javac srcdir="${dirs.base}"
+               destdir="${classdir}"
+	       includes="test/${name}/generated/**/*.java,test/${name}/*.java"
+	        />
+   </target>
+
+   <target name="idl" depends="servantscaling.init,load-taskdef">
+        <mkdir dir="${dest}" />
+        <jacidl srcdir="test/${name}"
+                destdir="${dest}"
+                includepath="${include}"
+	        includes="*.idl"/>
+   </target>
+
+   <target name="clean" depends="init">
+           <delete dir="${classdir}/test/servantscaling"/>
+           <delete dir="${dirs.base}/test/servantscaling/generated"/>
+   </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="demo" default="all" basedir="../..">
+
+  <!-- ==================================================== -->
+  <!--                  Test build file                     -->
+  <!-- ==================================================== -->
+
+  <import file="../../common.xml"/>
+
+   <target name="local_init">
+       <property name="name" value="XYZ"/>
+       <property name="relative_src" value="test/${name}"/>
+       <property name="srcdir" value="${basedir}/${relative_src}"/>
+   </target>
+
+   <target name="all" depends="init, local_init, idl">
+	<javac srcdir="${srcdir}/generated"
+           destdir="${classdir}"
+	       includes="${relative_src}/**/*.java"
+	        />
+	<javac srcdir="${srcdir}"
+           destdir="${classdir}"
+	       includes="*.java"
+	        />
+   </target>
+
+   <target name="idl" depends="init, local_init, load-taskdef">
+      <mkdir dir="${srcdir}/generated" />
+
+      <jacidl generateir="true"
+              srcdir="${srcdir}"
+              includepath="${basedir}/idl/omg"
+              destdir="${srcdir}/generated/"
+              includes="server.idl"/>
+   </target>
+
+   <target name="rename" depends="init, local_init">
+        <replace dir="${srcdir}" token="XYZ" value="${name}">
+                 <include name="*.java"/>
+                 <include name="*.idl"/>
+        </replace>
+  </target>
+
+   <target name="clean" depends="init, local_init">
+	   <delete dir="${classdir}/${relative_src}"/>
+	   <delete dir="${srcdir}/generated"/>
+   </target>
+
+</project>
+
+
+
+
+
+<?xml version="1.0"?>
+
+<project name="timerqueue" default="all" basedir="../..">
+
+  <!-- ==================================================== -->
+  <!--                  Test build file                     -->
+  <!-- ==================================================== -->
+
+  <import file="../../etc/common.xml"/>
+
+   <target name="local_init">
+       <property name="name" value="XYZ"/>
+       <property name="relative_src" value="test/timerqueue"/>
+       <property name="srcdir" value="${basedir}/${relative_src}"/>
+   </target>
+
+   <target name="all" depends="init, local_init">
+	<javac srcdir="${srcdir}"
+           destdir="${classdir}"
+	       includes="*.java"
+	        />
+   </target>
+
+   <target name="rename" depends="init, local_init">
+        <replace dir="${srcdir}" token="XYZ" value="timerqueue">
+                 <include name="*.java"/>
+                 <include name="*.idl"/>
+        </replace>
+  </target>
+
+   <target name="clean" depends="init, local_init">
+	   <delete dir="${classdir}/${relative_src}"/>
+   </target>
+
+</project>

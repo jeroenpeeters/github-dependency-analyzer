@@ -1,0 +1,272 @@
+<?xml version="1.0" standalone="yes"?>
+<project name="vilya" default="compile" basedir="." xmlns:artifact="urn:maven-artifact-ant">
+  <property name="deploy.dir"  location="dist"/>
+  <property name="src.dir"     location="core/src/main/java"/>
+  <property name="asrc.dir"    location="aslib/src/main/as"/>
+  <property name="tsrc.dir"    location="core/src/test/java"/>
+  <property name="classes.dir"  location="${deploy.dir}/classes"/>
+  <property name="tclasses.dir" location="${deploy.dir}/test-classes"/>
+
+  <property name="ooo-build.vers" value="2.9"/>
+  <ant antfile="etc/bootstrap.xml"/>
+  <import file="${user.home}/.m2/ooo-build/${ooo-build.vers}/ooo-build.xml"/>
+
+  <target name="-prepare" depends="-init-ooo">
+    <mavendep pom="core/pom.xml" id="compile"/>
+    <!-- we can't use <mavendep> here because we need to exclude our pom depends -->
+    <artifact:dependencies filesetId="aslib.fileset" cacheDependencyRefs="true" type="swc"
+      dependencyRefsBuildFile="${deploy.dir}/aslib-pom.dependencies">
+      <pom file="aslib/pom.xml"/>
+    </artifact:dependencies>
+    <pathconvert pathsep="," property="aslib.path" refid="aslib.fileset"/>
+    <mavendep pom="core/pom.xml" id="test" scope="test"/>
+    <mkdir dir="${deploy.dir}"/>
+    <path id="built.classpath">
+      <path refid="compile.path"/>
+      <pathelement location="${classes.dir}"/>
+    </path>
+    <path id="test.classpath">
+      <path refid="test.path"/>
+      <pathelement location="${classes.dir}"/>
+      <pathelement location="${tclasses.dir}"/>
+    </path>
+  </target>
+
+  <target name="-prepare-as" depends="-prepare">
+    <maventaskdef groupId="com.threerings.ant" artifactId="actionscript" version="1.4"/>
+    <checkflex/> <!-- if flexsdk.dir is not already set, tries to infer it -->
+    <if><not><isset property="flexsdk.dir"/></not><then>
+      <echo>***</echo>
+      <echo>Not compiling Nenya ActionScript library. Set flexsdk.dir to enable.</echo>
+      <echo>***</echo>
+    </then></if>
+  </target>
+
+  <target name="-preptools" depends="-prepare">
+    <artifact:dependencies pathId="tools.classpath">
+      <dependency groupId="com.threerings" artifactId="narya-tools" version="1.11"/>
+    </artifact:dependencies>
+    <taskdef resource="com/threerings/presents/tools.properties" classpathref="tools.classpath"/>
+  </target>
+
+  <target name="clean" depends="-init-ooo" description="Cleans out build results">
+    <delete dir="${classes.dir}"/>
+    <delete dir="${tclasses.dir}"/>
+    <delete dir="${deploy.dir}/docs"/>
+    <delete failonerror="false"><fileset dir="${deploy.dir}" includes="*.jar"/></delete>
+    <delete failonerror="false"><fileset dir="${deploy.dir}" includes="*.swc"/></delete>
+    <cleanmavendepcache pom="core/pom.xml"/>
+    <cleanmavendepcache pom="aslib/pom.xml"/>
+    <cleanmavendepcache id="test"/>
+  </target>
+
+  <target name="distclean" description="Scorched earth clean">
+    <delete dir="${deploy.dir}"/>
+  </target>
+
+  <target name="compile" depends="-prepare" description="Builds the Java code.">
+    <mkdir dir="${classes.dir}"/>
+    <copy todir="${classes.dir}"><fileset dir="core/src/main/resources" includes="**"/></copy>
+    <ooojavac version="1.5" srcdir="${src.dir}" destdir="${classes.dir}"
+        classpathref="compile.path"/>
+
+    <mkdir dir="${tclasses.dir}"/>
+    <copy todir="${tclasses.dir}"><fileset dir="core/src/test/resources" includes="**"/></copy>
+    <ooojavac srcdir="${tsrc.dir}" destdir="${tclasses.dir}" version="1.5"
+        classpathref="test.classpath"/>
+  </target>
+
+  <target name="procstream" depends="-preptools"
+          description="Adds readField and writeField methods to Streamable classes">
+    <!-- now instrument the associated files -->
+    <instream outdir="${classes.dir}">
+      <path refid="built.classpath"/>
+      <fileset dir="${classes.dir}" includes="**/*.class"/>
+    </instream>
+  </target>
+
+  <target name="aslib" depends="-prepare-as" if="flexsdk.dir"
+          description="Builds the ActionScript code">
+    <maventaskdef groupId="com.threerings.ant" artifactId="actionscript" version="1.4"/>
+    <compc srcdir="${asrc.dir}" libpath="${aslib.path}"
+        dest="${deploy.dir}/${ant.project.name}lib.swc"/>
+  </target>
+
+  <target name="javadoc" depends="-prepare" description="Builds the Java documentation">
+    <mkdir dir="${deploy.dir}/docs"/>
+    <javadoc sourcepath="${src.dir}" packagenames="com.threerings.*"
+             destdir="${deploy.dir}/docs" stylesheetfile="docs/stylesheet.css"
+             additionalparam="-breakiterator"
+             link="http://www.threerings.net/code/vilya/docs/api">
+      <classpath refid="built.classpath"/>
+      <link href="http://java.sun.com/j2se/1.5/docs/api/"/>
+      <link href="http://samskivert.googlecode.com/svn/apidocs"/>
+      <link href="http://www.threerings.net/code/narya/docs/api"/>
+    </javadoc>
+    <copy todir="${deploy.dir}/docs">
+      <fileset dir="${src.dir}" includes="**/*.png"/>
+    </copy>
+  </target>
+
+  <target name="asdoc" unless="no_build_aslib" depends="-prepare"
+          description="Builds the ActionScript documention">
+    <maventaskdef groupId="com.threerings.ant" artifactId="actionscript" version="1.4"/>
+    <mkdir dir="${deploy.dir}/asdocs"/>
+    <asdoc srcdir="${asrc.dir}" libpath="${aslib.path}" destdir="${deploy.dir}/asdocs"/>
+  </target>
+
+  <property name="test" value=""/>
+  <target name="tests" depends="compile"
+          description="Runs unit tests. Use -Dtest=Foo to run only FooTest.">
+    <taskdef name="unit" classpathref="test.classpath"
+      classname="org.apache.tools.ant.taskdefs.optional.junit.JUnitTask"/>
+    <mkdir dir="${deploy.dir}/test-reports"/>
+    <unit printsummary="off" haltonfailure="yes">
+      <classpath refid="test.classpath"/>
+      <sysproperty key="test_dir" value="${tclasses.dir}"/>
+      <formatter type="brief" usefile="false"/>
+      <formatter type="xml"/>
+      <batchtest todir="${deploy.dir}/test-reports">
+        <fileset dir="${tsrc.dir}" includes="**/*${test}*Test.java"/>
+      </batchtest>
+    </unit>
+  </target>
+
+  <target name="dist" depends="compile,procstream" description="Builds jar files.">
+    <jar destfile="${deploy.dir}/${ant.project.name}.jar" basedir="${classes.dir}"/>
+    <!-- also build our various split jar files -->
+    <jar destfile="${deploy.dir}/${ant.project.name}-parlor.jar">
+      <fileset dir="${classes.dir}" includes="rsrc/i18n/game/**"/>
+      <fileset dir="${classes.dir}" includes="com/threerings/parlor/**"/>
+      <fileset dir="${classes.dir}" includes="com/threerings/ezgame/**"/>
+    </jar>
+    <jar destfile="${deploy.dir}/${ant.project.name}-puzzle.jar">
+      <fileset dir="${classes.dir}" includes="com/threerings/puzzle/**"/>
+    </jar>
+    <jar destfile="${deploy.dir}/${ant.project.name}-micasa.jar">
+      <fileset dir="${classes.dir}" includes="com/threerings/micasa/**"/>
+      <fileset dir="${classes.dir}" includes="rsrc/**/micasa/**"/>
+    </jar>
+    <jar destfile="${deploy.dir}/${ant.project.name}-stage.jar">
+      <fileset dir="${classes.dir}" includes="com/threerings/stage/**"/>
+      <fileset dir="${classes.dir}" includes="rsrc/**/stage/**"/>
+    </jar>
+    <jar destfile="${deploy.dir}/${ant.project.name}-stats.jar">
+      <fileset dir="${classes.dir}" includes="com/threerings/stats/**"/>
+      <fileset dir="${classes.dir}" includes="rsrc/**/stats/**"/>
+    </jar>
+    <jar destfile="${deploy.dir}/${ant.project.name}-whirled.jar">
+      <fileset dir="${classes.dir}" includes="com/threerings/whirled/**" excludes="**/*.png"/>
+      <fileset dir="${classes.dir}" includes="rsrc/**/whirled/**"/>
+    </jar>
+  </target>
+
+  <target name="genrecord" depends="-prepare"
+          description="Generates fields for persistent record classes.">
+    <taskdef name="grecord" classname="com.samskivert.depot.tools.GenRecordTask"
+             classpathref="compile.path"/>
+    <!-- make sure the record class files are all compiled -->
+    <ooojavac srcdir="${src.dir}" destdir="${classes.dir}" version="1.5"
+      classpathref="built.classpath">
+      <include name="**/*Record.java"/>
+    </ooojavac>
+    <!-- now update the source files -->
+    <grecord classpathref="built.classpath">
+      <fileset dir="${src.dir}" includes="**/*Record.java"/>
+    </grecord>
+  </target>
+
+  <target name="gendobj" depends="-preptools"
+          description="Generates additional methods for distributed object classes">
+    <!-- make sure the dobject class files are all compiled -->
+    <ooojavac srcdir="${src.dir}" destdir="${classes.dir}" version="1.5"
+      classpathref="built.classpath">
+      <include name="**/*Object.java"/>
+    </ooojavac>
+    <!-- now generate the associated files -->
+    <gendobj classpathref="built.classpath">
+      <fileset dir="${src.dir}" includes="**/*Object.java"/>
+    </gendobj>
+  </target>
+
+  <target name="genservice" depends="-preptools"
+          description="Generates marshaller and dispatcher classes for all invocation services">
+    <!-- make sure the service class files are all compiled -->
+    <ooojavac srcdir="${src.dir}" destdir="${classes.dir}" version="1.5"
+      classpathref="built.classpath">
+      <include name="**/*Service.java"/>
+      <exclude name="**/InvocationService.java"/>
+    </ooojavac>
+    <!-- generate our services that have no ActionScript counterpart -->
+    <genservice header="lib/SOURCE_HEADER" classpathref="built.classpath">
+      <fileset dir="${src.dir}">
+        <include name="**/puzzle/client/*Service.java"/>
+        <include name="**/micasa/simulator/client/*Service.java"/>
+        <include name="**/micasa/lobby/*Service.java"/>
+        <include name="**/parlor/tourney/client/*Service.java"/>
+      </fileset>
+      <providerless service="SimulatorService"/>
+    </genservice>
+    <!-- generate our services that have an ActionScript counterpart -->
+    <genservice header="lib/SOURCE_HEADER" asroot="${asrc.dir}" classpathref="built.classpath">
+      <fileset dir="${src.dir}">
+        <include name="**/client/*Service.java"/>
+        <exclude name="**/puzzle/client/*Service.java"/>
+        <exclude name="**/micasa/simulator/client/*Service.java"/>
+        <exclude name="**/parlor/tourney/client/*Service.java"/>
+      </fileset>
+    </genservice>
+  </target>
+
+  <target name="genreceiver" depends="-preptools"
+          description="Generates sender and decoder classes for all invocation receivers">
+    <!-- make sure the receiver class files are all compiled -->
+    <ooojavac srcdir="${src.dir}" destdir="${classes.dir}" version="1.5"
+      classpathref="built.classpath">
+      <include name="**/*Receiver.java"/>
+      <exclude name="**/InvocationReceiver.java"/>
+    </ooojavac>
+    <!-- now generate the associated files -->
+    <genreceiver header="lib/SOURCE_HEADER" classpathref="built.classpath">
+      <fileset dir="${src.dir}" includes="**/*Receiver.java"
+        excludes="**/InvocationReceiver.java"/>
+    </genreceiver>
+  </target>
+
+  <target name="genascript" depends="-preptools"
+          description="Generates ActionScript versions of our Streamable classes">
+    <!-- now generate the associated files -->
+    <genascript header="lib/SOURCE_HEADER" asroot="${asrc.dir}">
+      <fileset dir="${src.dir}">
+        <include name="**/parlor/data/*.java"/>
+        <include name="**/parlor/**/data/*.java"/>
+        <exclude name="**/parlor/game/data/GameConfig.java"/> <!-- fiddly bits -->
+        <exclude name="**/parlor/tourney/**"/>
+        <include name="**/ezgame/data/*.java"/>
+        <include name="**/whirled/data/*.java"/>
+        <include name="**/whirled/**/data/*.java"/>
+        <exclude name="**/whirled/spot/data/Cluster.java"/> <!-- fiddly bits -->
+        <include name="**/stage/data/*.java"/>
+      </fileset>
+    </genascript>
+  </target>
+
+  <target name="-as-install" depends="aslib" if="flexsdk.dir">
+    <maveninstall file="${deploy.dir}/${ant.project.name}lib.swc" pom="aslib/pom.xml"/>
+  </target>
+  <target name="install" depends="dist,-as-install"
+          description="Installs artifacts to local Maven repository.">
+    <maveninstall file="pom.xml" pom="pom.xml"/>
+    <maveninstall file="${deploy.dir}/${ant.project.name}.jar" pom="core/pom.xml"/>
+  </target>
+
+  <target name="-as-deploy" depends="aslib" if="flexsdk.dir">
+    <mavendeploy file="${deploy.dir}/${ant.project.name}lib.swc" pom="aslib/pom.xml"/>
+  </target>
+  <target name="deploy" depends="dist,-as-deploy,tests,javadoc"
+          description="Deploys our build artifacts to a Maven repository.">
+    <mavendeploy file="pom.xml" pom="pom.xml"/>
+    <mavendeploy file="${deploy.dir}/${ant.project.name}.jar" pom="core/pom.xml"
+                 srcdir="${src.dir}" docdir="${deploy.dir}/docs"/>
+  </target>
+</project>

@@ -1,0 +1,877 @@
+<project default="all"  xmlns:ivy="antlib:org.apache.ivy.ant">
+<property file="build.properties"/>
+
+
+<property name="ivy.install.version" value="2.2.0" />
+<property name="ivy.jar.dir" value="${user.home}/.ivy" />
+<property name="ivy.jar.file" value="${ivy.jar.dir}/ivy.jar" />
+
+    <target name="download-ivy" unless="skip.download">
+
+        <mkdir dir="${ivy.jar.dir}"/>
+        <get src="http://repo1.maven.org/maven2/org/apache/ivy/ivy/${ivy.install.version}/ivy-${ivy.install.version}.jar"
+            dest="${ivy.jar.file}" usetimestamp="true"/>
+    </target>
+
+    <target name="install-ivy" depends="download-ivy" description="--> install ivy">
+        <path id="ivy.lib.path">
+            <fileset dir="${ivy.jar.dir}" includes="*.jar"/>
+        </path>
+        <taskdef
+            resource="org/apache/ivy/ant/antlib.xml"
+            uri="antlib:org.apache.ivy.ant"
+            classpathref="ivy.lib.path"
+        />
+    </target>
+
+
+  <target name="ivy.libs" depends="install-ivy"  description="">
+    <ivy:cachepath pathid="lib.path.id"/>
+  </target>
+
+
+<path id="jena.jars" description="ALl Jars for JENA">
+	<fileset  dir="${jena.dir}">
+           <include name="**/*.jar"/>
+	</fileset>
+</path>
+	
+<path id="jetty.jars" description="ALl Jars for Jetty">
+	<fileset  dir="${jetty.dir}">
+           <include name="**/lib/*.jar"/>
+	</fileset>
+</path>
+
+<path id="velocity.jars" description="All jars for apache velocity">
+   <pathelement location="${velocity.jar}"/>
+   <pathelement location="${common.collection.jar}"/>
+   <pathelement location="${common.lang.jar}"/>
+</path>
+
+
+<path id="httpclient.jars" description="ALl Jars for the Apache HttpClient library">
+   <fileset  dir="${httpclient.dir}">
+      <include name="org.apache.commons.codec*.jar"/>
+      <include name="org.apache.commons.httpclient*.jar"/>
+      <include name="*org.apache.commons.logging*.jar"/>
+   </fileset>
+</path>
+
+<path id="mysql.jdbc.jar" description="JBCD driver for mysq">
+	<pathelement location="${mysql-connector.jar}"/>
+</path>
+
+<path id="bdb.je.jars" description="BerkeleyDB JE libs">
+	<pathelement location="${bdb.je.jar}"/>
+</path>
+
+
+<path id="scribe.jars">
+	<pathelement location="/home/lindenb/package/scribe-1.3.2.jar"/>
+	<pathelement location="/home/lindenb/package/eclipse/plugins/org.apache.commons.codec_1.3.0.v201101211617.jar"/>
+</path>
+
+<target name="all" depends="mysqldump2code,java2graph,makegraphdependencies,mergepictures,twitterbackup,gimpprocparser,flickrss,treemap,velocityjson,jsonquery,xmlcipher,divandb,images2base64,pubmedsortbycitations,gimpclient,convolution,raster2ora,oilpainting,pivot,geneticpainting,twitterkml,nar404,twittergraph,twittermosaic,vcfannotator,blastannot,wptimeline,mywordle,pubmeddump,pubmed2gender,pubmedperyear,variantpredictor,grepmysql,wirepeptide,xml2xsd,backlocate">
+
+</target>
+
+
+<target name="mysqldump2code" depends="ivy.libs">
+	<mkdir dir="lib"/>
+	<mkdir dir="tmp"/>
+	<mkdir dir="tmp/sandbox"/>
+	
+	<exec executable="xjc" >
+			<arg value="-extension"/>
+			<arg value="-Xinject-code"/>
+			<arg value="-d"/> <arg value="tmp"/>
+			<arg value="-p"/> <arg value="sandbox"/>
+			<arg value="-b"/> <arg value="../xsd-sandbox/schemas/mysql/mysqldump.jxb"/>
+			<arg value="../xsd-sandbox/schemas/mysql/mysqldump.xsd"/>
+	</exec>
+	
+	<copy file="src/sandbox/MysqlDumpVelocity.java" todir="tmp/sandbox"/>
+	
+	<javac destdir="tmp" debug="true" includeantruntime="false">
+		<classpath refid="lib.path.id"/>
+		<src path="tmp"/>
+		<include name="**/*.java" />
+	</javac>
+	
+	<pathconvert property="manifest_cp1" pathsep=" " refid="lib.path.id"/>
+	
+	<jar destfile="dist/mysqldump2code.jar" basedir="tmp">
+		
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.MysqlDumpVelocity"/>
+			<attribute name="Class-Path" value="${manifest_cp1}"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+
+<target name="mergepictures">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+
+
+	<javac srcdir="src" destdir="tmp" debug="true" includeantruntime="no">
+		<include name="**/MergePictures.java" />
+	</javac>
+	<jar destfile="dist/mergepictures.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.MergePictures"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="gimpprocparser">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<mkdir dir="tmp/sandbox"/>
+	<exec executable="javacc">
+		<arg value="-OUTPUT_DIRECTORY=tmp/sandbox"/>
+		<arg value="src/sandbox/GimpProcedures.jj"/>
+	</exec>
+	<javac srcdir="tmp" destdir="tmp" debug="true" includeantruntime="no">
+		<include name="**/GimpProcParser.java" />
+	</javac>
+	<jar destfile="dist/gimpprocparser.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.GimpProcParser"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+
+
+
+<target name="flickrss">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+		<classpath refid="scribe.jars"/>
+		<include name="**/FlickrRss.java" />
+	</javac>
+	
+	<pathconvert property="scribe.classpath" pathsep=" ">
+		<path refid="scribe.jars" />
+	</pathconvert>
+	
+	<jar destfile="dist/flickrrss.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.FlickrRss"/>
+			<attribute name="Class-Path" value="${scribe.classpath}" />
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="treemap">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/TreeMapMaker.java" />
+	</javac>
+	
+	<jar destfile="dist/treemap.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.TreeMapMaker"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+
+
+<target name="velocityjson">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<mkdir dir="tmp/sandbox"/>
+	<exec executable="javacc">
+		<arg value="-OUTPUT_DIRECTORY=tmp/sandbox"/>
+		<arg value="src/sandbox/VelocityJson.jj"/>
+	</exec>
+	<javac srcdir="tmp" destdir="tmp" debug="true" includeantruntime="no">
+		<classpath refid="velocity.jars"/>
+		<include name="**/VelocityJson.java" />
+	</javac>
+	<pathconvert property="velocity.claspath" pathsep=" ">
+		<path refid="velocity.jars" />
+	</pathconvert>	
+	<jar destfile="dist/velocityjson.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.VelocityJson"/>
+		 	<attribute name="Class-Path" value="${velocity.claspath}" />
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="jsonquery">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<exec executable="javacc">
+		<arg value="-OUTPUT_DIRECTORY=src/sandbox"/>
+		<arg value="src/sandbox/JSONQuery.jj"/>
+	</exec>
+	<javac srcdir="src" destdir="tmp" debug="true">
+
+		<include name="**/JSONQuery.java" />
+	</javac>
+	
+	<jar destfile="dist/jsonquery.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.JSONQuery"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="xmlcipher">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/XmlCipher.java" />
+	</javac>
+	
+	<jar destfile="dist/xmlcipher.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.XmlCipher"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="divandb">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<classpath refid="jetty.jars"/>
+		<classpath refid="bdb.je.jars"/>
+		<include name="**/DivanDB.java" />
+	</javac>
+	
+	<pathconvert property="jetty.claspath" pathsep=" ">
+		<path refid="jetty.jars" />
+		<path refid="bdb.je.jars" />
+	</pathconvert>	
+	
+	
+	<jar destfile="dist/divandb.jar" basedir="tmp">
+	      <manifest>
+		 <attribute name="Built-By" value="${user.name}"/>
+		 <attribute name="Main-Class" value="sandbox.DivanDB"/>
+	      	 <attribute name="Class-Path" value="${jetty.claspath}" />
+	      </manifest>
+	</jar>
+
+	<delete dir="tmp"/>
+</target>
+
+<target name="images2base64">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/ImagesToBase64.java" />
+	</javac>
+	
+	<jar destfile="dist/images2base64.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.ImagesToBase64"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="pubmedsortbycitations">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/PubmedSortByCitations.java" />
+	</javac>
+	
+	<jar destfile="dist/pubmedsortbycitations.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.PubmedSortByCitations"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="gimpclient">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/GimpClient.java" />
+	</javac>
+	
+	<jar destfile="dist/gimpclient.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.GimpClient"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="convolution">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/Convolution.java" />
+	</javac>
+	
+	<jar destfile="dist/convolution.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.Convolution"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="raster2ora">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/RasterToOpenRaster.java" />
+	</javac>
+	
+	<jar destfile="dist/raster2ora.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.RasterToOpenRaster"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="pivot">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/Pivot.java" />
+	</javac>
+	
+	<jar destfile="dist/pivot.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.Pivot"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="oilpainting">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/OilPainting.java" />
+	</javac>
+	
+	<jar destfile="dist/oilpainting.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.OilPainting"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="geneticpainting">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/GeneticPainting.java" />
+	</javac>
+	
+	<jar destfile="dist/geneticpainting.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.GeneticPainting"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="twitterkml">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/TwitterToKML.java" />
+	</javac>
+	
+	<jar destfile="dist/twitterkml.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.TwitterToKML"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="nar404">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/NucleicAcidsResearch404.java" />
+	</javac>
+	
+	
+	<jar destfile="dist/nar404.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.NucleicAcidsResearch404"/>
+			<attribute name="Class-Path" value="${mysql.classpath}" />
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="backlocate">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/BackLocate.java" />
+	</javac>
+	
+	<pathconvert property="mysql.classpath" pathsep=" ">
+		<path refid="mysql.jdbc.jar" />
+   	</pathconvert>	
+	
+	<jar destfile="dist/backlocate.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.BackLocate"/>
+			<attribute name="Class-Path" value="${mysql.classpath}" />
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="xml2xsd">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true">
+		<include name="**/XmlToXsd.java" />
+	</javac>
+	
+	<jar destfile="dist/xml2xsd.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.XmlToXsd"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="grepmysql">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+      <include name="**/GrepMysqlDatabase.java" />
+   </javac>
+   
+   <jar destfile="dist/grepmysql.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.GrepMysqlDatabase"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>	
+
+
+
+<target name="twittermosaic">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp">
+      <include name="**/TwitterMosaic.java" />
+   </javac>
+   
+   <jar destfile="dist/twittermosaic.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.TwitterMosaic"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>	
+
+
+
+<target name="wptimeline">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp">
+      <include name="**/WikipediaBioEdits.java" />
+   </javac>
+   
+   <jar destfile="dist/wptimeline.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.WikipediaBioEdits"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>	
+
+
+<target name="timelinemaker">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+   	  <classpath refid="jena.jars"/>
+      <include name="**/TimeLineMaker.java" />
+   </javac>
+   
+	<pathconvert property="jena.claspath" pathsep=" ">
+		<path refid="jena.jars" />
+	</pathconvert>	
+	
+	
+   <jar destfile="dist/timelinemaker.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.TimeLineMaker"/>
+      	 <attribute name="Class-Path" value="${jena.claspath}" />
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+<target name="testtime" depends="timelinemaker">
+	<java jar="dist/timelinemaker.jar"
+			fork="true">
+			<arg value="${user.home}/src/mystructureddata/data/history.rdf"/>
+		</java>
+</target>
+	
+
+<target name="mywordle">
+         <mkdir dir="dist"/>
+         <mkdir dir="tmp"/>
+         <javac srcdir="src" destdir="tmp">
+               <include name="**/MyWordle.java" />
+         </javac>
+               
+         <jar destfile="dist/mywordle.jar" basedir="tmp">
+               <manifest>
+               <attribute name="Built-By" value="${user.name}"/>
+               <attribute name="Main-Class" value="sandbox.MyWordle"/>
+               </manifest>
+         </jar>
+         <delete dir="tmp"/>
+</target>		
+	
+<target name="pubmeddump">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp">
+		<include name="**/PubmedDump.java" />
+	</javac>
+		
+	<jar destfile="dist/pubmeddump.jar" basedir="tmp">
+		<manifest>
+	        <attribute name="Built-By" value="${user.name}"/>
+	        <attribute name="Main-Class" value="sandbox.PubmedDump"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>	
+	
+<target name="pubmed2gender">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp">
+		<include name="**/PubmedGender.java" />
+	</javac>
+		
+	<jar destfile="dist/pubmed2gender.jar" basedir="tmp">
+		<manifest>
+	        <attribute name="Built-By" value="${user.name}"/>
+	        <attribute name="Main-Class" value="sandbox.PubmedGender"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="pubmedperyear">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp">
+		<include name="**/PubmedPerYear.java" />
+	</javac>
+	
+	<jar destfile="dist/pubmedperyear.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.PubmedPerYear"/>
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+
+<target name="test" depends="pubmed2gender">
+	<java jar="dist/pubmed2gender.jar"
+		fork="true">
+		<arg value="-L"/><arg value="100"/>
+		<arg value="Rotavirus"/>
+	</java>
+</target>	
+
+<target name="blastannot" depends="ncbi.api">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+      <include name="**/BlastAnnotation.java" />
+      <include name="**/blast/ObjectFactory.java" />
+      <include name="**/gbc/ObjectFactory.java" />
+   </javac>
+   
+   <jar destfile="dist/blastannot.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.BlastAnnotation"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+
+<target name="blastmapannot" depends="ncbi.api,uniprot.api">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+      <include name="**/MapBlastAnnotation.java" />
+      <include name="**/blast/ObjectFactory.java" />
+      <include name="**/uniprot/ObjectFactory.java" />
+      <include name="**/gb/ObjectFactory.java" />
+   </javac>
+   
+   <jar destfile="dist/blastmapannot.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.MapBlastAnnotation"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+	
+
+<target name="vcfannotator" >
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+      <include name="**/VCFAnnotator.java" />
+   </javac>
+   
+   <jar destfile="dist/vcfannotator.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.VCFAnnotator"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+<target name="wirepeptide" >
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+      <include name="**/WirePeptide.java" />
+   </javac>
+   
+   <jar destfile="dist/wirepeptide.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.WirePeptide"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+
+<target name="ncbi.api" depends="blast.api,gbc.api,gb.api">
+</target>
+
+<target name="blast.api">
+      <exec executable="xjc">
+         <arg value="-d"/>  <arg value="src"/>
+         <arg value="-p"/> <arg value="sandbox.ncbi.blast"/>
+         <arg value="-dtd"/>
+         <arg value="http://www.ncbi.nlm.nih.gov/dtd/NCBI_BlastOutput.dtd"/>
+      </exec>
+</target>
+
+<target name="gbc.api">
+   <exec executable="xjc">
+      <arg value="-d"/>  <arg value="src"/>
+      <arg value="-p"/> <arg value="sandbox.ncbi.gbc"/>
+      <arg value="-dtd"/>
+      <arg value="http://www.ncbi.nlm.nih.gov/dtd/INSD_INSDSeq.dtd"/>
+   </exec>
+</target>
+
+
+<target name="gb.api">
+   <exec executable="xjc">
+      <arg value="-d"/>  <arg value="src"/>
+      <arg value="-p"/> <arg value="sandbox.ncbi.gb"/>
+      <arg value="-dtd"/>
+      <arg value="http://www.ncbi.nlm.nih.gov/dtd/NCBI_GBSeq.dtd"/>
+   </exec>
+</target>
+
+<target name="uniprot.api">
+   <exec executable="xjc">
+      <arg value="-d"/>  <arg value="src"/>
+      <arg value="-p"/> <arg value="sandbox.uniprot"/>
+      <arg value="http://www.uniprot.org/support/docs/uniprot.xsd"/>
+   </exec>
+</target>
+
+
+
+<target name="variantpredictor">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true">
+      <classpath refid="httpclient.jars"/>
+      <include name="**/VariantEffectPredictorRobot.java" />
+   </javac>
+   
+   <pathconvert property="httpclient.claspath" pathsep=" ">
+      <path refid="httpclient.jars" />
+   </pathconvert>	
+   
+   
+   <jar destfile="dist/variantpredictor.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.VariantEffectPredictorRobot"/>
+         <attribute name="Class-Path" value="${httpclient.claspath}" />
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+<target name="twitterbackup" depends="ivy.libs">
+	<mkdir dir="dist"/>
+	<mkdir dir="tmp"/>
+	<javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+      		<classpath refid="lib.path.id"/>
+		<include name="**/TwitterBackup.java" />
+	</javac>
+	
+	<pathconvert property="myclasspath" pathsep=" ">
+     	 	<path refid="lib.path.id" />
+	</pathconvert>
+	
+	<jar destfile="dist/twitterbackup.jar" basedir="tmp">
+		<manifest>
+			<attribute name="Built-By" value="${user.name}"/>
+			<attribute name="Main-Class" value="sandbox.TwitterBackup"/>
+         	<attribute name="Class-Path" value="${myclasspath}" />
+		</manifest>
+	</jar>
+	<delete dir="tmp"/>
+</target>
+
+<target name="twittergraph" depends="ivy.libs">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true"  includeantruntime="false">
+		<classpath refid="lib.path.id"/>
+      <include name="**/TwitterGraph.java" />
+   </javac>
+	
+	<pathconvert property="myclasspath" pathsep=" ">
+     	 	<path refid="lib.path.id" />
+	</pathconvert>
+
+   <jar destfile="dist/twittergraph.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.TwitterGraph"/>
+     	<attribute name="Class-Path" value="${myclasspath}" />
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>	
+	
+	
+<target name="stackexchangeskills" depends="ivy.libs">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+      <classpath refid="lib.path.id"/>
+      <include name="**/StackExchangeSkills.java" />
+   </javac>
+   
+   <pathconvert property="myclasspath" pathsep=" ">
+      <path refid="lib.path.id" />
+   </pathconvert>	
+   
+   
+   <jar destfile="dist/stackexchangeskills.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.StackExchangeSkills"/>
+         <attribute name="Class-Path" value="${myclasspath}" />
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+
+<target name="makegraphdependencies">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+      <include name="**/MakeGraphDependencies.java" />
+   </javac>
+   
+   <jar destfile="dist/makegraphdependencies.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.MakeGraphDependencies"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>
+	
+	
+<target name="java2graph">
+   <mkdir dir="dist"/>
+   <mkdir dir="tmp"/>
+   <javac srcdir="src" destdir="tmp" debug="true" includeantruntime="false">
+      <include name="**/Java2Graph.java" />
+   </javac>
+   
+   <jar destfile="dist/java2graph.jar" basedir="tmp">
+      <manifest>
+         <attribute name="Built-By" value="${user.name}"/>
+         <attribute name="Main-Class" value="sandbox.Java2Graph"/>
+      </manifest>
+   </jar>
+   <delete dir="tmp"/>
+</target>	
+
+	
+</project>

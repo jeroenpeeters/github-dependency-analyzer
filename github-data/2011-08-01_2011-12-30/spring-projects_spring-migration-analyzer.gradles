@@ -1,0 +1,193 @@
+dependencies {
+	compile project(':util')
+	compile "org.springframework:spring-core:$springVersion"
+	compile "org.springframework:spring-context:$springVersion"
+}configure(allprojects) {
+	group = 'org.springframework.migrationanalyzer'
+
+	ext {
+		asmVersion='3.3.1'
+		commonsCliVersion='1.2'
+		ejb3Version='1.0.1'
+		freemarkerVersion='2.3.19'
+		jacocoVersion='0.7.0.201403182114'
+		jtaVersion='1.1.1'
+		junitVersion='4.11'
+		logbackVersion='1.1.1'
+		mockitoVersion='1.9.5'
+		slf4jVersion='1.7.6'
+		springVersion='4.0.2.RELEASE'
+	}
+}
+
+subprojects { project ->
+	apply plugin: 'eclipse'
+	if (project.name != 'user-guide') {
+
+		apply plugin: 'java'
+
+		repositories {
+			maven { url 'http://repo.spring.io/libs-release' }
+		}
+
+		configurations {
+			jacoco
+		}
+
+		dependencies {
+			compile "org.slf4j:slf4j-api:$slf4jVersion"
+			testCompile "junit:junit:$junitVersion"
+			testCompile "org.mockito:mockito-core:$mockitoVersion"
+			testCompile "org.slf4j:slf4j-simple:$slf4jVersion"
+			jacoco "org.jacoco:org.jacoco.agent:$jacocoVersion:runtime"
+		}
+
+		test {
+			jvmArgs "-javaagent:${configurations.jacoco.asPath}=destfile=${buildDir}/jacoco.exec,includes=org.springframework.migrationanalyzer.*"
+		}
+	}
+}
+
+ext {
+	distRoot = "${project.name}-${project.version}"
+}
+
+apply plugin: "sonar-runner"
+
+sonarRunner {
+	sonarProperties {
+		property 'sonar.java.coveragePlugin', 'jacoco'
+		property 'sonar.jacoco.reportPath', "${buildDir.name}/jacoco.exec"
+		property 'sonar.links.homepage', 'http://projects.spring.io/spring-migration-analyzer'
+		property 'sonar.links.ci', 'https://build.spring.io/browse/SMA'
+		property 'sonar.links.issue', 'http://jira.spring.io/browse/SMA'
+		property 'sonar.links.scm', 'https://github.com/spring-projects/spring-migration-analyzer'
+	}
+}
+
+configure(rootProject) {
+
+	apply plugin: 'base'
+
+	configurations {
+		lib
+	}
+
+	dependencies {
+		lib "ch.qos.logback:logback-classic:$logbackVersion"
+	}
+
+	repositories {
+		maven { url 'http://repo.spring.io/libs-release' }
+	}
+}
+
+task distZip(type: Zip) { zipTask ->
+	classifier = 'dist'
+	gradle.taskGraph.whenReady { taskGraph ->
+		if (taskGraph.hasTask(":${zipTask.name}")) {
+			def projectNames = rootProject.subprojects*.name
+			def artifacts = new HashSet()
+			subprojects.each { subproject ->
+				if (subproject.name != 'user-guide') {
+					subproject.configurations.runtime.resolvedConfiguration.resolvedArtifacts.each { artifact ->
+						def dependency = artifact.moduleVersion.id
+						if (!projectNames.contains(dependency.name)) {
+							artifacts << artifact.file
+						}
+					}
+				}
+			}
+			configurations.lib.each { artifact ->
+				artifacts << artifact
+			}
+			zipTask.from(artifacts) {
+				into "${distRoot}/lib"
+			}
+		}
+	}
+	subprojects.each { subproject ->
+		if (subproject.name != 'user-guide') {
+			into ("${distRoot}/dist") {
+				from subproject.jar
+			}
+		}
+	}
+	from('src/main/resources') {
+		into "${distRoot}"
+	}
+}
+
+task docsZip(type: Zip) {
+	classifier = 'docs'
+}
+
+task dist(dependsOn: [distZip, docsZip])
+
+artifacts {
+	archives distZip
+	archives docsZip
+}
+
+task wrapper(type: Wrapper) {
+	gradleVersion = '1.11'
+}
+dependencies {
+	compile project(':analyze')
+	compile project(':render')
+	compile "commons-cli:commons-cli:$commonsCliVersion"
+	compile "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+	compile "org.springframework:spring-context:$springVersion"
+}dependencies {
+	compile project(":analyze")
+	compile project(":render")
+	compile project(":util")
+	compile "asm:asm:$asmVersion"
+	compile "asm:asm-commons:$asmVersion"
+	compile "org.springframework:spring-context:$springVersion"
+	testCompile "org.apache.geronimo.specs:geronimo-ejb_3.0_spec:$ejb3Version"
+	testCompile "org.apache.geronimo.specs:geronimo-jta_1.1_spec:$jtaVersion"
+}dependencies {
+	compile project(":analyze")
+	compile "org.freemarker:freemarker:$freemarkerVersion"
+}apply plugin: 'java'
+
+sourceSets.main.output.classesDir = "../../analyze/src/test/resources/$project.name/classes"
+sourceSets.main.output.resourcesDir = "../../analyze/src/test/resources/$project.name/classes"
+
+jar {
+	destinationDir = new File(project.projectDir, "../../analyze/src/test/resources/$project.name")
+}buildscript {
+    repositories {
+        maven { url 'http://repo.spring.io/plugins-release' }
+    }
+    dependencies {
+        classpath 'org.springframework.build.gradle:docbook-reference-plugin:0.2.1'
+    }
+}
+
+apply plugin: 'docbook-reference'
+
+task htmlSingle(type: HtmlSingleDocbookReferenceTask) {
+	sourceDir = file('src/reference/docbook')
+}
+
+task htmlMulti(type: HtmlMultiDocbookReferenceTask) {
+	sourceDir = file('src/reference/docbook')
+}
+
+task docs(dependsOn:[htmlSingle, htmlMulti])
+
+rootProject.docsZip {
+	dependsOn docs
+	from ("${buildDir}/reference") {
+		into (this.project.name)
+	}
+}
+
+rootProject.distZip {
+	dependsOn docs
+	from ("${this.project.buildDir}/reference") {
+		into ("${distRoot}/${this.project.name}")
+	}
+}

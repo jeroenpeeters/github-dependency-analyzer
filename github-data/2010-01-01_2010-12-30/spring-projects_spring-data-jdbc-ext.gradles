@@ -1,0 +1,319 @@
+buildscript {
+    repositories {
+        maven { url 'http://repo.spring.io/plugins-release' }
+    }
+    dependencies {
+        classpath 'org.springframework.build.gradle:docbook-reference-plugin:0.2.8'
+    }
+}
+
+ext {
+    slf4jVersion = '1.7.5'
+    junitVersion = '4.11'
+    springRetryVersion = '1.0.3.RELEASE'
+    querydslVersion = '3.3.0'
+    aspectjVersion = '1.7.4.RELEASE'
+    springVersion = '3.0.7.RELEASE'
+    log4jVersion = '1.2.17'
+    mockitoVersion = '1.9.5'
+}
+
+allprojects {
+  apply plugin: "idea"
+  apply plugin: "eclipse"
+
+  group = "org.springframework.data"
+
+  configurations.all {
+    exclude group: "commons-logging"
+    exclude module: "slf4j-log4j12"
+  }
+
+  repositories {
+    mavenCentral()
+    maven { url "http://repo.spring.io/libs-milestone" }
+  }
+
+}
+
+configure(subprojects) { subproject ->
+  apply plugin: "java"
+  apply plugin: "groovy"
+  apply from: "${rootProject.projectDir}/maven.gradle"
+
+  configurations {
+    compile.extendsFrom providedCompile
+  }
+
+  [compileJava, compileTestJava]*.options*.debugOptions*.debugLevel = "source,lines,vars"
+  [compileJava, compileTestJava]*.options*.compilerArgs = ["-Xlint:-serial", "-Xlint:-unchecked"]
+
+  project.sourceCompatibility = 1.6
+  project.targetCompatibility = 1.6
+
+  task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier = "sources"
+    from sourceSets.main.allJava
+  }
+
+  javadoc.options.links =
+    ["http://static.springframework.org/spring/docs/3.0.x/javadoc-api",
+     "http://download.oracle.com/javase/6/docs/api"]
+
+  task javadocJar(type: Jar) {
+    classifier = "javadoc"
+    from javadoc
+  }
+
+  artifacts {
+    archives sourcesJar
+    archives javadocJar
+  }
+
+  dependencies {
+
+    // Logging
+    compile "org.slf4j:slf4j-api:$slf4jVersion", provided
+    compile "org.slf4j:jcl-over-slf4j:$slf4jVersion", provided
+
+    // Spring
+    compile "org.springframework:spring-beans:$springVersion"
+    compile "org.springframework:spring-context:$springVersion"
+    compile "org.springframework:spring-core:$springVersion"
+    compile "org.springframework:spring-jdbc:$springVersion"
+    compile "org.springframework:spring-tx:$springVersion"
+    compile "org.springframework.retry:spring-retry:$springRetryVersion"
+
+    // Testing
+    testCompile "junit:junit:$junitVersion"
+    testCompile "org.mockito:mockito-all:$mockitoVersion"
+    testCompile "org.springframework:spring-test:$springVersion"
+    testRuntime "log4j:log4j:$log4jVersion"
+    testRuntime "org.slf4j:slf4j-log4j12:$slf4jVersion"
+    testRuntime "org.springframework:spring-context-support:$springVersion"
+    testRuntime "commons-dbcp:commons-dbcp:1.4"
+    testRuntime "commons-pool:commons-pool:1.6"
+    testRuntime "org.hsqldb:hsqldb:2.3.1"
+
+  }
+
+}
+
+configure(rootProject) {
+    description = 'Spring Data JDBC Extensions'
+
+    apply plugin: 'docbook-reference'
+
+    reference {
+        sourceDir = file('docs/src/reference/docbook')
+    }
+
+    // don't publish the default jar for the root project
+    configurations.archives.artifacts.clear()
+
+    task api(type: Javadoc) {
+        group = 'Documentation'
+        description = 'Generates aggregated Javadoc API documentation.'
+        title = "${rootProject.description} ${version} API"
+        options.memberLevel = org.gradle.external.javadoc.JavadocMemberLevel.PROTECTED
+        options.author = true
+        options.header = rootProject.description
+        options.overview = 'docs/src/api/overview.html'
+        options.splitIndex = true
+        options.links =
+          ["http://static.springframework.org/spring/docs/3.0.x/javadoc-api",
+           "http://download.oracle.com/javase/6/docs/api"]
+        source subprojects.collect { project ->
+            project.sourceSets.main.allJava
+        }
+        destinationDir = new File(buildDir, "api")
+        classpath = files(subprojects.collect { project ->
+            project.sourceSets.main.compileClasspath
+        })
+        maxMemory = '1024m'
+    }
+
+    task docsZip(type: Zip) {
+        group = 'Distribution'
+        classifier = 'docs'
+        description = "Builds -${classifier} archive containing api and reference for deployment"
+
+        from('docs/src/info') {
+            include 'changelog.txt'
+        }
+
+        from (api) {
+            into 'api'
+        }
+
+        from (reference) {
+            into 'reference'
+        }
+    }
+
+    task schemaZip(type: Zip) {
+        group = 'Distribution'
+        classifier = 'schema'
+        description = "Builds -${classifier} archive containing all " +
+            "XSDs for deployment at static.springframework.org/schema."
+
+        subprojects.each { subproject ->
+            def Properties schemas = new Properties();
+
+            subproject.sourceSets.main.resources.find {
+                it.path.endsWith('META-INF/spring.schemas')
+            }?.withInputStream { schemas.load(it) }
+
+            for (def key : schemas.keySet()) {
+                def shortName = key.replaceAll(/http.*schema.(.*).spring-.*/, '$1')
+                assert shortName != key
+                File xsdFile = subproject.sourceSets.main.resources.find {
+                    it.path.endsWith(schemas.get(key))
+                }
+                assert xsdFile != null
+                into (shortName) {
+                    from xsdFile.path
+                }
+            }
+        }
+    }
+
+    task distZip(type: Zip, dependsOn: [docsZip, schemaZip]) {
+        group = 'Distribution'
+        classifier = 'dist'
+        description = "Builds -${classifier} archive, containing all jars and docs, " +
+                      "suitable for community download page."
+
+        ext.baseDir = "${project.name}-${project.version}";
+
+        from('docs/src/info') {
+            include 'changelog.txt'
+            include 'readme.txt'
+            include 'license.txt'
+            include 'notice.txt'
+            into "${baseDir}"
+            expand(copyright: new Date().format('yyyy'), version: project.version)
+        }
+
+        from(zipTree(docsZip.archivePath)) {
+            into "${baseDir}/docs"
+        }
+
+        from(zipTree(schemaZip.archivePath)) {
+            into "${baseDir}/schema"
+        }
+
+        subprojects.each { subproject ->
+            into ("${baseDir}/libs") {
+                from subproject.jar
+                if (subproject.tasks.findByPath('sourcesJar')) {
+                    from subproject.sourcesJar
+                }
+                if (subproject.tasks.findByPath('javadocJar')) {
+                    from subproject.javadocJar
+                }
+            }
+        }
+    }
+
+    artifacts {
+        archives docsZip
+        archives schemaZip
+        archives distZip
+    }
+
+}
+
+
+task wrapper(type: Wrapper) { gradleVersion = "1.10" }
+description = 'Spring Data JDBC Extensions Core'
+
+dependencies {
+
+  // Querydsl
+  compile "com.mysema.querydsl:querydsl-sql:$querydslVersion", optional
+  testCompile "com.mysema.querydsl:querydsl-sql-codegen:$querydslVersion"
+}
+apply plugin: "java"
+apply plugin: "idea"
+apply plugin: "eclipse"
+
+test {
+  systemProperty 'javax.xml.parsers.DocumentBuilderFactory', 'com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderFactoryImpl'
+  jvmArgs '-Xms128m', '-Xmx512m', '-XX:MaxPermSize=128m'
+  testLogging.showStandardStreams = true
+  beforeTest { descriptor ->
+    logger.lifecycle("Running: " + descriptor)
+  }
+}
+
+repositories {
+  mavenLocal()
+  mavenCentral()
+  maven { url "http://repo.spring.io/milestone" }
+  maven { url "http://repo.spring.io/release" }
+  maven { url "http://repo.spring.io/ext-private-local" }
+}
+
+dependencies {
+  // Logging
+  testCompile "org.slf4j:slf4j-api:$slf4jVersion"
+  testCompile "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+  testRuntime "log4j:log4j:$log4jVersion"
+  testRuntime "org.slf4j:slf4j-log4j12:$slf4jVersion"
+
+  // Spring
+  testCompile "org.springframework:spring-jms:$springVersion" 
+  testCompile "org.springframework:spring-oxm:$springVersion" 
+
+  // SpringData
+  testCompile "org.springframework.data:spring-data-oracle:$sdJdbcVersion"
+
+  // Oracle proprietary jars - see 'spring-data-oracle/README.txt' for details on how to add these to your system
+  testCompile "com.oracle.jdbc:oracle.jdbc:10.2.0.2" 
+  testCompile "com.oracle.aq:oracle.aq:10.1.0.1" 
+  testCompile "com.oracle.xdb:oracle.xdb:10.2.0.2" 
+  testCompile "com.oracle.xml:oracle.xml:10.2.0.2" 
+
+  // Testing
+  testCompile "junit:junit:$junitVersion"
+  testCompile "org.springframework:spring-test:$springVersion"
+  testCompile "javax.jms:jms-api:1.1-rev-1"
+  testRuntime "org.springframework:spring-context-support:$springVersion"
+  testRuntime "javax.transaction:transaction-api:1.1-rev-1"
+  testRuntime "org.aspectj:aspectjrt:$aspectjVersion"
+  testRuntime "org.aspectj:aspectjtools:$aspectjVersion"
+  testRuntime "cglib:cglib:2.2"
+}description = 'Spring Data JDBC Extensions Oracle'
+
+test {
+  systemProperty 'javax.xml.parsers.DocumentBuilderFactory', 'com.sun.org.apache.xerces.internal.jaxp.DocumentBuilderFactoryImpl'
+  jvmArgs '-Xms128m', '-Xmx512m', '-XX:MaxPermSize=128m'
+}
+
+repositories {
+  mavenLocal()
+  maven { url "http://repo.springsource.org/ext-private-local" }
+}
+
+dependencies {
+
+  compile project(":spring-data-jdbc-core")
+
+  compile "org.springframework:spring-jms:$springVersion", optional
+  compile "org.springframework:spring-oxm:$springVersion", optional
+
+  compile "javax.jms:jms-api:1.1-rev-1", provided
+
+  // Oracle proprietary jars - see 'spring-data-oracle/README.txt' for details on how to add these to your system
+  compile "com.oracle.jdbc:oracle.jdbc:10.2.0.2", provided
+  compile "com.oracle.aq:oracle.aq:10.1.0.1", provided
+  compile "com.oracle.xdb:oracle.xdb:10.2.0.2", provided
+  compile "com.oracle.xml:oracle.xml:10.2.0.2", provided
+
+  // Testing
+  testCompile "org.easymock:easymock:2.4"
+  testRuntime "org.aspectj:aspectjrt:$aspectjVersion"
+  testRuntime "org.aspectj:aspectjtools:$aspectjVersion"
+  testRuntime "cglib:cglib:2.2"
+}

@@ -1,0 +1,1918 @@
+<!--
+	JBoss, Home of Professional Open Source
+	Copyright 2009, Red Hat Middleware LLC, and others contributors as indicated
+	by the @authors tag. All rights reserved.
+	See the copyright.txt in the distribution for a
+	full listing of individual contributors.
+	This copyrighted material is made available to anyone wishing to use,
+	modify, copy, or redistribute it subject to the terms and conditions
+	of the GNU Lesser General Public License, v. 2.1.
+	This program is distributed in the hope that it will be useful, but WITHOUT A
+	WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+	PARTICULAR PURPOSE. See the GNU Lesser General Public License for more details.
+	You should have received a copy of the GNU Lesser General Public License,
+	v.2.1 along with this distribution; if not, write to the Free Software
+	Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+	MA 02110-1301, USA.
+-->
+<project name="thirdparty" default="install" xmlns:artifact="urn:maven-artifact-ant">
+
+	<property name="project.home" location="." />
+	<property file="${project.home}/build.properties" />
+
+	<property name="build.dir" value="build" />
+	<property name="build.dist" value="${build.dir}/dist" />
+	<property name="buildd.lib" value="${build.dir}/lib" />
+	<property name="lib.dir" value="lib" />
+
+	<property name="maven.ant.file" value="maven-ant-tasks-2.1.3.jar" />
+	<property name="maven.ant.dir" value="http://mirrors.ibiblio.org/apache//maven/binaries" />
+
+	<available file="${lib.dir}/${maven.ant.file}" type="file" property="mavend.lib.exists" />
+
+	<target name="bootstrap" unless="mavend.lib.exists">
+		<mkdir dir="${lib.dir}" />
+
+		<get src="${maven.ant.dir}/${maven.ant.file}" dest="${lib.dir}/${maven.ant.file}" verbose="true" usetimestamp="true" />
+	</target>
+
+	<target name="init" depends="clean,bootstrap">
+		<typedef resource="org/apache/maven/artifact/ant/antlib.xml" uri="urn:maven-artifact-ant">
+			<classpath>
+				<pathelement location="${lib.dir}/${maven.ant.file}" />
+			</classpath>
+		</typedef>
+		<mkdir dir="${buildd.lib}" />
+		<mkdir dir="${build.dir}" />
+		<mkdir dir="${build.dist}" />
+		<mkdir dir="${build.dist}/include" />
+		<mkdir dir="${build.dist}/lib" />
+		<fail message="Please specify either -Dlinux=true or -Dwindows=true on the build line">
+			<condition>
+				<and>
+					<not>
+						<isset property="linux" />
+					</not>
+					<not>
+						<isset property="windows" />
+					</not>
+				</and>
+			</condition>
+		</fail>
+		<fail message="Please set the property bpa to the artifact extension">
+			<condition>
+				<not>
+					<isset property="bpa" />
+				</not>
+			</condition>
+		</fail>
+
+	</target>
+
+	<target name="clean">
+		<delete dir="${build.dir}" />
+		<delete dir="${build.dist}" />
+	</target>
+
+	<target name="purge">
+		<delete dir="${build.dist}"/>
+		<mkdir dir="${build.dist}/include" />
+		<mkdir dir="${build.dist}/lib" />
+	</target>
+
+	<target name="thirdparty" depends="ace,log4cxx,cppunit,expat,apr-1,xercesc,protobuf" />
+	<target name="install" depends="thirdparty" />
+
+	<target name="ace-lib-linux" if="linux">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${ace.lib.dir}" id="acelibs">
+				<include name="libTAO_PI.so.*" />
+				<include name="libTAO_Valuetype.so.*" />
+				<include name="libTAO_PortableServer.so.*" />
+				<include name="libTAO_IORInterceptor.so.*" />
+				<include name="libTAO_CodecFactory.so.*" />
+				<include name="libACE.so.*" />
+				<include name="libTAO_PI_Server.so.*" />
+				<include name="libTAO_ObjRefTemplate.so.*" />
+				<include name="libTAO_CosNaming.so.*" />
+				<include name="libTAO_AnyTypeCode.so.*" />
+				<include name="libTAO.so.*" />
+				<include name="libTAO_IDL_BE.so.*" />
+				<include name="libTAO_IDL_FE.so.*" />
+				<include name="libACE_gperf_lib.so.*" />
+			</fileset>
+		</sync>
+		<property name="libace" refid="acelibs"/> 
+		<echo message="${libace}" file="${build.dist}/lib/acelinks"/>
+		<replaceregexp file="${build.dist}/lib/acelinks"
+			match="(lib[^\.]+\.so)([\.0-9]+);?"
+			replace="\1 \1\2${line.separator}" 
+			flags="g"/>
+		<symlink action="record" linkfilename="${build.dist}/lib/acelinks">
+			<fileset dir="." includes="${build.dist}/lib/**"/>
+		</symlink>
+		<symlink action="recreate">
+			<fileset dir="." includes="${build.dist}/lib/acelinks"/>  
+		</symlink>
+	</target>
+	<target name="ace-lib-windows" if="windows">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${ace.lib.dir}">
+				<include name="TAO_PId.dll" />
+				<include name="TAO_Valuetyped.dll" />
+				<include name="TAO_PortableServerd.dll" />
+				<include name="TAO_IORInterceptord.dll" />
+				<include name="TAO_CodecFactoryd.dll" />
+				<include name="ACEd.dll" />
+				<include name="TAO_PI_Serverd.dll" />
+				<include name="TAO_ObjRefTemplated.dll" />
+				<include name="TAO_CosNamingd.dll" />
+				<include name="TAO_AnyTypeCoded.dll" />
+				<include name="TAOd.dll" />
+				<include name="TAO_IDL_BEd.dll" />
+				<include name="TAO_IDL_FEd.dll" />
+				<include name="ACE_gperf_libd.dll" />
+
+				<include name="TAO_PId.lib" />
+				<include name="TAO_Valuetyped.lib" />
+				<include name="TAO_PortableServerd.lib" />
+				<include name="TAO_IORInterceptord.lib" />
+				<include name="TAO_CodecFactoryd.lib" />
+				<include name="ACEd.lib" />
+				<include name="TAO_PI_Serverd.lib" />
+				<include name="TAO_ObjRefTemplated.lib" />
+				<include name="TAO_CosNamingd.lib" />
+				<include name="TAO_AnyTypeCoded.lib" />
+				<include name="TAOd.lib" />
+				<include name="TAO_IDL_BEd.lib" />
+				<include name="TAO_IDL_FEd.lib" />
+				<include name="ACE_gperf_libd.lib" />
+			</fileset>
+		</sync>
+	</target>
+	<target name="ace" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${ace.include.dir}" lib.dir="${ace.lib.dir}" artifactId="ace" />
+
+		<antcall target="ace-lib-linux" />
+		<antcall target="ace-lib-windows" />
+		<copy todir="${build.dist}/include/ace">
+			<fileset dir="${ace.include.dir}/ace">
+				<exclude name="**/*quickstarts*/**" />
+				<exclude name="**/*tests*/**" />
+				<exclude name="**/DevGuideQuickstarts/**" />
+
+				<include name="**/*.h" />
+				<include name="**/*.cpp" />
+				<include name="**/*.inl" />
+			</fileset>
+		</copy>
+		<copy todir="${build.dist}/include/tao">
+			<fileset dir="${ace.include.dir}/TAO/tao">
+				<exclude name="**/*quickstarts*/**" />
+				<exclude name="**/*tests*/**" />
+				<exclude name="**/DevGuideQuickstarts/**" />
+
+				<include name="**/*.h" />
+				<include name="**/*.cpp" />
+				<include name="**/*.inl" />
+				<include name="**/*.idl" />
+				<include name="**/*.pidl" />
+			</fileset>
+		</copy>
+		<copy todir="${build.dist}/include/orbsvcs">
+			<fileset dir="${ace.include.dir}/TAO/orbsvcs/orbsvcs">
+				<exclude name="**/*quickstarts*/**" />
+				<exclude name="**/*tests*/**" />
+				<exclude name="**/DevGuideQuickstarts/**" />
+
+				<include name="**/*.h" />
+				<include name="**/*.inl" />
+			</fileset>
+		</copy>
+
+		<fail message="cannot find idl compiler or gperf: ${tao.idl.compiler}">
+			<condition>
+				<not>
+					<or>
+						<available file="${tao.idl.compiler}" type="file" />
+						<available file="${gperf}" type="file" />
+					</or>
+				</not>
+			</condition>
+		</fail>
+		<copy todir="${build.dist}/bin" file="${tao.idl.compiler}" />
+		<copy todir="${build.dist}/bin" file="${ace.gperf}" />
+		<copy file="../../blacktie/licence/ace-tao.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-zip-artifact groupId="ace.contrib" artifactId="ace" name="ace" version="${ace.version}" description="repackage of ACE+TAO, Douglas C. Schmidt's C++ networking toolkit" />
+	</target>
+
+	<target name="expat-lib-linux" if="linux">
+		<copy file="${expat.lib.dir}/libexpat.so" tofile="${build.dist}/lib/libexpat.so.0" />
+		<exec executable="/bin/sh" dir="${build.dist}/lib">
+			<arg line="-c 'ln -s libexpat.so.0 libexpat.so'" />
+		</exec>
+	</target>
+	<target name="expat-lib-windows" if="windows">
+		<copy file="${expat.lib.dir}/libexpat.dll" todir="${build.dist}/lib" />
+		<copy file="${expat.lib.dir}/libexpat.lib" todir="${build.dist}/lib" />
+	</target>
+	<target name="expat" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${expat.include.dir}" lib.dir="${expat.lib.dir}" artifactId="expat" />
+
+		<antcall target="expat-lib-linux" />
+		<antcall target="expat-lib-windows" />
+		<copy todir="${build.dist}/include/expat">
+			<fileset dir="${expat.include.dir}">
+				<include name="expat.h" />
+				<include name="expat_external.h" />
+			</fileset>
+		</copy>
+		<copy file="../../blacktie/licence/expat.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-zip-artifact groupId="expat.contrib" artifactId="expat" name="expat" version="${expat.version}" description="repackage of expat, the C library for parsing XML, written by James Clark." />
+	</target>
+
+	<target name="cppunit-lib-linux" if="linux">
+		<copy file="${cppunit.lib.dir}/libcppunit-1.12.so.1.0.0" tofile="${build.dist}/lib/libcppunit-1.12.so.0" />
+		<copy file="${cppunit.lib.dir}/libcppunit-1.12.so.1.0.0" tofile="${build.dist}/lib/libcppunit-1.12.so.1" />
+		<exec executable="/bin/sh" dir="${build.dist}/lib">
+			<arg line="-c 'ln -s libcppunit-1.12.so.0 libcppunit.so'" />
+		</exec>
+	</target>
+	<target name="cppunit-lib-windows" if="windows">
+		<copy file="${cppunit.lib.dir}/cppunitd_dll.dll" todir="${build.dist}/lib" />
+		<copy file="${cppunit.lib.dir}/cppunitd_dll.lib" todir="${build.dist}/lib" />
+	</target>
+	<target name="cppunit" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${cppunit.include.dir}" lib.dir="${cppunit.lib.dir}" artifactId="cppunit" />
+
+		<antcall target="cppunit-lib-linux" />
+		<antcall target="cppunit-lib-windows" />
+		<copy todir="${build.dist}/include/cppunit">
+			<fileset dir="${cppunit.include.dir}" />
+		</copy>
+		<copy file="../../blacktie/licence/cppunit.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-zip-artifact groupId="cppunit.contrib" artifactId="cppunit" name="cppunit" version="${cppunit.version}" description="repackage of CppUnit, the C++ port of the famous JUnit framework for unit testing" />
+	</target>
+
+	<target name="apr-1-lib-linux" if="linux" unless="aix">
+		<copy todir="${build.dist}/lib">
+			<fileset dir="${apr-1.lib.dir}" includes="libapr-1.so*"/>
+		</copy>
+	</target>
+	<target name="apr-1-lib-aix" if="aix">
+		<copy file="${apr-1.lib.dir}/libapr-1.a" todir="${build.dist}/lib" />
+		<copy file="${apr-1.lib.dir}/libaprutil-1.a" todir="${build.dist}/lib" />
+	</target>
+	<target name="apr-1-lib-windows" if="windows">
+		<copy file="${apr-1.lib.dir}/libapr-1.dll" todir="${build.dist}/lib" />
+		<copy file="${apr-1.lib.dir}/libapr-1.lib" todir="${build.dist}/lib" />
+	</target>
+	<target name="apr-1" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${apr-1.include.dir}" lib.dir="${apr-1.lib.dir}" artifactId="apr-1" />
+
+		<antcall target="apr-1-lib-linux" />
+		<antcall target="apr-1-lib-aix" />
+		<antcall target="apr-1-lib-windows" />
+		<copy todir="${build.dist}/include/apr-1">
+			<fileset dir="${apr-1.include.dir}" includes="*.h" />
+		</copy>
+		<copy file="../../blacktie/licence/apr.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-artifact groupId="apr-1.contrib" artifactId="apr-1" name="apr-1" version="${apr-1.version}" description="Apache Portable Runtime (APR)" />
+	</target>
+
+	<target name="log4cxx-lib-linux" if="linux" unless="aix">
+		<copy todir="${build.dist}/lib">
+			<fileset dir="${log4cxx.lib.dir}">
+				<include name="liblog4cxx.so*" />
+			</fileset>
+		</copy>
+	</target>
+	<target name="log4cxx-lib-aix" if="aix">
+		<copy file="${log4cxx.lib.dir}/liblog4cxx.a" todir="${build.dist}/lib" />
+
+		<validate-files inc.dir="${apr-1.include.dir}" lib.dir="${apr-1.lib.dir}" artifactId="apr-1" />
+		<copy file="${apr-1.lib.dir}/libapr-1.a" todir="${build.dist}/lib" />
+		<copy file="${apr-1.lib.dir}/libaprutil-1.a" todir="${build.dist}/lib" />
+	</target>
+	<target name="log4cxx-lib-windows" if="windows">
+		<copy file="${log4cxx.lib.dir}/log4cxx.dll" todir="${build.dist}/lib" />
+		<copy file="${log4cxx.lib.dir}/log4cxx.lib" todir="${build.dist}/lib" />
+	</target>
+
+	<target name="log4cxx" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${log4cxx.include.dir}" lib.dir="${log4cxx.lib.dir}" artifactId="log4cxx" />
+
+		<antcall target="log4cxx-lib-linux" />
+		<antcall target="log4cxx-lib-aix" />
+		<antcall target="log4cxx-lib-windows" />
+		<copy todir="${build.dist}/include/log4cxx">
+			<fileset dir="${log4cxx.include.dir}" />
+		</copy>
+		<copy file="../../blacktie/licence/log4cxx.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-artifact groupId="apache-log4cxx.contrib" artifactId="log4cxx" name="log4cxx" version="${log4cxx.version}" description="Re-packaging of log4cxx, a logging framework for C++ patterned after Apache log4j" />
+	</target>
+
+	<target name="xercesc-lib-linux" if="linux" unless="aix">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${xercesc.lib.dir}" id="lib">
+				<include name="libxerces-c-*.so" />
+			</fileset>
+		</sync>
+		<property name="libxerces" refid="lib"/> 
+		<symlink link="${build.dist}/lib/libxerces-c.so" resource="${libxerces}" />
+	</target>
+	<target name="xercesc-lib-aix" if="aix">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${xercesc.lib.dir}" id="lib">
+				<include name="libxerces-c.a" />
+			</fileset>
+		</sync>
+		<property name="libxerces" refid="lib"/> 
+	</target>
+	<target name="xercesc-lib-windows" if="windows">
+		<copy file="${xercesc.lib.dir}/xerces-c_3_0D.dll" todir="${build.dist}/lib" />
+		<copy file="${xercesc.lib.dir}/xerces-c_3D.lib" todir="${build.dist}/lib" />
+	</target>
+
+	<target name="xercesc" depends="init">
+		<antcall target="purge"/>
+		<validate-files inc.dir="${xercesc.include.dir}/xercesc" lib.dir="${xercesc.lib.dir}" artifactId="xercesc" />
+		<antcall target="xercesc-lib-linux" />
+		<antcall target="xercesc-lib-aix" />
+		<antcall target="xercesc-lib-windows" />
+		<copy todir="${build.dist}/include/xercesc">
+			<fileset dir="${xercesc.include.dir}/xercesc">
+				<include name="**/*.hpp" />
+				<include name="**/*.c" />
+			</fileset>
+		</copy>
+		<copy file="../../blacktie/licence/xercesc.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+
+		<install-zip-artifact groupId="apache-xercesc.contrib" artifactId="xercesc" name="xercesc" version="${xercesc.version}" description="a validating XML parser written in a portable subset of C++ "/>
+	</target>
+
+	<target name="protobuf-lib-linux" if="linux" unless="aix">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${protobuf.lib.dir}" id="protobuflibs">
+				<include name="libprotobuf.so.7" />
+				<include name="libprotobuf-lite.so.7" />
+				<include name="libprotoc.so.7" />
+			</fileset>
+		</sync>
+		<property name="libprotobuf" refid="protobuflibs"/> 
+		<echo message="${libprotobuf}" file="${build.dist}/lib/protobuflinks"/>
+		<replaceregexp file="${build.dist}/lib/protobuflinks"
+			match="(lib[^\.]+\.so)([\.0-9]+);?"
+			replace="\1 \1\2${line.separator}" 
+			flags="g"/>
+		<symlink action="record" linkfilename="${build.dist}/lib/protobuflinks">
+			<fileset dir="." includes="${build.dist}/lib/**"/>
+		</symlink>
+		<symlink action="recreate">
+			<fileset dir="." includes="${build.dist}/lib/protobuflinks"/>
+		</symlink>
+	</target>
+
+	<target name="protobuf-lib-aix" if="aix">
+	</target>
+
+	<target name="protobuf-lib-windows" if="windows">
+		<sync todir="${build.dist}/lib">
+			<fileset dir="${protobuf.lib.dir}">
+				<include name="**/*.lib"/>
+				<include name="**/*.dll"/>
+			</fileset>
+		</sync>
+	</target>
+
+	<target name="protobuf" depends="init">
+		<antcall target="purge"/>
+		<antcall target="protobuf-lib-linux" />
+		<antcall target="protobuf-lib-aix" />
+		<antcall target="protobuf-lib-windows" />
+
+		<copy todir="${build.dist}/include/google/protobuf">
+			<fileset dir="${protobuf.include.dir}/google/protobuf">
+				<include name="**/*.h" />
+			</fileset>
+		</copy>
+
+		<fail message="cannot find protobuf compiler: ${protobuf.compiler}">
+			<condition>
+				<not>
+					<available file="${protobuf.compiler}" type="file" />
+				</not>
+			</condition>
+		</fail>
+
+		<copy todir="${build.dist}/bin" file="${protobuf.compiler}" />
+
+		<copy file="../../blacktie/licence/protobuf.txt" tofile="${build.dist}/META-INF/LICENSE"/>
+		<install-zip-artifact groupId="com.google.protobuf" artifactId="protoc" name="protoc" version="${protobuf.version}" description="Protocol Buffers are a way of encoding structured data in an efficient yet extensible format"/>
+	</target>
+
+	<target name="zip-linux" if="linux">
+		<exec executable="/bin/sh" dir="${build.dist}">
+			<arg line="-c 'zip -y -q -r ../lib/${artifactId}-${version}-${bpa}.zip . -i \'*\''" />
+		</exec>
+	</target>
+
+	<target name="zip-windows" if="windows">
+		<zip destfile="${buildd.lib}/${artifactId}-${version}-${bpa}.zip">
+			<fileset dir="${build.dist}" />
+		</zip>
+	</target>
+
+	<macrodef name="install-artifact">
+		<attribute name="groupId" />
+		<attribute name="artifactId" />
+		<attribute name="name" />
+		<attribute name="version" />
+		<attribute name="description" />
+
+		<sequential>
+			<create-pom groupId="@{groupId}" artifactId="@{artifactId}" name="@{name}" version="@{version}" type="jar" description="@{description}" />
+			<copy file="${build.dir}/@{artifactId}.pom" tofile="${build.dist}/META-INF/maven/@{groupId}/@{artifactId}/pom.xml"/>
+
+			<jar destfile="${buildd.lib}/@{artifactId}-@{version}-${bpa}.jar">
+				<manifest>
+					<attribute name="Implementation-Title" value="@{artifactId}" />
+					<attribute name="Implementation-Version" value="@{version}" />
+				</manifest>
+				<fileset dir="${build.dist}" />
+			</jar>
+
+			<artifact:pom id="pom" file="${build.dir}/@{artifactId}.pom" />
+			<artifact:install>
+				<pom refid="pom" />
+				<attach file="${build.dir}/@{artifactId}.pom" type="pom"/>
+				<attach file="${buildd.lib}/@{artifactId}-@{version}-${bpa}.jar" classifier="${bpa}"/>
+			</artifact:install>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="install-zip-artifact">
+		<attribute name="groupId" />
+		<attribute name="artifactId" />
+		<attribute name="name" />
+		<attribute name="version" />
+		<attribute name="description" />
+
+		<sequential>
+			<create-pom groupId="@{groupId}" artifactId="@{artifactId}" name="@{name}" version="@{version}" type="zip" description="@{description}" />
+			<copy file="${build.dir}/@{artifactId}.pom" tofile="${build.dist}/META-INF/maven/@{groupId}/@{artifactId}/pom.xml"/>
+
+			<antcall target="zip-linux">
+				<param name="artifactId" value="@{artifactId}" />
+				<param name="version" value="@{version}" />
+			</antcall>
+			<antcall target="zip-windows">
+				<param name="artifactId" value="@{artifactId}" />
+				<param name="version" value="@{version}" />
+			</antcall>
+
+			<artifact:pom id="pom" file="${build.dir}/@{artifactId}.pom" />
+			<artifact:install>
+				<pom refid="pom" />
+				<attach file="${build.dir}/@{artifactId}.pom" type="pom"/>
+				<attach file="${buildd.lib}/@{artifactId}-@{version}-${bpa}.zip" classifier="${bpa}" type="zip"/>
+			</artifact:install>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="create-pom">
+		<attribute name="groupId" />
+		<attribute name="artifactId" />
+		<attribute name="name" />
+		<attribute name="version" />
+		<attribute name="type" />
+		<attribute name="description" />
+		<sequential>
+			<echo file="${build.dir}/@{artifactId}.pom" append="false">&lt;project&gt;
+	&lt;modelVersion&gt;4.0.0&lt;/modelVersion&gt;
+	&lt;groupId&gt;@{groupId}&lt;/groupId&gt;
+	&lt;artifactId&gt;@{artifactId}&lt;/artifactId&gt;
+	&lt;name&gt;@{name}&lt;/name&gt;
+	&lt;version&gt;@{version}&lt;/version&gt;
+	&lt;packaging&gt;@{type}&lt;/packaging&gt;
+	&lt;description&gt;@{description}&lt;/description&gt;
+&lt;/project&gt;
+</echo>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="validate-files">
+		<attribute name="inc.dir" />
+		<attribute name="lib.dir" />
+		<attribute name="artifactId" />
+
+		<sequential>
+			<fail message="missing directories ${inc.dir} or ${lib.dir}">
+				<condition>
+					<and>
+						<available file="${inc.dir}" type="dir" />
+						<available file="${lib.dir}" type="dir" />
+					</and>
+				</condition>
+			</fail>
+			<mkdir dir="${build.dist}/include/@{artifactId}" />
+		</sequential>
+	</macrodef>
+
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2012, Red Hat, Inc., and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+
+<project name="module-repository" basedir="." default="modules">
+
+    <import file="lib.xml"/>
+
+    <property name="output.dir" value="../${wildfly.build.output.dir}"/>
+
+    <target name="base" depends="clean-target, modules-minimalistic, copy-files, make-dirs"/>
+
+    <target name="copy-files">
+        <copy todir="${output.dir}">
+            <fileset dir="src/main/resources">
+                <include name="LICENSE.txt"/>
+                <include name="README.txt"/>
+                <include name="copyright.txt"/>
+                <include name="appclient/**"/>
+                <include name="bin/**"/>
+                <include name="docs/**"/>
+                <include name="domain/**"/>
+                <include name="standalone/configuration/**.properties"/>
+                <include name="standalone/deployments/**"/>
+                <include name="welcome-content/**"/>
+            </fileset>
+            <fileset dir="${generated.configs}">
+                <include name="domain/**"/>
+                <include name="docs/**"/>
+            </fileset>
+        </copy>
+        <!-- Convert .bat files to DOS line endings -->
+        <fixcrlf srcdir="${output.dir}/bin" includes="**/*.bat" eol="crlf" />
+        <!-- Convert .sh files to Unix line endings -->
+        <fixcrlf srcdir="${output.dir}/bin" includes="**/*.sh" eol="lf" />
+        <fixcrlf srcdir="${output.dir}/bin" includes="**/*.conf" eol="lf" />
+        <!-- These files contain digested passwords, which should not be visible to external users -->
+        <chmod perm="600" file="${output.dir}/domain/configuration/mgmt-users.properties"/>
+        <chmod perm="600" file="${output.dir}/domain/configuration/mgmt-groups.properties"/>
+        <chmod perm="600" file="${output.dir}/domain/configuration/application-users.properties"/>
+        <chmod perm="600" file="${output.dir}/domain/configuration/application-roles.properties"/>
+        <chmod perm="600" file="${output.dir}/standalone/configuration/mgmt-users.properties"/>
+        <chmod perm="600" file="${output.dir}/standalone/configuration/mgmt-groups.properties"/>
+        <chmod perm="600" file="${output.dir}/standalone/configuration/application-users.properties"/>
+        <chmod perm="600" file="${output.dir}/standalone/configuration/application-roles.properties"/>
+        <chmod perm="755">
+            <fileset dir="${output.dir}/bin">
+                <include name="**/*.sh"/>
+            </fileset>
+        </chmod>
+    </target>
+
+    <target name="copy-standalone" description="Copy all standard configurations">
+        <copy todir="${output.dir}">
+            <fileset dir="${generated.configs}">
+                <include name="standalone/configuration/**.xml"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="copy-standalone-minimalistic">
+        <copy tofile="${output.dir}/standalone/configuration/standalone.xml" file="src/main/resources/docs/examples/configs/standalone-minimalistic.xml"/>
+        <copy todir="${output.dir}/docs/examples/configs">
+            <fileset dir="${generated.configs.standalone}">
+                <include name="**.xml"/>
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="make-dirs">
+        <mkdir dir="${output.dir}/domain/data/content"/>
+        <mkdir dir="${output.dir}/standalone/lib/ext"/>
+        <mkdir dir="${output.dir}/domain/tmp/auth"/>
+        <mkdir dir="${output.dir}/standalone/tmp/auth"/>
+        <mkdir dir="${output.dir}/.installation"/>
+         <!-- This is directory is used by the SASL transparent auth mechanism to validate local user access -->
+        <chmod perm="700" dir="${output.dir}/domain/tmp/auth"/>
+        <chmod perm="700" dir="${output.dir}/standalone/tmp/auth"/>
+        <chmod perm="700" dir="${output.dir}/.installation"/>
+    </target>
+
+    <target name="create-ext-content">
+        <mkdir dir="${output.dir}/modules/system/layers/base/org/jboss/integration/ext-content/main/bundled"/>
+        <copy file="${org.jboss.seam.integration:jboss-seam-int-jbossas:jar}" tofile="${output.dir}/modules/system/layers/base/org/jboss/integration/ext-content/main/bundled/jboss-seam-int.jar"/>
+
+        <!-- Copy the EJB specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.metadata:jboss-metadata-ejb:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="schema/*.xsd"/>
+                <include name="dtd/ejb-jar*.dtd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+        <!-- Copy the jboss-metadata-appclient specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.metadata:jboss-metadata-appclient:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="schema/*.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+        <!-- Copy the jboss-metadata-ear specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.metadata:jboss-metadata-ear:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="dtd/*.dtd"/>
+                <include name="schema/*.xsd"/>
+                <exclude name="schema/jboss-app_6_0.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+        <!-- Copy the jboss-metadata-common specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.metadata:jboss-metadata-common:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="dtd/*.dtd"/>
+                <include name="schema/*.xsd"/>
+                <exclude name="dtd/XMLSchema.dtd"/>
+                <exclude name="dtd/datatypes.dtd"/>
+                <exclude name="schema/xml.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+        <!-- Copy the jboss-metadata-web specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.metadata:jboss-metadata-web:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="dtd/*.dtd"/>
+                <include name="schema/*.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+        <!-- Copy the JBoss AS7 EJB specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.wildfly:wildfly-ejb3:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="*.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+        <!-- Copy the JBoss Modules specific schemas to the JBOSS_HOME/docs/schema folder -->
+        <unzip src="${org.jboss.modules:jboss-modules:jar}" dest="${output.dir}/docs/schema/">
+            <patternset>
+                <include name="schema/*.xsd"/>
+            </patternset>
+            <mapper type="flatten"/>
+        </unzip>
+
+    </target>
+
+    <target name="copy-client">
+        <copy file="${org.wildfly:wildfly-client-all:jar}" tofile="${output.dir}/bin/client/jboss-client.jar"/>
+        <copy file="${org.wildfly:wildfly-cli:jar:client}" tofile="${output.dir}/bin/client/jboss-cli-client.jar"/>
+    </target>
+
+    <target name="minimalistic" depends="base, copy-standalone-minimalistic"/>
+
+    <target name="modules-minimalistic">
+
+        <!--
+          ~ Minimalistic list of modules to assemble.
+          ~
+          ~ +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+          ~ +++++++   KEEP THIS LIST ALPHABETICAL BY MODULE NAME!   +++++++
+          ~ +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+          -->
+
+        <module-def name="org.wildfly.extension.blacktie">
+            <maven-resource group="org.jboss.narayana.blacktie" artifact="wildfly-blacktie"/>
+        </module-def>
+
+    </target>
+
+    <target name="modules" depends="modules-minimalistic">
+        <!--
+          ~ Complete list of modules to assemble.
+          ~
+          ~ +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+          ~ +++++++   KEEP THIS LIST ALPHABETICAL BY MODULE NAME!   +++++++
+          ~ +++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+          -->
+
+        <module-def name="org.antlr">
+            <maven-resource group="antlr" artifact="antlr" />
+        </module-def>
+
+        <module-def name="asm.asm">
+            <maven-resource group="asm" artifact="asm" />
+        </module-def>
+
+        <module-def name="ch.qos.cal10n">
+            <maven-resource group="ch.qos.cal10n" artifact="cal10n-api"/>
+        </module-def>
+
+        <module-def name="com.fasterxml.classmate">
+            <maven-resource group="com.fasterxml" artifact="classmate" />
+        </module-def>
+
+        <module-def name="com.github.relaxng">
+            <maven-resource group="com.github.relaxng" artifact="relaxngDatatype" />
+        </module-def>
+
+        <module-def name="com.google.guava">
+            <maven-resource group="com.google.guava" artifact="guava" />
+        </module-def>
+
+        <module-def name="com.h2database.h2">
+            <maven-resource group="com.h2database" artifact="h2"/>
+        </module-def>
+
+        <module-def name="com.sun.codemodel">
+            <maven-resource group="com.sun.codemodel" artifact="codemodel"/>
+        </module-def>
+
+        <module-def name="com.sun.istack">
+            <maven-resource group="com.sun.istack" artifact="istack-commons-runtime"/>
+            <maven-resource group="com.sun.istack" artifact="istack-commons-tools"/>
+        </module-def>
+
+        <module-def name="com.sun.jsf-impl">
+            <maven-resource group="com.sun.faces" artifact="jsf-impl"/>
+        </module-def>
+
+        <module-def name="com.sun.xml.bind">
+            <maven-resource group="com.sun.xml.bind" artifact="jaxb-impl"/>
+            <maven-resource group="com.sun.xml.bind" artifact="jaxb-xjc"/>
+        </module-def>
+
+        <module-def name="com.sun.xml.fastinfoset">
+            <maven-resource group="com.sun.xml.fastinfoset" artifact="FastInfoset"/>
+        </module-def>
+
+        <module-def name="com.sun.xml.messaging.saaj">
+            <maven-resource group="com.sun.xml.messaging.saaj" artifact="saaj-impl"/>
+        </module-def>
+
+        <module-def name="com.sun.xml.txw2">
+            <maven-resource group="com.sun.xml.txw2" artifact="txw2"/>
+        </module-def>
+
+        <module-def name="com.sun.xsom">
+            <maven-resource group="com.sun.xsom" artifact="xsom"/>
+        </module-def>
+
+        <module-def name="org.dom4j">
+            <maven-resource group="dom4j" artifact="dom4j" />
+        </module-def>
+
+        <module-def name="gnu.getopt">
+            <maven-resource group="gnu.getopt" artifact="java-getopt" />
+        </module-def>
+
+        <module-def name="javaee.api"/>
+
+        <module-def name="javax.activation.api">
+            <maven-resource group="javax.activation" artifact="activation"/>
+        </module-def>
+
+        <module-def name="javax.annotation.api">
+            <maven-resource group="org.jboss.spec.javax.annotation" artifact="jboss-annotations-api_1.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.ejb.api">
+            <maven-resource group="org.jboss.spec.javax.ejb" artifact="jboss-ejb-api_3.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.el.api">
+            <maven-resource group="org.jboss.spec.javax.el" artifact="jboss-el-api_2.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.enterprise.api">
+            <maven-resource group="javax.enterprise" artifact="cdi-api"/>
+        </module-def>
+
+        <module-def name="javax.enterprise.concurrent.api">
+            <maven-resource group="org.jboss.spec.javax.enterprise.concurrent" artifact="jboss-concurrency-api_1.0_spec"/>
+        </module-def>
+
+        <module-def name="javax.faces.api">
+            <maven-resource group="org.jboss.spec.javax.faces" artifact="jboss-jsf-api_2.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.inject.api">
+            <maven-resource group="javax.inject" artifact="javax.inject"/>
+        </module-def>
+
+        <module-def name="javax.interceptor.api">
+            <maven-resource group="org.jboss.spec.javax.interceptor" artifact="jboss-interceptors-api_1.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.json.api"/>
+
+        <module-def name="javax.jms.api">
+            <maven-resource group="org.jboss.spec.javax.jms" artifact="jboss-jms-api_2.0_spec"/>
+        </module-def>
+
+        <module-def name="javax.jws.api">
+            <maven-resource group="javax.jws" artifact="jsr181-api"/>
+        </module-def>
+
+        <module-def name="javax.management.j2ee.api">
+            <maven-resource group="org.jboss.spec.javax.management.j2ee" artifact="jboss-j2eemgmt-api_1.1_spec"/>
+        </module-def>
+
+        <module-def name="javax.mail.api">
+            <maven-resource group="javax.mail" artifact="mail"/>
+        </module-def>
+
+        <module-def name="javax.persistence.api">
+            <maven-resource group="org.hibernate.javax.persistence" artifact="hibernate-jpa-2.1-api"/>
+        </module-def>
+
+        <module-def name="javax.resource.api">
+            <maven-resource group="org.jboss.spec.javax.resource" artifact="jboss-connector-api_1.7_spec"/>
+        </module-def>
+
+        <module-def name="javax.rmi.api">
+            <maven-resource group="org.jboss.spec.javax.rmi" artifact="jboss-rmi-api_1.0_spec"/>
+        </module-def>
+
+        <module-def name="javax.security.auth.message.api">
+            <maven-resource group="org.jboss.spec.javax.security.auth.message" artifact="jboss-jaspi-api_1.0_spec"/>
+        </module-def>
+
+        <module-def name="javax.security.jacc.api">
+            <maven-resource group="org.jboss.spec.javax.security.jacc" artifact="jboss-jacc-api_1.4_spec"/>
+        </module-def>
+
+        <module-def name="javax.servlet.api">
+            <maven-resource group="org.jboss.spec.javax.servlet" artifact="jboss-servlet-api_3.1_spec"/>
+        </module-def>
+
+        <module-def name="javax.servlet.jsp.api">
+            <maven-resource group="org.jboss.spec.javax.servlet.jsp" artifact="jboss-jsp-api_2.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.servlet.jstl.api">
+            <maven-resource group="org.jboss.spec.javax.servlet.jstl" artifact="jboss-jstl-api_1.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.transaction.api">
+            <maven-resource group="org.jboss.spec.javax.transaction" artifact="jboss-transaction-api_1.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.validation.api">
+            <maven-resource group="javax.validation" artifact="validation-api"/>
+        </module-def>
+
+        <module-def name="javax.ws.rs.api">
+            <maven-resource group="org.jboss.resteasy" artifact="jaxrs-api"/>
+        </module-def>
+
+        <module-def name="javax.xml.bind.api">
+            <maven-resource group="org.jboss.spec.javax.xml.bind" artifact="jboss-jaxb-api_2.2_spec"/>
+        </module-def>
+
+        <module-def name="javax.xml.rpc.api">
+            <maven-resource group="org.jboss.spec.javax.xml.rpc" artifact="jboss-jaxrpc-api_1.1_spec"/>
+        </module-def>
+
+        <module-def name="javax.xml.soap.api">
+            <maven-resource group="org.jboss.spec.javax.xml.soap" artifact="jboss-saaj-api_1.3_spec"/>
+        </module-def>
+
+        <module-def name="javax.xml.ws.api">
+            <maven-resource group="org.jboss.spec.javax.xml.ws" artifact="jboss-jaxws-api_2.2_spec"/>
+        </module-def>
+
+        <module-def name="org.jboss.aesh">
+            <maven-resource group="org.jboss.aesh" artifact="aesh"/>
+        </module-def>
+
+        <module-def name="org.fusesource.jansi">
+            <maven-resource group="org.fusesource.jansi" artifact="jansi"/>
+        </module-def>
+
+        <module-def name="net.jcip">
+            <maven-resource group="net.jcip" artifact="jcip-annotations"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.beanutils">
+            <maven-resource group="commons-beanutils" artifact="commons-beanutils"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.cli">
+            <maven-resource group="commons-cli" artifact="commons-cli"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.codec">
+            <maven-resource group="commons-codec" artifact="commons-codec"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.collections">
+            <maven-resource group="commons-collections" artifact="commons-collections" />
+        </module-def>
+
+      <module-def name="org.apache.commons.configuration">
+          <maven-resource group="commons-configuration" artifact="commons-configuration" />
+      </module-def>
+
+        <module-def name="org.apache.commons.io">
+            <maven-resource group="commons-io" artifact="commons-io"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.lang">
+            <maven-resource group="commons-lang" artifact="commons-lang"/>
+        </module-def>
+
+        <module-def name="org.apache.commons.logging"/>
+
+        <module-def name="org.apache.commons.pool">
+            <maven-resource group="commons-pool" artifact="commons-pool"/>
+        </module-def>
+
+        <module-def name="org.apache.cxf">
+            <maven-resource group="org.apache.cxf" artifact="cxf-api"/>
+        </module-def>
+
+        <module-def name="org.apache.cxf.impl">
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-bindings-coloc"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-bindings-object"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-bindings-soap"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-bindings-xml"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-core"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-databinding-aegis"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-databinding-jaxb"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-frontend-jaxws"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-frontend-simple"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-management"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-transports-http"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-transports-jms"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-transports-local"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-ws-addr"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-ws-mex"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-ws-policy"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-ws-rm"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-rt-ws-security" jandex="true"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-common"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-java2ws"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-validator"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-wsdlto-core"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-wsdlto-databinding-jaxb"/>
+            <maven-resource group="org.apache.cxf" artifact="cxf-tools-wsdlto-frontend-jaxws"/>
+            <maven-resource group="org.apache.cxf.services.sts" artifact="cxf-services-sts-core"/>
+            <maven-resource group="org.apache.cxf.services.ws-discovery" artifact="cxf-services-ws-discovery-api"/>
+            <maven-resource group="org.apache.cxf.xjcplugins" artifact="cxf-xjc-boolean"/>
+            <maven-resource group="org.apache.cxf.xjcplugins" artifact="cxf-xjc-dv"/>
+            <maven-resource group="org.apache.cxf.xjcplugins" artifact="cxf-xjc-ts"/>
+        </module-def>
+
+        <module-def name="org.apache.httpcomponents">
+            <!-- These probably do not need to be split up but we can revisit later -->
+            <maven-resource group="org.apache.httpcomponents" artifact="httpclient"/>
+            <maven-resource group="org.apache.httpcomponents" artifact="httpcore"/>
+            <maven-resource group="org.apache.httpcomponents" artifact="httpmime"/>
+        </module-def>
+
+        <module-def name="org.apache.james.mime4j">
+            <maven-resource group="org.apache.james" artifact="apache-mime4j"/>
+        </module-def>
+
+        <module-def name="org.apache.neethi">
+            <maven-resource group="org.apache.neethi" artifact="neethi"/>
+        </module-def>
+
+        <module-def name="org.apache.qpid.proton">
+            <maven-resource group="org.apache.qpid" artifact="proton-api"/>
+            <maven-resource group="org.apache.qpid" artifact="proton-jms"/>
+            <maven-resource group="org.apache.qpid" artifact="proton-j-impl"/>
+        </module-def>
+
+        <module-def name="org.apache.santuario.xmlsec">
+            <maven-resource group="org.apache.santuario" artifact="xmlsec"/>
+        </module-def>
+
+        <module-def name="org.apache.velocity">
+            <maven-resource group="org.apache.velocity" artifact="velocity" />
+        </module-def>
+
+        <module-def name="org.apache.xalan">
+            <maven-resource group="xalan" artifact="serializer"/>
+            <maven-resource group="xalan" artifact="xalan"/>
+        </module-def>
+
+        <module-def name="org.apache.xerces">
+            <maven-resource group="xerces" artifact="xercesImpl"/>
+        </module-def>
+
+        <module-def name="org.apache.xml-resolver">
+            <maven-resource group="xml-resolver" artifact="xml-resolver"/>
+        </module-def>
+
+        <module-def name="org.apache.ws.xmlschema">
+            <maven-resource group="org.apache.ws.xmlschema" artifact="xmlschema-core"/>
+        </module-def>
+
+        <module-def name="org.apache.ws.security">
+            <maven-resource group="org.apache.ws.security" artifact="wss4j"/>
+        </module-def>
+
+        <module-def name="org.bouncycastle">
+            <maven-resource group="org.bouncycastle" artifact="bcprov-jdk16"/>
+            <maven-resource group="org.bouncycastle" artifact="bcmail-jdk16"/>
+        </module-def>
+
+        <module-def name="org.codehaus.woodstox">
+            <maven-resource group="org.codehaus.woodstox" artifact="woodstox-core-asl" />
+            <maven-resource group="org.codehaus.woodstox" artifact="stax2-api" />
+        </module-def>
+
+        <module-def name="org.codehaus.jackson.jackson-core-asl">
+            <maven-resource group="org.codehaus.jackson" artifact="jackson-core-asl" />
+        </module-def>
+
+        <module-def name="org.codehaus.jackson.jackson-jaxrs">
+            <maven-resource group="org.codehaus.jackson" artifact="jackson-jaxrs" />
+        </module-def>
+
+        <module-def name="org.codehaus.jackson.jackson-mapper-asl">
+            <maven-resource group="org.codehaus.jackson" artifact="jackson-mapper-asl" />
+        </module-def>
+
+        <module-def name="org.codehaus.jackson.jackson-xc">
+            <maven-resource group="org.codehaus.jackson" artifact="jackson-xc" />
+        </module-def>
+
+        <module-def name="org.codehaus.jettison">
+            <maven-resource group="org.codehaus.jettison" artifact="jettison" />
+        </module-def>
+
+        <module-def name="org.glassfish.javax.el">
+            <maven-resource group="org.glassfish" artifact="javax.el"/>
+        </module-def>
+
+        <module-def name="org.glassfish.javax.enterprise.concurrent">
+            <maven-resource group="org.glassfish" artifact="javax.enterprise.concurrent"/>
+        </module-def>
+
+        <module-def name="org.glassfish.javax.json">
+            <maven-resource group="org.glassfish" artifact="javax.json"/>
+        </module-def>
+
+        <module-def name="org.hibernate">
+            <maven-resource group="org.hibernate" artifact="hibernate-core" />
+            <maven-resource group="org.hibernate" artifact="hibernate-envers"/>
+            <maven-resource group="org.hibernate" artifact="hibernate-entitymanager" />
+            <maven-resource group="org.hibernate" artifact="hibernate-infinispan"/>
+            <maven-resource group="org.jipijapa"  artifact="jipijapa-hibernate4-3"/>
+        </module-def>
+
+        <module-def name="org.hibernate.commons-annotations">
+            <maven-resource group="org.hibernate.common" artifact="hibernate-commons-annotations"/>
+        </module-def>
+
+        <!-- envers is 1-1 with hibernate orm, so move into hibernate but leave empty module for apps that might depend on it -->
+        <module-def name="org.hibernate.envers">
+        </module-def>
+
+        <!-- create empty slot for Hibernate 3.x jars -->
+        <module-def name="org.hibernate" slot="3">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-hibernate3"/>
+        </module-def>
+
+        <!-- create empty slot for Hibernate 4.1.x or 4.2.x jars -->
+        <module-def name="org.hibernate" slot="4.1">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-hibernate4-1"/>
+        </module-def>
+
+        <!-- create empty slot for OpenJPA jars -->
+        <module-def name="org.apache.openjpa">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-openjpa"/>
+        </module-def>
+
+        <!-- create empty slot for EclipseLink jars -->
+        <module-def name="org.eclipse.persistence">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-eclipselink"/>
+        </module-def>
+
+        <module-def name="org.hibernate.validator">
+            <maven-resource group="org.hibernate" artifact="hibernate-validator"/>
+        </module-def>
+
+        <module-def name="org.hibernate.validator.cdi">
+            <maven-resource group="org.hibernate" artifact="hibernate-validator-cdi"/>
+        </module-def>
+
+        <module-def name="org.hornetq">
+            <maven-resource group="org.hornetq" artifact="hornetq-core-client"/>
+            <maven-resource group="org.hornetq" artifact="hornetq-server"/>
+            <maven-resource group="org.hornetq" artifact="hornetq-commons"/>
+            <maven-resource group="org.hornetq" artifact="hornetq-journal"/>
+            <maven-resource group="org.hornetq" artifact="hornetq-jms-client"/>
+            <maven-resource group="org.hornetq" artifact="hornetq-jms-server"/>
+            <extract-native-jar group="org.hornetq" artifact="hornetq-native"/>
+        </module-def>
+
+        <module-def name="org.hornetq.ra">
+            <maven-resource group="org.hornetq" artifact="hornetq-ra"/>
+        </module-def>
+
+        <module-def name="org.infinispan">
+            <maven-resource group="org.infinispan" artifact="infinispan-core"/>
+        </module-def>
+
+        <module-def name="org.infinispan.cachestore.jdbc">
+            <maven-resource group="org.infinispan" artifact="infinispan-cachestore-jdbc" />
+        </module-def>
+
+        <module-def name="org.infinispan.cachestore.remote">
+            <maven-resource group="org.infinispan" artifact="infinispan-cachestore-remote" />
+        </module-def>
+
+        <module-def name="org.infinispan.client.hotrod">
+            <maven-resource group="org.infinispan" artifact="infinispan-client-hotrod" />
+        </module-def>
+
+        <module-def name="org.jacorb">
+            <maven-resource group="org.jacorb" artifact="jacorb"/>
+        </module-def>
+
+        <module-def name="org.javassist">
+            <maven-resource group="org.javassist" artifact="javassist"/>
+        </module-def>
+
+        <module-def name="org.jaxen">
+            <maven-resource group="jaxen" artifact="jaxen"/>
+        </module-def>
+
+        <module-def name="org.jdom">
+            <maven-resource group="org.jdom" artifact="jdom"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.aggregate" />
+
+        <module-def name="org.jboss.as.appclient">
+            <maven-resource group="org.wildfly" artifact="wildfly-appclient"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.console">
+            <maven-resource-with-classifier group="org.jboss.as" artifact="jboss-as-console" classifier="resources"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.cli">
+            <maven-resource group="org.wildfly" artifact="wildfly-cli"/>
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.api">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-api"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.common">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-common"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.ejb3.infinispan">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-ejb3-infinispan"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.infinispan">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-infinispan"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.jgroups">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-jgroups"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.registry">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-registry"/>
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.server">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-server"/>
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.singleton">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-singleton"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.clustering.web.infinispan">
+            <!-- Dummy module that just depends on org.wildfly.clustering.web.infinispan -->
+            <!-- For configuration backwards compatability reasons -->
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.web.infinispan">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-web-infinispan"/>
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.web.spi">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-web-spi"/>
+        </module-def>
+
+        <module-def name="org.wildfly.clustering.web.undertow">
+            <maven-resource group="org.wildfly" artifact="wildfly-clustering-web-undertow"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.cmp">
+            <maven-resource group="org.wildfly" artifact="wildfly-cmp"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.connector">
+            <maven-resource group="org.wildfly" artifact="wildfly-connector"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.deployment-scanner">
+            <maven-resource group="org.wildfly" artifact="wildfly-deployment-scanner"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.domain-add-user" />
+
+        <module-def name="org.jboss.as.ee">
+            <maven-resource group="org.wildfly" artifact="wildfly-ee"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.ejb3">
+            <maven-resource group="org.wildfly" artifact="wildfly-ejb3"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.host-controller">
+            <maven-resource group="org.wildfly" artifact="wildfly-host-controller"/>
+        </module-def>
+
+        <module-def name="org.wildfly.extension.io">
+            <maven-resource group="org.wildfly" artifact="wildfly-io"/>
+        </module-def>
+
+        <!-- Dummy module for backwards compatibility -->
+        <module-def name="org.jboss.as.modcluster"/>
+
+        <module-def name="org.wildfly.extension.mod_cluster">
+            <maven-resource group="org.wildfly" artifact="wildfly-mod_cluster-extension"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jacorb">
+            <maven-resource group="org.wildfly" artifact="wildfly-jacorb"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jaxr">
+            <maven-resource group="org.wildfly" artifact="wildfly-jaxr"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jaxrs">
+            <maven-resource group="org.wildfly" artifact="wildfly-jaxrs"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jdr">
+            <maven-resource group="org.wildfly" artifact="wildfly-jdr"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jpa">
+            <maven-resource group="org.wildfly" artifact="wildfly-jpa"/>
+        </module-def>
+
+        <!-- legacy Hibernate 3.x JPA integration module for applications that include Hibernate 3 jars may depend on -->
+        <module-def name="org.jboss.as.jpa.hibernate" slot="3">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-hibernate3"/>
+        </module-def>
+
+        <!-- legacy Hibernate 4.x JPA module that applications may have dependencies on still
+             (they will likely use Hibernate 4.3.x which already contains the integration classes)
+        -->
+        <module-def name="org.jboss.as.jpa.hibernate" slot="4">
+        </module-def>
+
+        <module-def name="org.jboss.as.jpa.spi">
+            <maven-resource group="org.jipijapa" artifact="jipijapa-spi"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jpa.util">
+            <maven-resource group="org.wildfly" artifact="wildfly-jpa-util"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jsf">
+            <maven-resource group="org.wildfly" artifact="wildfly-jsf" />
+        </module-def>
+
+        <module-def name="org.jboss.as.jsf-injection">
+            <maven-resource group="org.wildfly" artifact="wildfly-jsf-injection" />
+            <maven-resource group="org.jboss.weld" artifact="weld-core-jsf"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.jsr77">
+            <maven-resource group="org.wildfly" artifact="wildfly-jsr77"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.logging">
+            <maven-resource group="org.wildfly" artifact="wildfly-logging"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.mail">
+            <maven-resource group="org.wildfly" artifact="wildfly-mail"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.management-client-content">
+            <maven-resource group="org.wildfly" artifact="wildfly-management-client-content"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.messaging">
+            <maven-resource group="org.wildfly" artifact="wildfly-messaging"/>
+        </module-def>
+
+        <module-def name="org.wildfly.mod_cluster.undertow">
+            <maven-resource group="org.wildfly" artifact="wildfly-mod_cluster-undertow"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.pojo">
+            <maven-resource group="org.wildfly" artifact="wildfly-pojo"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.naming">
+            <maven-resource group="org.wildfly" artifact="wildfly-naming"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.sar">
+            <maven-resource group="org.wildfly" artifact="wildfly-sar"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.security">
+            <maven-resource group="org.wildfly" artifact="wildfly-security"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.system-jmx">
+            <maven-resource group="org.wildfly" artifact="wildfly-system-jmx"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.transactions">
+            <maven-resource group="org.wildfly" artifact="wildfly-transactions"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.vault-tool" />
+
+        <module-def name="org.jboss.as.version">
+            <maven-resource group="org.wildfly" artifact="wildfly-version"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.web">
+            <maven-resource group="org.wildfly" artifact="wildfly-web"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.web-common">
+            <maven-resource group="org.wildfly" artifact="wildfly-web-common"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.webservices">
+            <maven-resource group="org.wildfly" artifact="wildfly-webservices-server-integration"/>
+            <maven-resource-with-classifier group="org.jboss.ws.cxf" artifact="jbossws-cxf-resources" classifier="wildfly800"/>
+        </module-def>
+
+        <module-def name="org.jboss.as.webservices.server.integration">
+            <!-- this is a dependencies only wrapper module - to support multiple JBossWS SOAP stacks -->
+        </module-def>
+
+        <module-def name="org.jboss.as.weld">
+            <maven-resource group="org.wildfly" artifact="wildfly-weld"/>
+        </module-def>
+        <module-def name="org.jboss.as.xts">
+            <maven-resource group="org.wildfly" artifact="wildfly-xts"/>
+        </module-def>
+
+        <module-def name="org.wildfly.extension.rts">
+            <maven-resource group="org.wildfly" artifact="wildfly-rts"/>
+        </module-def>
+
+        <module-def name="org.jboss.classfilewriter">
+            <maven-resource group="org.jboss.classfilewriter" artifact="jboss-classfilewriter"/>
+        </module-def>
+
+        <module-def name="org.jboss.ejb-client">
+            <maven-resource group="org.jboss" artifact="jboss-ejb-client"/>
+        </module-def>
+
+        <module-def name="org.jboss.ejb3">
+
+            <!-- TODO: this is not the final API -->
+            <maven-resource group="org.jboss.ejb3" artifact="jboss-ejb3-ext-api"/>
+        </module-def>
+
+        <module-def name="org.jboss.integration.ext-content">
+            <!-- Bundling external content into deployments -->
+        </module-def>
+
+        <module-def name="org.jboss.jboss-transaction-spi">
+            <maven-resource group="org.jboss" artifact="jboss-transaction-spi"/>
+        </module-def>
+
+        <module-def name="org.jboss.iiop-client">
+            <maven-resource group="org.jboss" artifact="jboss-iiop-client"/>
+        </module-def>
+
+        <module-def name="org.jboss.ironjacamar.api">
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-common-api"/>
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-common-spi"/>
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-core-api"/>
+        </module-def>
+
+        <module-def name="org.jboss.ironjacamar.impl">
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-common-impl"/>
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-core-impl"/>
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-deployers-common"/>
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-validator"/>
+        </module-def>
+
+        <module-def name="org.jboss.ironjacamar.jdbcadapters">
+            <maven-resource group="org.jboss.ironjacamar" artifact="ironjacamar-jdbc"/>
+        </module-def>
+
+        <module-def name="org.jboss.jaxbintros">
+            <maven-resource group="jboss.jaxbintros" artifact="jboss-jaxb-intros"/>
+        </module-def>
+
+        <module-def name="org.jboss.jts">
+            <maven-resource group="org.jboss.narayana.jts" artifact="narayana-jts-jacorb"/>
+        </module-def>
+
+        <module-def name="org.jboss.jts.integration">
+            <maven-resource group="org.jboss.narayana.jts" artifact="narayana-jts-integration"/>
+        </module-def>
+
+        <module-def name="org.jboss.metadata">
+            <maven-resource group="org.jboss.metadata" artifact="jboss-metadata-common"/>
+            <maven-resource group="org.jboss.metadata" artifact="jboss-metadata-appclient"/>
+            <maven-resource group="org.jboss.metadata" artifact="jboss-metadata-ejb"/>
+            <maven-resource group="org.jboss.metadata" artifact="jboss-metadata-web"/>
+            <maven-resource group="org.jboss.metadata" artifact="jboss-metadata-ear"/>
+        </module-def>
+
+        <module-def name="org.jboss.mod_cluster.container.spi">
+            <maven-resource group="org.jboss.mod_cluster" artifact="mod_cluster-container-spi"/>
+        </module-def>
+
+        <module-def name="org.jboss.mod_cluster.core">
+            <maven-resource group="org.jboss.mod_cluster" artifact="mod_cluster-core"/>
+        </module-def>
+
+        <!--
+          starting with 3.4.x Netty has changed its groupId to io.netty.
+        -->
+        <module-def name="org.jboss.netty">
+            <maven-resource group="io.netty" artifact="netty"/>
+        </module-def>
+
+        <module-def name="org.jboss.osgi.metadata">
+            <maven-resource group="org.jboss.osgi.metadata" artifact="jbosgi-metadata"/>
+        </module-def>
+
+        <module-def name="org.jboss.remote-naming">
+            <maven-resource group="org.jboss" artifact="jboss-remote-naming"/>
+        </module-def>
+
+        <module-def name="org.jboss.remoting-jmx">
+            <maven-resource group="org.jboss.remotingjmx" artifact="remoting-jmx"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-atom-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-atom-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-cdi">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-cdi"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-crypto">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-crypto"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-jackson-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-jackson-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-jaxb-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-jaxb-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-jettison-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-jettison-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-jaxrs">
+            <maven-resource group="org.jboss.resteasy" artifact="async-http-servlet-3.0"/>
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-jaxrs"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-client">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-client"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-jsapi">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-jsapi"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-multipart-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-multipart-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-validator-provider-11">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-validator-provider-11"/>
+        </module-def>
+
+        <module-def name="org.jboss.resteasy.resteasy-yaml-provider">
+            <maven-resource group="org.jboss.resteasy" artifact="resteasy-yaml-provider"/>
+        </module-def>
+
+        <module-def name="org.jboss.security.negotiation">
+            <maven-resource group="org.jboss.security" artifact="jboss-negotiation-common"/>
+            <maven-resource group="org.jboss.security" artifact="jboss-negotiation-extras"/>
+            <maven-resource group="org.jboss.security" artifact="jboss-negotiation-net"/>
+            <maven-resource group="org.jboss.security" artifact="jboss-negotiation-ntlm"/>
+            <maven-resource group="org.jboss.security" artifact="jboss-negotiation-spnego"/>
+        </module-def>
+
+        <module-def name="org.jboss.security.xacml">
+            <maven-resource group="org.jboss.security" artifact="jbossxacml"/>
+        </module-def>
+
+        <module-def name="org.jboss.shrinkwrap.core">
+            <maven-resource group="org.jboss.shrinkwrap" artifact="shrinkwrap-api"/>
+            <maven-resource group="org.jboss.shrinkwrap" artifact="shrinkwrap-spi"/>
+            <maven-resource group="org.jboss.shrinkwrap" artifact="shrinkwrap-impl-base"/>
+        </module-def>
+
+        <module-def name="org.jboss.weld.core">
+            <maven-resource group="org.jboss.weld" artifact="weld-core-impl"/>
+        </module-def>
+
+        <module-def name="org.jboss.weld.api">
+            <maven-resource group="org.jboss.weld" artifact="weld-api"/>
+        </module-def>
+
+        <module-def name="org.jboss.weld.spi">
+            <maven-resource group="org.jboss.weld" artifact="weld-spi"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.common">
+            <maven-resource group="org.jboss.ws" artifact="jbossws-common"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.cxf.jbossws-cxf-client"/>
+
+        <module-def name="org.jboss.ws.cxf.jbossws-cxf-factories">
+            <maven-resource group="org.jboss.ws.cxf" artifact="jbossws-cxf-factories"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.cxf.jbossws-cxf-server">
+            <maven-resource group="org.jboss.ws.cxf" artifact="jbossws-cxf-server"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.cxf.jbossws-cxf-transports-httpserver">
+            <maven-resource group="org.jboss.ws.cxf" artifact="jbossws-cxf-transports-httpserver"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.cxf.jbossws-cxf-transports-udp">
+            <maven-resource group="org.jboss.ws.cxf" artifact="jbossws-cxf-transports-udp"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.jaxws-client">
+            <maven-resource group="org.jboss.ws.cxf" artifact="jbossws-cxf-client"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.jaxws-jboss-httpserver-httpspi">
+            <maven-resource group="org.jboss.ws.projects" artifact="jaxws-jboss-httpserver-httpspi"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.api">
+            <maven-resource group="org.jboss.ws" artifact="jbossws-api"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.spi">
+            <maven-resource group="org.jboss.ws" artifact="jbossws-spi"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.tools.common">
+            <maven-resource group="org.jboss.ws" artifact="jbossws-common-tools"/>
+        </module-def>
+
+        <module-def name="org.opensaml">
+            <maven-resource group="org.opensaml" artifact="opensaml"/>
+            <maven-resource group="org.opensaml" artifact="openws"/>
+            <maven-resource group="org.opensaml" artifact="xmltooling"/>
+        </module-def>
+
+        <module-def name="org.jboss.ws.saaj-impl">
+        </module-def>
+
+        <module-def name="org.jboss.ws.tools.wsprovide">
+        </module-def>
+
+        <module-def name="org.jboss.ws.tools.wsconsume">
+        </module-def>
+
+        <module-def name="org.jboss.xb">
+            <maven-resource group="org.jboss" artifact="jbossxb"/>
+        </module-def>
+
+        <module-def name="org.jboss.xts">
+            <maven-resource group="org.jboss.narayana.xts" artifact="jbossxts"/>
+            <maven-resource group="org.jboss.narayana" artifact="jbosstxbridge"/>
+        </module-def>
+
+        <module-def name="org.jboss.narayana.txframework">
+            <maven-resource group="org.jboss.narayana.txframework" artifact="txframework"/>
+            <maven-resource group="org.jboss.narayana.rts" artifact="restat-util"/>
+        </module-def>
+
+        <module-def name="org.jboss.narayana.rts">
+            <maven-resource group="org.jboss.narayana.rts" artifact="restat-api"/>
+            <maven-resource group="org.jboss.narayana.rts" artifact="restat-util"/>
+            <maven-resource group="org.jboss.narayana.rts" artifact="restat-integration"/>
+            <maven-resource group="org.jboss.narayana.rts" artifact="restat-bridge"/>
+        </module-def>
+
+        <module-def name="org.jgroups">
+            <maven-resource group="org.jgroups" artifact="jgroups"/>
+        </module-def>
+
+        <module-def name="org.joda.time">
+            <maven-resource group="joda-time" artifact="joda-time"/>
+        </module-def>
+
+        <module-def name="org.jsoup">
+            <maven-resource group="org.jsoup" artifact="jsoup"/>
+        </module-def>
+
+        <module-def name="org.kohsuke.rngom">
+            <maven-resource group="org.kohsuke.rngom" artifact="rngom"/>
+        </module-def>
+
+        <module-def name="org.omg.api" />
+
+        <module-def name="org.osgi.core">
+            <maven-resource group="org.osgi" artifact="org.osgi.core"/>
+        </module-def>
+
+        <module-def name="org.picketlink">
+            <maven-resource group="org.picketlink" artifact="picketlink-core" jandex="true"/>
+            <maven-resource group="org.picketlink.distribution" artifact="picketlink-jbas7" jandex="true"/>
+        </module-def>
+
+        <module-def name="org.picketbox">
+            <maven-resource group="org.picketbox" artifact="picketbox"/>
+            <maven-resource group="org.picketbox" artifact="picketbox-infinispan"/>
+            <maven-resource group="org.picketbox" artifact="picketbox-commons"/>
+        </module-def>
+
+        <module-def name="org.slf4j.jcl-over-slf4j">
+            <maven-resource group="org.slf4j" artifact="jcl-over-slf4j"/>
+        </module-def>
+
+        <module-def name="org.scannotation.scannotation">
+            <maven-resource group="org.scannotation" artifact="scannotation"/>
+        </module-def>
+
+        <module-def name="org.slf4j">
+            <maven-resource group="org.slf4j" artifact="slf4j-api"/>
+        </module-def>
+
+        <module-def name="org.slf4j.impl">
+            <maven-resource group="org.jboss.slf4j" artifact="slf4j-jboss-logmanager"/>
+        </module-def>
+
+        <module-def name="org.slf4j.ext">
+            <maven-resource group="org.slf4j" artifact="slf4j-ext"/>
+        </module-def>
+
+        <module-def name="org.yaml.snakeyaml">
+            <maven-resource group="org.yaml" artifact="snakeyaml"/>
+        </module-def>
+
+        <module-def name="javax.wsdl4j.api">
+            <maven-resource group="wsdl4j" artifact="wsdl4j"/>
+        </module-def>
+
+        <module-def name="nu.xom">
+            <maven-resource group="xom" artifact="xom"/>
+        </module-def>
+
+        <module-def name="sun.jdk"/>
+
+        <module-def name="ibm.jdk"/>
+
+        <module-def name="org.wildfly.extension.undertow">
+            <maven-resource group="org.wildfly" artifact="wildfly-undertow"/>
+        </module-def>
+        <module-def name="io.undertow.servlet">
+            <maven-resource group="io.undertow" artifact="undertow-servlet"/>
+        </module-def>
+        <module-def name="io.undertow.jsp">
+            <maven-resource group="io.undertow" artifact="undertow-jsp"/>
+            <maven-resource group="io.undertow.jastow" artifact="jastow"/>
+        </module-def>
+        <module-def name="io.undertow.jasper-jdt">
+            <maven-resource group="org.jboss.web" artifact="jasper-jdt"/>
+        </module-def>
+        <module-def name="io.undertow.websocket">
+           <maven-resource group="io.undertow" artifact="undertow-websockets-jsr"/>
+         </module-def>
+        <module-def name="javax.websocket.api">
+              <maven-resource group="org.jboss.spec.javax.websocket" artifact="jboss-websocket-api_1.0_spec"/>
+          </module-def>
+
+    </target>
+
+    <target name="clean-target">
+        <delete dir="${output.dir}"/>
+    </target>
+
+    <target name="clean" depends="clean-target">
+        <delete file="maven-ant-tasks.jar"/>
+    </target>
+
+    <target name="all" depends="base, copy-standalone, modules, create-ext-content, copy-client"/>
+</project>
+<?xml version="1.0"?>
+<!--
+  JBoss, Home of Professional Open Source
+  Copyright 2007, Red Hat Middleware LLC, and individual contributors
+  as indicated by the @author tags.
+  See the copyright.txt in the distribution for a
+  full listing of individual contributors.
+  This copyrighted material is made available to anyone wishing to use,
+  modify, copy, or redistribute it subject to the terms and conditions
+  of the GNU Lesser General Public License, v. 2.1.
+  This program is distributed in the hope that it will be useful, but WITHOUT A
+  WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A
+  PARTICULAR PURPOSE.  See the GNU Lesser General Public License for more details.
+  You should have received a copy of the GNU Lesser General Public License,
+  v.2.1 along with this distribution; if not, write to the Free Software
+  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston,
+  MA  02110-1301, USA.
+
+  (C) 2005-2008,
+  @author JBoss Inc.
+-->
+<project name="JBossTS QA Suite Distribution" default="dist">
+  <property environment="env"/>
+  <property name="driver.home" value="dbdrivers"/>
+  <property name="isIdlj" value="0"/>
+  <!-- set this property to the location of a JBossTS JTA/JTS build or installation -->
+  <property name="org.jboss.jbossts.qa.ts.home" location="dist"/>
+  <property name="narayana.version" value="5.0.2.Final-SNAPSHOT"/>
+  <!-- TODO cd ArjunaJTS/orbportability; ant -f build-anttasks.xml -->
+  <property name="org.jboss.jbossts.qa.idlcompiler.lib" location="../ArjunaJTS/orbportability/lib/ext"/>
+  <!-- you should not need to configure anything below here -->
+  <!--
+        This is a redhat vpn server. for non-vpn use, mirror it locally or copy the drivers by hand.
+        wget \-\-no-parent -m http://www.qa.jboss.com/jdbc-drivers/
+        wget \-\-no-parent -m http://www.qa.jboss.com/jdbc-drivers/jConnect-6_0/classes
+        ant -Ddriver.url=file:///path/to/www.qa.jboss.com/jdbc-drivers get.drivers
+    -->
+  <property name="driver.url" value="http://www.qa.jboss.com/jdbc-drivers/"/>
+  <property name="org.jboss.jbossts.qa.server_manager_location" location="ext/jboss-server-manager-0.1.1.GA.jar"/>
+  <property name="org.jboss.jbossts.qa.dist.buildroot" location="build"/>
+
+  <target name="which-jts-jar">
+    <condition property="cp-jacorb-jts">
+        <and>
+            <equals arg1="${isIdlj}" arg2="0"/>
+            <not><isset property="init-jta"/></not>
+        </and>
+    </condition>
+    <condition property="cp-idlj-jts">
+        <and>
+            <equals arg1="${isIdlj}" arg2="1"/>
+            <not><isset property="init-jta"/></not>
+        </and>
+    </condition>
+  </target>
+
+  <target name="get.drivers" depends="clean-dbdrivers">
+    <!--
+        https://docspace.corp.redhat.com/clearspace/docs/DOC-16080
+        http://www.jboss.com/products/platforms/application/supportedconfigurations/
+        Files names below should be matched to those in run-tests.xml
+        https://docspace.corp.redhat.com/clearspace/community/bu/middleware/jboss-qe/lab
+        server connection params in config/jdbc_profiles/
+        -->
+    <mkdir dir="${driver.home}/oracle_10_2_0_4"/>
+    <get src="${driver.url}/ojdbc14.jar" dest="${driver.home}/oracle_10_2_0_4/ojdbc14.jar"/>
+    <mkdir dir="${driver.home}/mssql2005_sqljdbc_2.0/enu"/>
+    <get src="${driver.url}/sqljdbc_2.0/enu/sqljdbc.jar" dest="${driver.home}/mssql2005_sqljdbc_2.0/enu/sqljdbc.jar"/>
+    <get src="${driver.url}/sqljdbc_2.0/enu/sqljdbc4.jar" dest="${driver.home}/mssql2005_sqljdbc_2.0/enu/sqljdbc4.jar"/>
+    <!-- pgsql 8.1.408 is broken, use something more recent. -->
+    <get src="${driver.url}/postgresql-8.3-605.jdbc4.jar" dest="${driver.home}/postgresql-8.3-605.jdbc4.jar"/>
+    <!-- mysql server version 5 is the first with XA support, do use anything less.
+	 		driver versions before 5.0.5 are broken, don't use them either. -->
+    <get src="${driver.url}/mysql-connector-java-5.1.8-bin.jar" dest="${driver.home}/mysql-connector-java-5.1.8-bin.jar"/>
+    <mkdir dir="${driver.home}/DB2_v9.7"/>
+    <get src="${driver.url}/DB2_v9.7/db2jcc.jar" dest="${driver.home}/DB2_v9.7/db2jcc.jar"/>
+    <get src="${driver.url}/DB2_v9.7/db2jcc_license_cu.jar" dest="${driver.home}/DB2_v9.7/db2jcc_license_cu.jar"/>
+    <mkdir dir="${driver.home}/jConnect-6_0/classes"/>
+    <get src="${driver.url}/jConnect-6_0/classes/jconn3.jar" dest="${driver.home}/jConnect-6_0/classes/jconn3.jar"/>
+  </target>
+  <target name="get.maven.libs">
+        <exec executable="mvn" failonerror="true" dir="${basedir}">
+            <arg value="dependency:copy-dependencies"/>
+        </exec>
+  </target>
+  <target name="buildtype">
+    <available file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jbossjts.jar" property="buildtype" value="jts"/>
+    <available file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/narayana-jta.jar" property="buildtype" value="jta"/>
+    <available file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/narayana-jts-integration.jar" property="integration.build"/>
+    <condition property="dist.as">
+      <and>
+        <isset property="integration.build"/>
+        <isset property="as"/>
+      </and>
+    </condition>
+    <available file="${driver.home}" property="have.dbdrivers" value="true"/>
+  </target>
+  <target name="clean-dbdrivers" unless="dbdrivers.cleaned">
+    <delete dir="${driver.home}"/>
+    <property name="dbdrivers.cleaned" value="true"/>
+  </target>
+  <target name="clean" depends="clean-tests,clean-dbdrivers"/>
+  <target name="clean-tests">
+    <delete dir="PutObjectStoreDirHere"/>
+    <delete dir="ObjectStore"/>
+    <delete dir="testoutput"/>
+    <delete dir="${org.jboss.jbossts.qa.dist.buildroot}"/>
+    <delete dir="${org.jboss.jbossts.qa.ts.home}"/>
+    <delete file="transaction.log"/>
+    <delete file="idl-compiler.out"/>
+    <delete file="idl-compiler.err"/>
+    <delete>
+      <fileset dir="." includes="TEST-*.txt"/>
+    </delete>
+    <!-- always use jts regardless of build type, as we may not be able to
+            determine the build type at clean time and jts should have the superset -->
+    <ant dir="tests" antfile="build-jts.xml" target="clean"/>
+  </target>
+  <target name="init" depends="clean">
+    <mkdir dir="${org.jboss.jbossts.qa.dist.buildroot}"/>
+    <mkdir dir="${org.jboss.jbossts.qa.ts.home}"/>
+    <unzip src="../narayana-full/target/narayana-full-${narayana.version}-bin.zip" dest="${org.jboss.jbossts.qa.ts.home}"/>
+    <antcall target="init-jta"/>
+    <antcall target="init-jts"/>
+  </target>
+
+  <target name="init-jta" if="init-jta">
+    <copy file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jta/narayana-jta.jar" tofile="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/narayana-jta.jar"/>
+  </target>
+
+  <target name="init-jts" depends="jts.cp.jacorb,jts.cp.idlj"/>
+  <target name="jts.cp.jacorb" depends="which-jts-jar" if="cp-jacorb-jts">
+    <echo>copying jacorb jts</echo>
+    <copy file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jts/narayana-jts-jacorb.jar" tofile="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jbossjts.jar"/>
+  </target>
+  <target name="jts.cp.idlj" depends="which-jts-jar" if="cp-idlj-jts">
+    <echo>copying idlj jts</echo>
+    <copy file="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jts/narayana-jts-idlj.jar" tofile="${org.jboss.jbossts.qa.ts.home}/narayana-full-${narayana.version}/lib/jbossjts.jar"/>
+  </target>
+
+  <target name="dist" depends="clean, init, buildtype">
+    <!-- build the test suite -->
+    <ant dir="tests" antfile="build-${buildtype}.xml">
+      <property name="isIdlj" value="${isIdlj}"/>
+      <property name="org.jboss.jbossts.qa.server_manager_location" value="${org.jboss.jbossts.qa.server_manager_location}"/>
+    </ant>
+  </target>
+
+  <target name="help">
+    <echo>Supported targets:
+  jta - build tests for the standalone jta transaction engine
+  jts - build tests for the standalone jts transaction engine
+  narayana-jta - build tests for the integrated jta transaction engine
+  narayana-jts - build tests for the integrated jts transaction engine
+  dist - build tests for the last build of the transaction engine
+</echo>
+  </target>
+</project>

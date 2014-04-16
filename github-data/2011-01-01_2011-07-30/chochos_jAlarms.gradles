@@ -1,0 +1,259 @@
+//This is the main build script for jAlarms. It builds the subprojects included in settings.gradle.
+apply plugin: 'maven'
+description='A simple to use alarm system for Java server applications. With jAlarms you can notify different users through different means about certain events in your application, so they can receive notice via email, MSN, SMS, Twitter, etc.'
+version='1.7.2'
+ext.groovyVersion='2.0.8'
+ext.slf4jVersion='1.7.5'
+ext.springVersion='3.2.3.RELEASE'
+
+allprojects {
+	repositories {
+		mavenCentral()
+	}
+}
+
+//Here we set common stuff for all subprojects: the Maven repos, exclude commons-logging (use jcl-over-slf4j in UT),
+//set some common dependencies
+subprojects { subproj->
+	version=parent.version
+	apply plugin:'java'
+	apply plugin:'maven'
+	apply plugin:'project-report'
+	sourceCompatibility=7
+	targetCompatibility=7
+	group='net.sf.jalarms'
+
+	configurations {
+		all*.exclude group:'commons-logging', module:'commons-logging'
+		deployerJars
+		published.extendsFrom archives, signatures
+	}
+
+	dependencies {
+		compile "org.slf4j:slf4j-api:${slf4jVersion}"
+		testCompile 'junit:junit:4.11'
+		testRuntime "org.slf4j:slf4j-simple:${slf4jVersion}", "org.slf4j:jcl-over-slf4j:${slf4jVersion}"
+		//deployerJars 'org.apache.maven.wagon:wagon-http-lightweight:1.0-beta-6'
+	}
+	tasks.javadoc.options.use=true
+	tasks.javadoc.options.links=[
+		'http://download.oracle.com/javase/7/docs/api/', 'http://slf4j.org/apidocs/',
+		'http://static.springsource.org/spring/docs/3.2.x/javadoc-api/',
+		'http://jalarms.sourceforge.net/core/apidocs/'
+	]
+
+	task javadocJar(type:Jar, dependsOn:'javadoc') {
+		from javadoc.destinationDir
+		classifier='javadoc'
+	}
+	task sourcesJar(type:Jar, dependsOn:classes) {
+		from sourceSets.main.allSource
+		classifier='sources'
+	}
+	artifacts {
+		archives javadocJar
+		archives sourcesJar
+	}
+
+	apply plugin:'signing'
+	signing {
+		sign configurations.archives
+		required { gradle.taskGraph.hasTask('generateRelease') }
+	}
+
+	uploadArchives {
+		repositories {
+			project.ext.deployer=repositories.mavenDeployer {
+				beforeDeployment { MavenDeployment deployment ->
+					signing.signPom(deployment)
+				}
+				repository(url:'http://oss.sonatype.org/service/local/staging/deploy/maven2/') {
+					authentication(userName:nexusUsername, password:nexusPassword)
+				}
+				pom.project {
+					name 'jAlarms - A simple alarm notification system for Java'
+					packaging 'jar'
+					description subproj.description
+					url 'http://jalarms.sourceforge.net/'
+					inceptionYear '2009'
+					scm {
+						url 'http://github.com/chochos/jAlarms'
+						connection 'scm:git://github.com/chochos/jAlarms.git'
+						developerConnection 'scm:git@github.com:chochos/jAlarms.git'
+					}
+					licenses {
+						license {
+							name 'GNU Lesser General Public License, version 2.1'
+							url 'http://www.gnu.org/licenses/lgpl-2.1.html'
+							distribution 'repo'
+						}
+					}
+					developers {
+						developer {
+							id 'chochos'
+							name 'Enrique Zamudio Lopez'
+							email 'chochos@users.sourceforge.net'
+							url 'http://javamexico.org/blogs/ezamudio'
+							roles {
+								role 'Architect'
+								role 'Developer'
+							}
+							properties {
+								twitter 'chochosmx'
+							}
+							timezone 'America/Mexico_City'
+						}
+					}
+				} //pom.project
+			} //project.deployer
+		} //repositories
+	} //uploadPublished
+} //subprojects
+
+//Only for parent project
+configurations {
+	published.extendsFrom archives, signatures
+}
+
+subprojects.each {
+	project.evaluationDependsOn(it.name)
+}
+
+task generateRelease(dependsOn: subprojects.uploadArchives, 
+  group: "Release artifact",
+  description: "Generates and uploads a final release to Sonatype Nexus")
+
+description='An AOP extension for jAlarms, based on AspectJ and Spring AOP.'
+
+afterEvaluate {
+	tasks.compileTestJava.dependsOn ':jalarms-core:compileTestJava'
+}
+
+dependencies {
+	compile 'org.aspectj:aspectjrt:1.7.3', project(':jalarms-core')
+	testCompile "org.springframework:spring-test:${springVersion}",
+		files(project(':jalarms-core').sourceSets.test.output.classesDir)
+	testRuntime "org.springframework:spring-beans:${springVersion}",
+		"org.springframework:spring-context:${springVersion}",
+		'org.aspectj:aspectjweaver:1.7.3', 'cglib:cglib:2.2.2'
+}
+apply plugin:'groovy'
+description='This library contains additional jAlarms channels that have external dependencies to several other projects. You only need to add the runtime dependencies for the channels you will use.'
+defaultTasks 'build'
+
+//We need additional repos here
+repositories {
+	mavenRepo name:'jml-repo', url:'http://java-jml.sourceforge.net/maven'
+	mavenRepo name:'spy', url:'http://files.couchbase.com/maven2/'
+}
+
+dependencies {
+	compile 'net.sourceforge.java-jml:jml:1.0b4', 'spy:spymemcached:2.8.10',
+		'com.adenki:smppapi:0.3.9', 'javax.mail:mail:1.4.7',
+		"org.springframework:spring-context-support:${springVersion}",
+		'org.apache.servicemix.bundles:org.apache.servicemix.bundles.jsendnsca-core:1.3.1_3',
+		'jivesoftware:smack:3.1.0', 'jivesoftware:smackx:3.1.0',
+		'net.sf.ehcache:ehcache-core:2.6.5', project(':jalarms-core')
+	testCompile "org.codehaus.groovy:groovy:${groovyVersion}"
+}
+tasks.javadoc.options.links+='http://java-jml.sourceforge.net/javadocs/jml_1.0b4/'
+tasks.javadoc.options.links+='http://dustin.github.com/java-memcached-client/apidocs/'
+//We don't really need anything here, all setup is done in parent project
+description='This library contains the core jAlarms classes.'
+apply plugin:'eclipse'
+apply plugin:'groovy'
+defaultTasks 'build'
+description='Extensions to the AlarmSender interface for use within Groovy'
+
+dependencies {
+	compile "org.codehaus.groovy:groovy:${groovyVersion}",
+		project(':jalarms-core')
+}
+apply plugin:'groovy'
+apply plugin: ws.antonov.gradle.plugins.protobuf.ProtobufPlugin
+defaultTasks 'build'
+description='This module provides a remote interface via Google Protocol Buffers, so that several clients can connect to a single application with an AlarmSender which send the alarm messages on behalf of the clients.'
+
+buildscript {
+	repositories {
+		mavenCentral()
+	}
+	dependencies {
+		classpath 'ws.antonov.gradle.plugins:gradle-plugin-protobuf:0.8'
+	}
+}
+
+dependencies {
+	compile project(':jalarms-core'), 'com.google.protobuf:protobuf-java:2.5.0', "org.slf4j:slf4j-api:${slf4jVersion}",
+		"org.springframework:spring-context-support:${springVersion}", "org.codehaus.groovy:groovy:${groovyVersion}"
+}
+
+tasks.jar.exclude('jalarms-protobuf.xml')
+apply plugin:'groovy'
+
+dependencies {
+	compile project(':jalarms-core'), 'org.jboss.netty:netty:3.2.9.Final',
+		"org.codehaus.groovy:groovy-all:${groovyVersion}"
+	testCompile 'org.spockframework:spock-spring:0.7-groovy-2.0'
+	testRuntime "org.springframework:spring-test:${springVersion}"
+}
+apply plugin:'scala'
+defaultTasks 'build'
+description='A couple of functions to ease the use of jAlarms in Scala.'
+
+dependencies {
+	compile 'org.scala-lang:scala-library:2.10.2', project(':jalarms-core')
+}
+apply plugin:'war'
+apply plugin:'jetty'
+description='A web application that contains an AlarmSender to publish it as a RMI service.'
+
+dependencies {
+	compile project(':jalarms-core'), project(':jalarms-channels'),
+		"org.springframework:spring-web:${springVersion}"
+	providedCompile 'javax.servlet:servlet-api:3.0.1'
+	runtime "org.slf4j:slf4j-simple:${slf4jVersion}",
+		"org.slf4j:jcl-over-slf4j:${slf4jVersion}"
+	testCompile 'junit:junit:4.11', "org.springframework:spring-test:${springVersion}"
+}
+
+configurations {
+	integrationCompile { extendsFrom testCompile }
+	integrationRuntime { extendsFrom integrationCompile, testRuntime }
+}
+
+sourceSets {
+	integration {
+		java {
+			srcDir 'src/integration/java'
+		}
+		resources {
+			srcDir 'src/integration/resources'
+		}
+		compileClasspath=sourceSets.main.output+sourceSets.test.output+configurations.integrationCompile
+		runtimeClasspath=output+compileClasspath+configurations.integrationRuntime
+	}
+}
+
+webAppDirName='src/main/webapp'
+stopKey='foo'
+stopPort=9451
+httpPort=8888
+
+gradle.taskGraph.whenReady { graph->
+	if (graph.hasTask(integrationTest)) {
+		[jettyRun, jettyRunWar]*.daemon=true
+	}
+}
+
+task integrationTest(type:Test, dependsOn:jettyRun) {
+	testClassesDir=sourceSets.integration.output.classesDir
+	classpath=sourceSets.integration.runtimeClasspath
+}
+
+task shutdownServer(dependsOn:integrationTest) {
+	jettyStop:execute()
+}
+
+build.dependsOn shutdownServer
+jar.enabled=true

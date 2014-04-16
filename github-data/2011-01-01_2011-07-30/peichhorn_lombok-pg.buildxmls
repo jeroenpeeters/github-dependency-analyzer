@@ -1,0 +1,328 @@
+<?xml version="1.0" encoding="iso-8859-1"?>
+<project name="lombok-pg" default="dist" xmlns:ivy="antlib:com.zwitserloot.ivyplusplus" xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+	<description>
+This buildfile is part of lombok-pg. It is the main entry point that contains
+the common tasks and can be called on to run the main aspects of all the sub-scripts.
+	</description>
+
+	<property name="build.compiler" value="javac1.6" />
+
+	<!-- resolve -->
+	<property name="ivy.retrieve.pattern" value="lib/[conf]/[artifact].[ext]" />
+	<available file="lib/ivyplusplus.jar" property="ivyplusplus.available" />
+
+	<target name="download-ipp" unless="ivyplusplus.available">
+		<mkdir dir="lib" />
+		<get src="http://projectlombok.org/downloads/ivyplusplus.jar" dest="lib/ivyplusplus.jar" usetimestamp="true" />
+	</target>
+
+	<target name="download-maven-ant-tasks" unless="maven.available">
+		<mkdir dir="lib" />
+		<get src="http://apache.lehtivihrea.org//maven/binaries/maven-ant-tasks-2.1.3.jar" dest="lib/maven-ant-tasks.jar" usetimestamp="true" />
+	</target>
+
+	<target name="ensure-ipp" depends="download-ipp">
+		<taskdef classpath="lib/ivyplusplus.jar" resource="com/zwitserloot/ivyplusplus/antlib.xml" uri="antlib:com.zwitserloot.ivyplusplus" />
+	</target>
+
+	<target name="ensure-maven-ant-tasks" depends="download-maven-ant-tasks">
+		<taskdef classpath="lib/maven-ant-tasks.jar" resource="org/apache/maven/artifact/ant/antlib.xml" uri="antlib:org.apache.maven.artifact.ant" />
+	</target>
+
+	<target name="config-ivy" depends="ensure-ipp">
+		<ivy:configure file="buildScripts/ivysettings.xml" />
+	</target>
+
+	<target name="deps" depends="ensureBuildDeps, ensureRuntimeDeps, ensureTestDeps, ensureContribDeps" description="Downloads all dependencies." />
+
+	<target name="ensureBuildDeps" depends="config-ivy">
+		<ivy:resolve file="buildScripts/ivy.xml" refresh="true" conf="build" />
+		<ivy:retrieve />
+	</target>
+
+	<target name="ensureRuntimeDeps" depends="config-ivy">
+		<ivy:resolve file="buildScripts/ivy.xml" refresh="true" conf="runtime" />
+		<ivy:retrieve />
+	</target>
+
+	<target name="ensureTestDeps" depends="config-ivy">
+		<ivy:resolve file="buildScripts/ivy.xml" refresh="true" conf="test, javac6, javac7, eclipseBuild" />
+		<ivy:retrieve />
+	</target>
+
+	<target name="ensureContribDeps" depends="config-ivy" description="Downloads various non-crucial documentation, sources, etc that are useful when developing lombok.ast.">
+		<ivy:resolve file="buildScripts/ivy.xml" refresh="true" conf="contrib" />
+		<ivy:retrieve />
+	</target>
+
+	<!-- IDE integration -->
+	<target name="eclipse" depends="deps" description="Creates eclipse project files and downloads all dependencies. Open this directory as project in eclipse after running this target.">
+		<ivy:eclipsegen source="1.6">
+			<srcdir dir="src/core" />
+			<srcdir dir="src/eclipse" />
+			<srcdir dir="src/javac" />
+			<srcdir dir="test/eclipse" />
+			<srcdir dir="test/javac" />
+			<conf name="build" sources="contrib" />
+			<conf name="test" sources="contrib" />
+			<settings>
+				<url url="http://cloud.github.com/downloads/peichhorn/lombok-pg/lombok.eclipse.settings" />
+			</settings>
+			<apt location="lib/build/spi.jar" />
+		</ivy:eclipsegen>
+
+		<condition property="startOnFirstThread" value="-XstartOnFirstThread" else="">
+			<os family="mac" />
+		</condition>
+
+		<copy file="buildScripts/eclipse-debug-target.template" tofile="eclipse lombok-pg (JavaSE-1.6).launch" preservelastmodified="true" overwrite="true">
+			<filterset>
+				<filter token="START_ON_FIRST_THREAD" value="${startOnFirstThread}" />
+			</filterset>
+		</copy>
+		<copy file="buildScripts/java6-test-target.template" tofile="test lombok-pg (JavaSE-1.6).launch" preservelastmodified="true" overwrite="true" />
+	</target>
+
+	<!-- clean -->
+	<target name="clean" description="Removes all generated files.">
+		<delete dir="build" quiet="true" />
+	</target>
+
+	<target name="distclean" depends="clean" description="Deletes everything that this build script has ever generated.">
+		<delete dir="lib" quiet="true" />
+		<delete dir="dist" quiet="true" />
+		<delete file=".project" quiet="true" />
+		<delete file=".classpath" quiet="true" />
+		<delete dir=".settings" quiet="true" />
+		<delete dir="ivyCache" quiet="true" />
+	</target>
+
+	<!-- compile -->
+	<path id="build.path">
+		<fileset dir="lib/build">
+			<include name="*.jar" />
+		</fileset>
+	</path>
+
+	<target name="unpackLibs" depends="ensureBuildDeps">
+		<ivy:cachedunjar dest="build/lombok-pg" marker="build/unpackDeps.marker">
+			<fileset file="lib/build/lombok.jar" />
+		</ivy:cachedunjar>
+	</target>
+
+	<target name="compile" depends="ensureBuildDeps, unpackLibs" description="Compiles the code.">
+		<delete file="build/lombok-pg/META-INF/services/javax.annotation.processing.Processor" quiet="true" />
+		<ivy:compile destdir="build/lombok-pg" source="1.6" target="1.6" includeantruntime="false">
+			<src path="src/core" />
+			<src path="src/eclipse" />
+			<src path="src/javac" />
+			<classpath location="build/lombok-pg" />
+			<classpath refid="build.path" />
+		</ivy:compile>
+		<mkdir dir="build/lombok-pg/META-INF" />
+		<mkdir dir="build/lombok-pg/META-INF/services" />
+		<echo file="build/lombok-pg/META-INF/services/javax.annotation.processing.Processor">lombok.core.AnnotationProcessor</echo>
+	</target>
+
+	<!-- version -->
+	<target name="version" depends="ensure-ipp" description="Shows the version number." unless="lombok.version">
+		<mkdir dir="build/lombok-pg" />
+		<javac includeDestClasses="false" srcdir="src/core" debug="on" destdir="build/lombok-pg" source="1.5" target="1.5" includes="lombok/core/Version.java" includeantruntime="false" />
+		<java classname="lombok.core.Version" classpath="build/lombok-pg" failonerror="true" output="build/version.txt" />
+		<ivy:loadversion property="lombok.version" file="build/version.txt" />
+		<echo level="info">lombok-pg is based on lombok-${lombok.version}</echo>
+		<condition property="lombok.version.is.snapshot">
+			<matches pattern=".*-SNAPSHOT" string="${lombok.version}" />
+		</condition>
+	</target>
+
+	<target name="init.version.snapshot" depends="version" unless="lombok.version.is.snapshot">
+		<property name="lombok.version.snapshot" value="${lombok.version}-SNAPSHOT" />
+	</target>
+
+	<target name="version.snapshot" depends="version, init.version.snapshot">
+		<property name="lombok.version.snapshot" value="${lombok.version}" />
+	</target>
+
+	<!-- test -->
+	<path id="test.path">
+		<fileset dir="lib/test">
+			<include name="*.jar" />
+		</fileset>
+	</path>
+
+	<path id="eclipseBuild.path">
+		<fileset dir="lib/eclipseBuild">
+			<include name="*.jar" />
+		</fileset>
+	</path>
+
+	<target name="test-compile" depends="ensureTestDeps, compile" unless="skipTests">
+		<mkdir dir="build/tests" />
+		<ivy:compile destdir="build/tests" source="1.5" target="1.5" includeantruntime="false">
+			<classpath refid="test.path" />
+			<classpath refid="build.path" />
+			<classpath path="build/lombok-pg" />
+			<src path="test/eclipse" />
+			<src path="test/javac" />
+		</ivy:compile>
+		<copy todir="build/tests">
+			<fileset dir="test/transform/resource" />
+		</copy>
+	</target>
+
+	<target name="test" depends="test-compile, dist" unless="tests.skip" description="Runs the tests.">
+		<junit haltonfailure="yes" fork="true">
+			<jvmarg value="-javaagent:dist/lombok.jar" />
+			<formatter type="plain" usefile="false" unless="tests.quiet" />
+			<classpath refid="test.path" />
+			<classpath refid="eclipseBuild.path" />
+			<classpath path="lib/javac6/javac6.jar" />
+			<classpath path="build/tests" />
+			<batchtest>
+				<fileset dir="test/eclipse">
+					<include name="**/*Test*.java" />
+				</fileset>
+				<fileset dir="test/javac">
+					<include name="**/*Test*.java" />
+				</fileset>
+			</batchtest>
+		</junit>
+		<echo level="info">All tests successful.</echo>
+	</target>
+
+	<!-- dist -->
+	<target name="dist" description="Builds the lombok-pg artifacts" depends="compile, version">
+		<mkdir dir="dist" />
+		<jar destfile="dist/lombok-pg-${lombok.version}.jar">
+			<fileset dir="build/lombok-pg" />
+			<fileset dir="." includes="LICENSE" />
+			<fileset dir="." includes="AUTHORS" />
+			<manifest>
+				<attribute name="Premain-Class" value="lombok.core.LombokPGAgent" />
+				<attribute name="Agent-Class" value="lombok.core.LombokPGAgent" />
+				<attribute name="Can-Redefine-Classes" value="true" />
+				<attribute name="Main-Class" value="lombok.core.Main" />
+				<attribute name="Lombok-Version" value="${lombok.version}" />
+			</manifest>
+		</jar>
+		<!-- So the ecj-tests can run properly -->
+		<copy file="dist/lombok-pg-${lombok.version}.jar" tofile="dist/lombok.jar" />
+
+		<property name="lombok.dist.built" value="true" />
+	</target>
+
+	<!-- dist additional files -->
+	<target name="dist-additional" depends="dist">
+		<jar destfile="dist/lombok-pg-${lombok.version}-runtime.jar">
+			<fileset dir="build/lombok-pg">
+				<include name="*lombok/*.class" />
+				<include name="*lombok/extern/**/*.class" />
+			</fileset>
+			<fileset dir="." includes="LICENSE" />
+			<fileset dir="." includes="AUTHORS" />
+			<manifest>
+				<attribute name="Lombok-Version" value="${lombok.version}" />
+			</manifest>
+		</jar>
+
+		<jar destfile="dist/lombok-pg-${lombok.version}-sources.jar">
+			<fileset dir="src/core" />
+			<fileset dir="src/eclipse" />
+			<fileset dir="src/javac" />
+			<fileset dir="." includes="LICENSE" />
+			<fileset dir="." includes="AUTHORS" />
+		</jar>
+
+		<ant antfile="buildScripts/javadoc.ant.xml" target="javadoc" inheritAll="false">
+			<property name="lombok.version" value="${lombok.version}" />
+		</ant>
+		<jar destfile="dist/lombok-pg-${lombok.version}-javadoc.jar">
+			<fileset dir="build/javadoc" />
+			<fileset dir="." includes="LICENSE" />
+			<fileset dir="." includes="AUTHORS" />
+		</jar>
+	</target>
+
+	<!-- deploy -->
+	<target name="maven-deploy" depends="ensure-maven-ant-tasks, dist, dist-additional, test, version.snapshot" description="Deploy snapshot version to Maven snapshot repository">
+		<!-- create pom -->
+		<copy tofile="dist/pom.xml" overwrite="true" file="buildScripts/maven-pom.xml">
+			<filterchain>
+				<replacetokens>
+					<token key="VERSION" value="${lombok.version.snapshot}" />
+				</replacetokens>
+			</filterchain>
+		</copy>
+		<!-- main artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-deploy-plugin:2.6:deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/content/repositories/snapshots/" />
+			<arg value="-DrepositoryId=sonatype-nexus-snapshots" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}.jar" />
+			<arg value="-DuniqueVersion=false" />
+		</artifact:mvn>
+		<!-- runtime artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-deploy-plugin:2.6:deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/content/repositories/snapshots/" />
+			<arg value="-DrepositoryId=sonatype-nexus-snapshots" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}-runtime.jar" />
+			<arg value="-DuniqueVersion=false" />
+			<arg value="-Dclassifier=runtime" />
+		</artifact:mvn>
+	</target>
+
+	<!-- stage -->
+	<target name="maven-stage" depends="ensure-maven-ant-tasks, dist, dist-additional, test" description="Deploy release version to Maven staging repository">
+		<!-- create pom -->
+		<copy tofile="dist/pom.xml" overwrite="true" file="buildScripts/maven-pom.xml">
+			<filterchain>
+				<replacetokens>
+					<token key="VERSION" value="${lombok.version}" />
+				</replacetokens>
+			</filterchain>
+		</copy>
+		<!-- main artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+			<arg value="-DrepositoryId=sonatype-nexus-staging" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}.jar" />
+			<arg value="-Pgpg" />
+		</artifact:mvn>
+		<!-- runtime artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+			<arg value="-DrepositoryId=sonatype-nexus-staging" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}-runtime.jar" />
+			<arg value="-Dclassifier=runtime" />
+			<arg value="-Pgpg" />
+		</artifact:mvn>
+		<!-- sources artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+			<arg value="-DrepositoryId=sonatype-nexus-staging" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}-sources.jar" />
+			<arg value="-Dclassifier=sources" />
+			<arg value="-Pgpg" />
+		</artifact:mvn>
+		<!-- javadoc artifact -->
+		<artifact:mvn>
+			<arg value="org.apache.maven.plugins:maven-gpg-plugin:1.3:sign-and-deploy-file" />
+			<arg value="-Durl=https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+			<arg value="-DrepositoryId=sonatype-nexus-staging" />
+			<arg value="-DpomFile=dist/pom.xml" />
+			<arg value="-Dfile=dist/lombok-pg-${lombok.version}-javadoc.jar" />
+			<arg value="-Dclassifier=javadoc" />
+			<arg value="-Pgpg" />
+		</artifact:mvn>
+	</target>
+</project>

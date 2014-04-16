@@ -1,0 +1,332 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+ext.dbfitVersion = '2.2.0'
+
+task cleanFitnesseroot(type:Exec) {
+    executable onWindows() ? 'cmd.exe' : '/bin/sh'
+    args onWindows() ? '/C' : '-c', 'git clean -d -x -f FitNesseRoot/'
+}
+
+task cleanDist << {
+    delete 'dist'
+    delete 'zips'
+    delete 'docs'
+}
+
+task copyLocal(dependsOn: [cleanFitnesseroot, cleanDist, ':dbfit-java:assembleAll', ':dbfit-java:libs']) << {
+    copy {
+        from 'LICENSE', 'README.md'
+        into 'dist'
+    }
+    copy {
+        from 'bin'
+        include 'encrypt.*'
+        into 'dist'
+    }
+    copy {
+        from 'templates'
+        include 'startFitnesse.*'
+        into 'dist'
+        rename '(.+)\\.tmpl$', '$1'
+        filter(ReplaceTokens,
+            tokens: ['dbfitVersion': dbfitVersion, 'fitNesseVersion': project(':dbfit-java').fitNesseVersion])
+    }
+    copy {
+        from 'files'
+        into 'dist'
+    }
+    copy {
+        from 'dbfit-java'
+        include '**/*.jar'
+        exclude 'build/**/*.jar'
+        exclude proprietaryLibs()
+        exclude experimentalItems()
+        into 'dist/lib'
+        eachFile {details ->
+            details.path = flattenPath(details.path)
+        }
+        includeEmptyDirs = false 
+    }
+}
+
+task copyExtraLibs(dependsOn: [copyLocal]) << {
+    copy {
+        from 'dbfit-java'
+        include proprietaryLibs()
+        into 'dist/lib'
+        eachFile {details ->
+            details.path = flattenPath(details.path)
+        }
+        includeEmptyDirs = false
+    }
+    copy {
+        from project(':dbfit-java:derby').configurations.derby
+        into 'dist/lib'
+    }
+}
+
+task wikiDocsDir << {
+    mkdir('docs/Resources/')
+}
+
+task fitnesseUpdateList << {
+    copy {
+        from zipTree(fitnesseJar()).matching { include 'Resources/updateList' }
+        into 'docs'
+        rename 'updateList', 'updateList.fitnesse'
+    }
+}
+
+task dbfitUpdateList(dependsOn: wikiDocsDir) << {
+    File f = file('docs/Resources/updateList.dbfit')
+
+    fileTree('FitNesseRoot').each {
+        f << "${relativePath(it).toString().replace('\\', '/')}\n"
+    }
+}
+
+task wikiDocsUpdateList(dependsOn: [fitnesseUpdateList, dbfitUpdateList]) << {
+    File f = file('docs/Resources/updateList')
+
+    f << file('docs/Resources/updateList.dbfit').text
+    f << file('docs/Resources/updateList.fitnesse').text
+
+    delete 'docs/Resources/updateList.fitnesse'
+    delete 'docs/Resources/updateList.dbfit'
+}
+
+task wikiDocs(dependsOn: [wikiDocsUpdateList]) << {
+    copy {
+        from 'FitNesseRoot'
+        into 'docs/Resources/FitNesseRoot'
+    }
+
+    ant.jar(destfile: 'dist/lib/dbfit-docs-' + dbfitVersion + '.jar', basedir: 'docs', level: 9)
+}
+
+def fitnesseJar() {
+    fileTree(dir: 'dist/lib', include: 'fitnesse-*.jar').getSingleFile()
+}
+
+def flattenPath(def path) {
+    path.replaceAll('.*/([^/]*?\\.jar)', {"${it[1]}"})
+}
+
+task bundleFitsharp(dependsOn: copyLocal) << {
+    mkdir 'dist/fitsharp/'
+    ant.get(src: 'http://cloud.github.com/downloads/jediwhale/fitsharp/release.2.2.net.40.zip',
+            dest: 'dist/fitsharp/',
+            verbose: true)
+    copy {
+        from zipTree('dist/fitsharp/release.2.2.net.40.zip')
+        into 'dist/fitsharp/'
+    }
+    delete 'dist/fitsharp/release.2.2.net.40.zip'
+    file('dist/fitsharp/Runner.exe.config') << '<configuration><runtime><loadFromRemoteSources enabled="true"/></runtime></configuration>'
+}
+
+
+task bundle(type: Zip, dependsOn: [copyLocal, wikiDocs, bundleFitsharp]) {
+    description = 'creates the zip file for distributing dbfit'
+    from 'dist'
+    baseName 'dbfit-complete'
+    version dbfitVersion
+    destinationDir new File('zips')
+}
+
+task start(type: Exec, dependsOn: [copyLocal, copyExtraLibs, wikiDocs, bundleFitsharp]) {
+    workingDir './dist'
+    description = 'starts fitness with dbfit'
+    executable onWindows() ? 'startFitnesse.bat' : './startFitnesse.sh'
+}
+
+task starthere(type: Exec, dependsOn: [copyLocal, copyExtraLibs]) {
+    workingDir './dist'
+    description = 'starts fitness with dbfit on top of real tests sources'
+    executable onWindows() ? 'startFitnesse.bat' : './startFitnesse.sh'
+    args '-d', '..', '-o', '-f', 'plugins.properties'
+}
+
+task fastbuild(dependsOn: [':dbfit-java:core:check', ':dbfit-java:derby:check'])
+
+def onWindows() {
+    System.properties['os.name'].toLowerCase().contains('windows')
+}
+
+def proprietaryLibs() {
+    ['**/ojdbc*.jar'] as Set
+}
+
+def experimentalItems() {
+    ['teradata/**/*.jar'] as Set
+}
+
+ext {
+    fitNesseVersion = '20140317'
+}
+
+allprojects {
+    apply plugin: 'idea'
+    apply plugin: 'eclipse'
+
+    apply plugin: 'maven'
+    group = 'com.neuri.dbfit'
+    version = rootProject.dbfitVersion
+    
+    apply plugin: 'java'
+    sourceCompatibility = 1.7
+    targetCompatibility = 1.7
+
+    apply plugin: 'checkstyle'
+
+    checkstyle {
+        configFile = new File(parent.projectDir, "config/checkstyle/checkstyle.xml")
+    }
+
+    tasks.withType(Compile) {
+        options.compilerArgs << "-Xlint:unchecked"
+        options.compilerArgs << "-Xlint:deprecation"
+    }
+}
+
+subprojects {
+    jar.baseName = "dbfit-" + project.archivesBaseName
+    repositories {
+        mavenCentral()
+        maven {
+            url "http://mvnrepository.com"
+        }
+        ivy {
+            artifactPattern "https://s3.amazonaws.com/dbfit/[artifact]-[revision].[ext]"
+            ivyPattern "https://aws.amazon.com/s3/ivy.xml"
+        }
+    }
+
+    task libs(type: Copy) {
+        from configurations.runtime
+        into "$buildDir/libs"
+    }
+
+    dependencies {
+        testRuntime 'com.dbdeploy:dbdeploy-ant:3.0M3'
+        testCompile 'junit:junit:4.11'
+        testCompile "org.hamcrest:hamcrest-all:1.3"
+        testCompile "commons-io:commons-io:2.4"
+    }
+
+    ext.dbdeploy = { dbDriver, url, userid, password, delimiterType = 'normal' ->
+        ant.taskdef(name: 'dbdeploy',
+                classname: 'com.dbdeploy.AntTarget',
+                classpath: configurations.testRuntime.asPath)
+        ant.dbdeploy(driver: dbDriver,
+                url: url,
+                userid: userid,
+                password: password,
+                dir: "$projectDir/src/test/resources",
+                delimiterType: delimiterType,
+        )
+    }
+
+    test.inputs.dir file("$projectDir/../../FitNesseRoot/DbFit/AcceptanceTests/JavaTests")
+}
+
+
+task assembleAll(dependsOn: subprojects.assemble) { }
+task libs(dependsOn: subprojects.libs) { }
+
+project('core') {
+    description = 'DBFit core api and fixtures'
+
+    dependencies {
+        compile "dummy:fitnesse-standalone:${fitNesseVersion}@jar"
+        compile "dummy:fitlibrary:20081102@jar"
+        compile "org.reflections:reflections:0.9.9-RC1"
+        compile "commons-codec:commons-codec:1.9"
+        compile "org.apache.commons:commons-lang3:3.3.1"
+        testCompile "org.mockito:mockito-all:1.9.5"
+    }
+}
+
+project('db2') {
+    description = 'DBFit db2 engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+    }
+}
+
+project('derby') {
+    description = 'DBFit derby engine'
+    configurations {
+        derby
+        testRuntime.extendsFrom derby
+    }
+    dependencies {
+        compile project(':dbfit-java:core')
+        derby group: 'org.apache.derby', name: 'derby', version: '10.10.1.1'
+        derby group: 'org.apache.derby', name: 'derbyclient', version: '10.10.1.1'
+    }
+}
+
+project('hsqldb') {
+    description = 'DBFit HSQLDB engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+    }
+}
+
+project('oracle') {
+    description = 'DBFit Oracle engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+        compile "commons-io:commons-io:2.4"
+        compile 'dummy:ojdbc6:11.2.0.3.0@jar'
+        testCompile "org.mockito:mockito-all:1.9.5"
+    }
+}
+
+project('mysql') {
+    description = 'DBFit MySQL engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+        compile group: 'mysql', name: 'mysql-connector-java', version: '5.1.6'
+    }
+
+    test.doFirst {
+        dbdeploy('com.mysql.jdbc.Driver', 'jdbc:mysql://127.0.0.1/dbfit', 'dbfit_user', 'password')
+    }
+}
+
+project('postgres') {
+    description = 'DBFit PostGreSQL engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+        compile group: 'org.postgresql', name: 'postgresql', version: '9.3-1101-jdbc41'
+    }
+
+    test.doFirst {
+        dbdeploy('org.postgresql.Driver', 'jdbc:postgresql:dbfit', 'dbfit', 'dbfit', 'row')
+    }
+}
+
+project('sqlserver') {
+    description = 'DBFit sqlserver engine'
+
+    dependencies {
+        compile group: 'net.sourceforge.jtds', name: 'jtds', version: '1.2.2'
+        compile project(':dbfit-java:core')
+    }
+}
+
+project('teradata') {
+    description = 'DBFit Teradata engine'
+
+    dependencies {
+        compile project(':dbfit-java:core')
+    }
+}
+

@@ -1,0 +1,1190 @@
+<?xml version="1.0"?>
+
+<project name="vaadin-all" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant" xmlns:antcontrib="antlib:net.sf.antcontrib">
+    <description>
+        Compiles a zip containing all jars + dependencies
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-all" />
+    <property name="result.dir" value="result" />
+    <property name="javadoc.jar" location="${result.dir}/lib/vaadin-all-${vaadin.version}-javadoc.jar" />
+    <property name="temp.dir" location="${result.dir}/temp" />
+    <property name="temp.deps.dir" value="${temp.dir}/lib" />
+    <property name="javadoc.temp.dir" location="${result.dir}/javadoc-temp" />
+    <property name="zip.file" location="${result.dir}/lib/${module.name}-${vaadin.version}.zip" />
+
+    <path id="classpath.javadoc">
+        <fileset dir="${temp.deps.dir}" includes="*.jar">
+        </fileset>
+    </path>
+    <target name="fetch.module.and.dependencies">
+        <fail unless="module" message="No 'module' parameter given" />
+
+        <ivy:cachepath pathid="module.and.deps" inline="true" organisation="com.vaadin" module="vaadin-${module}" revision="${vaadin.version}" />
+        <copy todir="${temp.dir}" flatten="true">
+            <path refid="module.and.deps" />
+        </copy>
+    </target>
+
+    <target name="unzip.to.javadoctemp">
+        <property name="file" location="${temp.dir}/vaadin-${module}-${vaadin.version}.jar" />
+        <unzip src="${file}" dest="${javadoc.temp.dir}" />
+    </target>
+
+    <target name="javadoc" depends="copy-jars">
+      <!-- Ensure filtered webcontent files are available -->
+      <antcall target="common.filter.webcontent" />
+
+      <antcontrib:if>
+         <isset property="nojavadoc" />
+           <then>
+            <jar file="${javadoc.jar}" compress="true">
+              <fileset refid="common.files.for.all.jars" />
+            </jar>
+           </then>
+           <else>
+             <!-- Unpack all source files to javadoc.temp.dir -->
+             <antcontrib:foreach list="${modules.to.publish.to.maven}" target="unzip.to.javadoctemp" param="module" />
+
+             <property name="javadoc.dir" location="${result.dir}/javadoc" />
+             <property name="title" value="Vaadin ${vaadin.version} API" />
+             <javadoc maxmemory="1024m" destdir="${javadoc.dir}" author="true" version="true" 
+                use="true" windowtitle="${title}" encoding="utf-8" stylesheetfile="javadoc.css">
+               <packageset dir="${javadoc.temp.dir}">
+                  <!-- TODO Javadoc throws ClassCastException if this is included 
+                      (#9660) -->
+                  <exclude name="com/google/gwt/uibinder/elementparsers" />
+               </packageset>
+               <doctitle>&lt;h1>${title}&lt;/h1></doctitle>
+               <!-- <header><![CDATA[<script type="text/javascript" src=".html-style/style.js"></script>]]></header> -->
+               <bottom>${javadoc.bottom}</bottom>
+               <link offline="true" href="http://docs.oracle.com/javase/6/docs/api/" packagelistLoc="build/javadoc/j2se-1.6.0" />
+               <link offline="true" href="http://java.sun.com/j2ee/1.4/docs/api/" packagelistLoc="build/javadoc/j2ee-1.4" />
+               <classpath refid="classpath.javadoc" />
+             </javadoc>
+
+             <!-- Create a javadoc jar -->
+             <jar file="${javadoc.jar}" compress="true">
+               <fileset dir="${javadoc.dir}" />
+               <fileset refid="common.files.for.all.jars" />
+             </jar>
+           </else>
+      </antcontrib:if>
+    </target>
+
+    <target name="copy-jars">
+        <delete dir="${temp.dir}" />
+        <antcontrib:foreach list="${modules.to.publish.to.maven}" target="fetch.module.and.dependencies" param="module" />
+        <!-- All jars are now in temp.dir. Still need to separate vaadin 
+            and deps -->
+        <move todir="${temp.deps.dir}">
+            <fileset dir="${temp.dir}">
+                <exclude name="vaadin-*-${vaadin.version}.*" />
+                <exclude name="vaadin-*-${vaadin.version}-*.*" />
+            </fileset>
+        </move>
+
+
+    </target>
+    <target name="zip" depends="copy-jars, javadoc">
+        <!-- Ensure filtered webcontent files are available -->
+        <antcall target="common.filter.webcontent" />
+
+        <zip destfile="${zip.file}">
+            <fileset dir="${temp.dir}">
+                <!-- Avoid conflicts with servlet and portlet API. They are 
+                    provided by the container -->
+                <exclude name="**/servlet-api*" />
+                <exclude name="**/portlet-api*" />
+                <exclude name="**/portal-service-*" />
+                <!-- Buildhelpers should not even get here ... -->
+                <exclude name="*buildhelpers*" />
+                <!-- Zip users should not need javadoc, sources or pom files -->
+                <exclude name="*.pom" />
+                <exclude name="*-javadoc.jar" />
+                <exclude name="*-sources.jar" />
+
+            </fileset>
+            <fileset refid="common.files.for.all.jars" />
+            <fileset dir="${result.dir}/..">
+                <include name="README.TXT" />
+            </fileset>
+            <!-- Do not include javadoc jar in zip as it is huge (> 40MB) 
+                and most people do not need it. -->
+        </zip>
+    </target>
+
+    <target name="publish-local" depends="zip">
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+    <target name="checkstyle">
+        <!-- Checkstyle is handled by all separate modules -->
+    </target>
+    <target name="test" depends="checkstyle">
+        <!-- No tests for this zip.. -->
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin" basedir="." default="package" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <include file="common.xml" as="common" />
+
+    <path id="vaadin.buildhelpers.classpath" location="${vaadin.basedir}/buildhelpers/result/classes" />
+
+    <!-- ================================= target: all ================================= -->
+    <!--<target name="all" description="Compiles all parts of the project" 
+        depends="buildhelpers,theme-compiler,shared,server,client"> -->
+    <target name="package" description="Compiles and packages all modules in the project" depends="buildorder">
+        <subant buildpathref="build-path" target="publish-local">
+        </subant>
+    </target>
+
+    <target name="buildorder" depends="official.build.checks">
+        <!-- Find out a good build order -->
+        <ivy:buildlist reference="ivy.build.path">
+            <fileset dir="." includes="**/build.xml">
+                <exclude name="build.xml" />
+                <exclude name="build/**" />
+                <exclude name="bin/**" />
+                <exclude name="buildhelpers/**" />
+            </fileset>
+        </ivy:buildlist>
+        <path id="build-path">
+            <path location="buildhelpers/build.xml" />
+            <path refid="ivy.build.path" />
+        </path>
+    </target>
+    <target name="clean" depends="buildorder">
+        <subant buildpathref="build-path" target="clean">
+        </subant>
+        <delete dir="result" />
+        <!-- Clean IVY cache (~/.ivy2) so no old artifacts are fetched from 
+            there (leave everything but Vaadin artifacts) -->
+        <delete dir="${ivy.cache.dir}/com.vaadin" />
+        <delete dir="${ivy.cache.dir}/com.carrotsearch" />
+
+    </target>
+    <target name="checkstyle" depends="buildorder">
+        <subant buildpathref="build-path" target="checkstyle" />
+    </target>
+    <target name="test" depends="buildorder">
+        <subant buildpathref="build-path" target="test" />
+    </target>
+
+    <target name="test-all" depends="buildorder">
+        <parallel>
+            <!-- JUnit tests, can be run without a server -->
+            <subant buildpathref="build-path" target="test" />
+
+            <!-- Server deployment + TestBench tests  -->
+            <antcall target="integration-test" />
+        </parallel>
+    </target>
+
+    <target name="integration-test" depends="buildorder">
+        <property name="war.file" location="result/artifacts/${vaadin.version}/vaadin-uitest/vaadin-uitest-${vaadin.version}.war" />
+
+        <ant antfile="uitest/build.xml" target="test-testbench">
+            <property name="war.file" location="${war.file}" />
+        </ant>
+     </target>
+
+    <target name="official.build.checks" if="build.release">
+        <condition property="java.version.matches">
+            <equals arg1="${ant.java.version}" arg2="${vaadin.java.version}" />
+        </condition>
+        <fail unless="java.version.matches" message="Java version is ${ant.java.version}, but Vaadin must be compiled with genuine Java ${vaadin.java.version} compiler." />
+        <echo>Java version is ${ant.java.version} as required.</echo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-buildhelpers" basedir="." default="publish-local">
+    <description>
+        Compiles build helpers used when building other
+        modules.
+    </description>
+    <include file="../build.xml" as="vaadin" />
+    <include file="../common.xml" as="common" />
+
+    <property name="module.name" value="vaadin-buildhelpers" />
+    <property name="module.symbolic" value="com.vaadin.buildhelpers" />
+    <property name="result.dir" location="result" />
+    <path id="classpath.compile.custom" />
+
+    <target name="jar">
+        <antcall target="common.jar">
+            <reference torefid="extra.jar.includes" refid="empty.reference" />
+        </antcall>
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.sources.jar">
+            <reference torefid="extra.jar.includes" refid="empty.reference" />
+        </antcall>
+        <antcall target="common.javadoc.jar" />
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <antcall target="common.checkstyle">
+            <param name="cs.src" location="src" />
+        </antcall>
+    </target>
+
+    <target name="fetch-release-notes-tickets">
+        <antcall target="common.exec-buildhelper">
+            <param name="main.class" value="com.vaadin.buildhelpers.FetchReleaseNotesTickets" />
+            <param name="output" value="${output}" />
+        </antcall>
+    </target>
+
+    <target name="test" depends="checkstyle">
+        <!--<antcall target="common.test.run" /> -->
+        <echo>WHAT? No JUnit tests for ${module.name}!</echo>
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-client-compiled" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Compiled (JS+HTML) version of client side
+    </description>
+
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-client-compiled" />
+    <property name="module.symbolic" value="com.vaadin.client-compiled" />
+    <property name="result.dir" value="result" />
+    <property name="gwtar.dir" location="${result.dir}/gwtar" />
+    <property name="work.dir" location="${result.dir}/work" />
+    <property name="module.output.dir" location="${result.dir}/VAADIN/widgetsets" />
+    <property name="compiled.jar" location="${result.dir}/lib/${module.name}-${vaadin.version}.jar" />
+    <property name="compiled-cache.jar" location="${result.dir}/lib/${module.name}-cache-${vaadin.version}.jar" />
+
+    <union id="jar.includes">
+        <fileset dir="${result.dir}">
+            <include name="VAADIN/widgetsets/com.vaadin*/**" />
+        </fileset>
+    </union>
+
+    <target name="default-widgetset-cache">
+        <antcall target="compile-module-cache">
+            <param name="module" value="com.vaadin.DefaultWidgetSet" />
+        </antcall>
+    </target>
+
+    <target name="default-widgetset">
+        <antcall target="compile-module">
+            <param name="module" value="com.vaadin.DefaultWidgetSet" />
+        </antcall>
+    </target>
+
+
+    <target name="compile-module-cache">
+        <fail unless="module" message="You must give the module to compile in the 'module' parameter" />
+        <ivy:resolve log="download-only" resolveid="common" conf="compile-module" />
+        <ivy:cachepath pathid="classpath.compile.widgetset" conf="compile-module" />
+        <echo>Creating gwtar files for ${module} in ${gwtar.dir}</echo>
+
+        <!-- Produce gwtar files for the separate JAR -->
+        <java classname="com.google.gwt.dev.CompileModule" classpathref="classpath.compile.widgetset" failonerror="yes" fork="yes" maxmemory="512m">
+            <arg value="-out" />
+            <arg value="${gwtar.dir}" />
+            <arg value="-strict" />
+            <arg value="${module}" />
+
+            <jvmarg value="-Xss8M" />
+            <jvmarg value="-XX:MaxPermSize=256M" />
+            <jvmarg value="-Djava.awt.headless=true" />
+        </java>
+    </target>
+
+    <target name="compile-module">
+        <fail unless="module" message="You must give the module to compile in the 'module' parameter" />
+        <property name="style" value="OBF" />
+        <property name="localWorkers" value="6" />
+        <property name="extraParams" value="" />
+
+        <ivy:resolve log="download-only" resolveid="common" conf="compile-module" />
+        <ivy:cachepath pathid="classpath.compile.widgetset" conf="compile-module" />
+
+        <mkdir dir="${module.output.dir}" />
+
+        <echo>Compiling ${module} to ${module.output.dir}</echo>
+
+        <!-- compile the module -->
+        <java classname="com.google.gwt.dev.Compiler" classpathref="classpath.compile.widgetset" failonerror="yes" fork="yes" maxmemory="512m">
+            <classpath location="${compiled-cache.jar}" />
+            <arg value="-workDir" />
+            <arg value="${work.dir}" />
+            <arg value="-logLevel" />
+            <arg value="TRACE" />
+            <arg value="-war" />
+            <arg value="${module.output.dir}" />
+            <arg value="-style" />
+            <arg value="${style}" />
+
+            <arg value="-localWorkers" />
+            <arg value="${localWorkers}" />
+            <arg value="-strict" />
+            <arg value="-XenableClosureCompiler" />
+            <arg line="${extraParams}" />
+            <arg value="${module}" />
+
+            <sysproperty key="vFailIfNotSerializable" value="true" />
+
+            <jvmarg value="-Xss8M" />
+            <jvmarg value="-XX:MaxPermSize=256M" />
+            <jvmarg value="-Djava.awt.headless=true" />
+        </java>
+
+    </target>
+
+    <target name="client-compiled-cache.jar" depends="default-widgetset-cache">
+        <!-- Ensure filtered webcontent files are available -->
+        <antcall target="common.filter.webcontent" />
+
+        <jar file="${compiled-cache.jar}" compress="true">
+            <fileset dir="${gwtar.dir}">
+                <include name="**/*.gwtar" />
+            </fileset>
+            <union refid="client-compiled-cache.gwt.includes" />
+            <fileset refid="common.files.for.all.jars" />
+        </jar>
+    </target>
+
+    <target name="jar" depends="default-widgetset">
+        <antcall target="common.jar">
+            <param name="osgi.extra.package.prefixes" value="VAADIN/widgetsets/" />
+            <reference torefid="extra.jar.includes" refid="jar.includes" />
+        </antcall>
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.publish-local">
+            <param name="conf" value="build" />
+        </antcall>
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <echo>No java files in module</echo>
+    </target>
+    <target name="test" depends="checkstyle">
+        <!--<antcall target="common.test.run" /> -->
+        <echo>WHAT? No tests for ${module.name}!</echo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-client-compiler" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Compiles build helpers used when building other
+        modules.
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-client-compiler" />
+    <property name="module.symbolic" value="com.vaadin.client-compiler" />
+    <property name="result.dir" value="result" />
+    <path id="classpath.compile.custom">
+        <fileset file="${gwt.dev.jar}" />
+    </path>
+
+    <union id="compiler.includes">
+        <union refid="client-compiler.gwt.includes" />
+        <fileset dir="${result.dir}">
+            <include name="com/google/gwt/dev/About.properties" />
+        </fileset>
+    </union>
+
+    <target name="jar">
+        <!-- Get Git revision -->
+        <exec executable="git" outputproperty="git.revision" failifexecutionfails="false" errorproperty="">
+            <arg value="describe" />
+            <arg value="--tags" />
+            <arg value="--always" />
+            <arg value="HEAD" />
+        </exec>
+
+        <echo file="${result.dir}/com/google/gwt/dev/About.properties">gwt.version=${vaadin.version}
+            gwt.svnrev=${git.revision}</echo>
+
+        <antcall target="common.jar">
+            <reference refid="compiler.includes" torefid="extra.jar.includes" />
+        </antcall>
+
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.sources.jar">
+            <reference torefid="extra.jar.includes" refid="compiler.includes" />
+        </antcall>
+        <antcall target="common.javadoc.jar" />
+
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <antcall target="common.checkstyle">
+            <param name="cs.src" location="src" />
+        </antcall>
+    </target>
+
+    <target name="test" depends="checkstyle">
+        <!--<antcall target="common.test.run" /> -->
+        <echo>WHAT? No tests for ${module.name}!</echo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-client" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Compiles build helpers used when building other
+        modules.
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-client" />
+    <property name="module.symbolic" value="com.vaadin.client" />
+    <property name="result.dir" value="result" />
+
+    <path id="classpath.compile.custom">
+        <!-- Could possibly compile GWT files also here to verify that a) 
+            the same dependencies are used and b) all dependencies have been declared -->
+        <fileset file="${gwt.user.jar}" />
+    </path>
+    <path id="classpath.test.custom" />
+
+    <target name="jar">
+        <property name="jar.file" location="${result.dir}/lib/${module.name}-${vaadin.version}.jar" />
+        <antcall target="common.jar">
+            <reference refid="client.gwt.includes" torefid="extra.jar.includes" />
+        </antcall>
+        <jar destfile="${jar.file}" update="true">
+            <manifest>
+                <attribute name="Vaadin-Package-Version" value="1" />
+                <attribute name="Vaadin-Widgetsets" value="com.vaadin.DefaultWidgetSet" />
+            </manifest>
+        </jar>
+        <!-- Hack to add validation dependency with source classifier -->
+        <property name="pom.xml" location="${result.dir}/lib/${module.name}-${vaadin.version}.pom" />
+        <copy file="${pom.xml}" tofile="${temp.pom}">
+            <filterchain>
+                <replacestring from="  &lt;/dependencies&gt;" to="    &lt;dependency&gt;
+               &lt;groupId&gt;javax.validation&lt;/groupId&gt;
+               &lt;artifactId&gt;validation-api&lt;/artifactId&gt;
+               &lt;version&gt;1.0.0.GA&lt;/version&gt;
+               &lt;scope&gt;compile&lt;/scope&gt;
+               &lt;classifier&gt;sources&lt;/classifier&gt;
+             &lt;/dependency&gt;
+  &lt;/dependencies&gt;" />
+            </filterchain>
+        </copy>
+        <move file="${temp.pom}" tofile="${pom.xml}" />
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.sources.jar">
+            <reference torefid="extra.jar.includes" refid="client.gwt.includes" />
+        </antcall>
+        <antcall target="common.javadoc.jar" />
+
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <antcall target="common.checkstyle">
+            <param name="cs.src" location="src" />
+        </antcall>
+    </target>
+
+    <target name="test" depends="checkstyle">
+        <antcall target="common.test.run" />
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="liferay" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Builds the Liferay ZIP archive
+    </description>
+
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+
+    <property name="module.name" value="vaadin-liferay" />
+    <property name="result.dir" value="result" />
+    <property name="lib.dir" value="${result.dir}/lib" />
+    <property name="work.dir" value="${result.dir}/work" />
+    <property name="liferay.zip" location="${result.dir}/lib/${module.name}-${vaadin.version}.zip" />
+
+    <target name="publish-local" depends="build-zip" if="build.release">
+        <antcall target="common.publish-local">
+            <param name="conf" value="deps" />
+        </antcall>
+    </target>
+
+    <target name="fetch-jars">
+        <echo>Retriving prebuilt jars</echo>
+        <!-- Retrieve pre-build jars -->
+        <ivy:resolve />
+        <mkdir dir="${lib.dir}" />
+        <ivy:retrieve pattern="${lib.dir}/[artifact].[type]" conf="deps" />
+    </target>
+
+    <target name="unpack" depends="fetch-jars">
+        <echo>Unpacking jars into working directory</echo>
+        <mkdir dir="${work.dir}" />
+        <unjar src="${lib.dir}/vaadin-client-compiled.jar" dest="${work.dir}">
+            <patternset>
+                <include name="VAADIN/widgetsets/**/*" />
+            </patternset>
+        </unjar>
+        <unjar src="${lib.dir}/vaadin-themes.jar" dest="${work.dir}">
+            <patternset>
+                <include name="VAADIN/themes/base/**/*" />
+                <include name="VAADIN/themes/chameleon/**/*" />
+                <include name="VAADIN/themes/liferay/**/*" />
+                <include name="VAADIN/themes/runo/**/*" />
+                <include name="VAADIN/themes/reindeer/**/*" />
+            </patternset>
+        </unjar>
+        <unjar src="${lib.dir}/vaadin-push.jar" dest="${work.dir}">
+            <patternset>
+                <include name="VAADIN/vaadinPush.js" />
+                <include name="VAADIN/vaadinPush.debug.js" />
+            </patternset>
+        </unjar>
+        <unjar src="${lib.dir}/vaadin-server.jar" dest="${work.dir}">
+            <patternset>
+                <include name="VAADIN/vaadinBootstrap.js" />
+            </patternset>
+        </unjar>
+    </target>
+
+    <target name="build-zip" depends="unpack">
+        <echo>Building Liferay zip</echo>
+        <zip zipfile="${liferay.zip}">
+            <zipfileset dir="${work.dir}" />
+        </zip>
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle" />
+
+    <target name="test" depends="checkstyle" />
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-push" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Meta package which defines dependencies needed for push
+    </description>
+    <include file="../build.xml" as="vaadin" />
+    <include file="../common.xml" as="common" />
+
+    <property name="module.name" value="vaadin-push" />
+    <property name="module.symbolic" value="com.vaadin.push" />
+    <property name="result.dir" location="result" />
+    <property name="temp.dir" location="${result.dir}/temp" />
+    <property name="jquery.unpack" location="${temp.dir}/jquery" />
+    <property name="vaadinPush.js" location="${result.dir}/js/VAADIN/vaadinPush.js" />
+    <property name="vaadinPush.debug.js" location="${result.dir}/js/VAADIN/vaadinPush.debug.js" />
+
+    <!-- Keep the version number in sync with ivy.xml, server/src/com/vaadin/server/Constants.java -->
+    <property name="atmosphere.runtime.version" value="2.1.2.vaadin2" />
+    <property name="jquery.js" location="lib/jquery/jquery-1.11.0.js" />
+
+    <path id="classpath.compile.custom" />
+
+    <union id="jar.includes">
+        <fileset dir="${result.dir}/js">
+            <include name="VAADIN/vaadinPush.js" />
+            <include name="VAADIN/vaadinPush.debug.js" />
+        </fileset>
+    </union>
+
+    <target name="vaadinPush.js">
+        <mkdir dir="${result.dir}/js/VAADIN" />
+        <ivy:resolve log="download-only" file="ivy.xml" conf="push.js" />
+        <ivy:cachepath pathid="atmosphere.jquery.deps" conf="push.js" />
+
+        <delete dir="${temp.dir}" />
+        <copy flatten="true" tofile="${temp.dir}/jquery.war">
+            <path refid="atmosphere.jquery.deps" />
+        </copy>
+
+        <!-- Unzip to temp dir -->
+        <unzip src="${temp.dir}/jquery.war" dest="${jquery.unpack}">
+            <patternset>
+                <include name="**/jquery.atmosphere.js" />
+            </patternset>
+            <mapper type="flatten" />
+        </unzip>
+        <loadfile srcfile="${jquery.js}" property="jquery.js.contents" />
+        <loadfile srcfile="${jquery.unpack}/jquery.atmosphere.js" property="jquery.atmosphere.js.contents" />
+
+        <loadfile srcfile="${vaadin.basedir}/WebContent/VAADIN/vaadinPush.js.tpl" property="vaadinPush.js.contents">
+            <filterchain>
+                <replacetokens begintoken="@" endtoken="@">
+                    <token key="jquery.js" value="${jquery.js.contents}" />
+                    <token key="jquery.atmosphere.js" value="${jquery.atmosphere.js.contents}" />
+                </replacetokens>
+            </filterchain>
+        </loadfile>
+
+        <!-- Non-obfuscated version for debugging -->
+        <echo file="${vaadinPush.debug.js}">${vaadinPush.js.contents}</echo>
+
+        <!-- Minify -->
+        <ivy:retrieve organisation="com.yahoo.platform.yui" module="yuicompressor" revision="2.4.7" inline="true" type="jar" pattern="${result.dir}/compressor.jar" />
+        <java jar="${result.dir}/compressor.jar" fork="true">
+            <arg value="-v" />
+            <arg value="-o" />
+            <arg file="${vaadinPush.js}" />
+            <arg file="${vaadinPush.debug.js}" />
+        </java>
+    </target>
+
+    <target name="jar" depends="vaadinPush.js">
+        <antcall target="common.jar">
+            <param name="require-bundle" value="com.vaadin.external.atmosphere.runtime;bundle-version=&quot;${atmosphere.runtime.version}&quot;;visibility:=reexport" />
+            <reference torefid="extra.jar.includes" refid="jar.includes" />
+        </antcall>
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+    <target name="checkstyle">
+    </target>
+
+    <target name="test" depends="checkstyle">
+    </target>
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-server" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Compiles build helpers used when building other modules.
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-server" />
+    <property name="module.symbolic" value="com.vaadin.server" />
+    <property name="result.dir" value="result" />
+    <path id="classpath.compile.custom" />
+    <path id="classpath.test.custom" />
+
+    <union id="jar.includes">
+        <union refid="server.gwt.includes" />
+        <fileset dir="${vaadin.basedir}/WebContent">
+            <include name="VAADIN/vaadinBootstrap.js" />
+        </fileset>
+    </union>
+
+    <target name="jar">
+        <property name="server.osgi.import" value="javax.servlet;version=&quot;2.4.0&quot;,javax.servlet.http;version=&quot;2.4.0&quot;,javax.validation;version=&quot;1.0.0.GA&quot;;resolution:=optional,org.jsoup;version=&quot;1.6.3&quot;,org.jsoup.parser;version=&quot;1.6.3&quot;,org.jsoup.nodes;version=&quot;1.6.3&quot;,org.jsoup.helper;version=&quot;1.6.3&quot;,org.jsoup.safety;version=&quot;1.6.3&quot;,org.json;version=&quot;0.0.20080701&quot;" />
+        <property name="server.osgi.require" value="com.vaadin.shared;bundle-version=&quot;${vaadin.version}&quot;,com.vaadin.push;bundle-version=&quot;${vaadin.version}&quot;;resolution:=optional,com.vaadin.theme-compiler;bundle-version=&quot;${vaadin.version}&quot;;resolution:=optional" />
+        <antcall target="common.jar">
+            <param name="require-bundle" value="${server.osgi.require}" />
+            <param name="import-package" value="${server.osgi.import}" />
+            <param name="osgi.extra.package.prefixes" value="VAADIN" />
+            <reference torefid="extra.jar.includes" refid="jar.includes" />
+        </antcall>
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.sources.jar">
+            <reference torefid="extra.jar.includes" refid="server.gwt.includes" />
+        </antcall>
+        <antcall target="common.javadoc.jar" />
+
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <antcall target="common.checkstyle">
+            <param name="cs.src" location="src" />
+        </antcall>
+    </target>
+
+    <target name="test" depends="checkstyle">
+        <antcall target="common.test.run" />
+    </target>
+
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-shared" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Compiles build helpers used when building other modules.
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-shared" />
+    <property name="module.symbolic" value="com.vaadin.shared" />
+    <property name="result.dir" location="result" />
+    <property name="src.filtered" location="${result.dir}/filtered-src" />
+    <property name="src" location="${src.filtered}" />
+    <path id="classpath.compile.custom" />
+    <path id="classpath.test.custom" />
+
+    <target name="jar">
+        <property name="shared.osgi.import" value="org.json;version=&quot;0.0.20080701&quot;, com.google.gwt.thirdparty.guava.common.annotations;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.base;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.base.internal;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.cache;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.collect;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.eventbus;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.io;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.net;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.primitives;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.guava.common.util.concurrent;version=&quot;10.0.1.rebased&quot;, com.google.gwt.thirdparty.streamhtmlparser;version=&quot;0.1.5.r10-rebased&quot;, com.google.gwt.thirdparty.streamhtmlparser.impl;version=&quot;0.1.5.r10-rebased&quot;, com.google.gwt.thirdparty.streamhtmlparser.util;version=&quot;0.1.5.r10-rebased&quot;, org.w3c.flute.parser;version=&quot;1.3.0.gg2&quot;, org.w3c.flute.parser.selectors;version=&quot;1.3.0.gg2&quot;, org.w3c.flute.util;version=&quot;1.3.0.gg2&quot;" />
+        <delete dir="${src.filtered}" />
+        <!-- Update version in Version.java -->
+        <copy todir="${src.filtered}">
+            <fileset dir="src">
+            </fileset>
+            <filterchain>
+                <replacetokens begintoken="@" endtoken="@">
+                    <token key="VERSION" value="${vaadin.version}" />
+                </replacetokens>
+            </filterchain>
+        </copy>
+
+        <antcall target="common.jar">
+            <param name="import-package" value="${shared.osgi.import}" />
+            <reference refid="shared.gwt.includes" torefid="extra.jar.includes" />
+        </antcall>
+    </target>
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.sources.jar">
+            <reference torefid="extra.jar.includes" refid="shared.gwt.includes" />
+        </antcall>
+        <antcall target="common.javadoc.jar" />
+
+        <antcall target="common.publish-local" />
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <antcall target="common.checkstyle">
+            <param name="cs.src" location="src" />
+        </antcall>
+    </target>
+
+    <target name="test" depends="checkstyle">
+        <antcall target="common.test.run" />
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-themes" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Themes compiled to CSS
+    </description>
+
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+    <include file="../gwt-files.xml" as="gwtfiles" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-themes" />
+    <property name="module.symbolic" value="com.vaadin.themes" />
+    <property name="result.dir" value="result" />
+    <property name="theme.result.dir" value="${result.dir}/VAADIN/themes/" />
+
+    <union id="jar.includes">
+        <fileset dir="${result.dir}">
+            <include name="VAADIN/themes/**" />
+        </fileset>
+    </union>
+
+    <target name="compile-themes">
+        <ivy:resolve log="download-only" resolveid="common" conf="build" />
+        <ivy:cachepath pathid="classpath.compile.theme" conf="build" />
+
+        <antcall target="compile-theme">
+            <param name="theme" value="base" />
+        </antcall>
+        <antcall target="compile-theme">
+            <param name="theme" value="runo" />
+        </antcall>
+        <antcall target="compile-theme">
+            <param name="theme" value="reindeer" />
+        </antcall>
+        <antcall target="compile-theme">
+            <param name="theme" value="chameleon" />
+        </antcall>
+        <antcall target="compile-theme">
+            <param name="theme" value="liferay" />
+        </antcall>
+    </target>
+
+    <target name="jar" depends="compile-themes">
+        <antcall target="common.jar">
+            <param name="osgi.extra.package.prefixes" value="VAADIN/themes" />
+            <reference torefid="extra.jar.includes" refid="jar.includes" />
+        </antcall>
+    </target>
+
+    <target name="copy-theme">
+        <fail unless="theme" message="You must give the theme name to copy n the 'theme' parameter" />
+        <property name="theme.source.dir" location="../WebContent/VAADIN/themes" />
+
+        <copy todir="${theme.result.dir}">
+            <fileset dir="${theme.source.dir}">
+                <include name="${theme}/**/*.scss" />
+            </fileset>
+            <filterset refid="filter-vaadin.version" />
+        </copy>
+        <copy todir="${theme.result.dir}">
+            <fileset dir="${theme.source.dir}">
+                <exclude name="${theme}/**/*.scss" />
+            </fileset>
+        </copy>
+    </target>
+
+    <target name="compile-theme" depends="copy-theme">
+        <fail unless="theme" message="You must give the theme name to compile in the 'theme' parameter" />
+
+        <ivy:resolve log="download-only" resolveid="common" conf="compile-theme" />
+        <ivy:cachepath pathid="classpath.compile.theme" conf="compile-theme" />
+        <ivy:cachepath pathid="classpath.runtime.theme" conf="build" />
+
+        <echo>Compiling ${theme}</echo>
+        <mkdir dir="${theme.result.dir}" />
+
+        <!-- compile the theme -->
+        <java classname="com.vaadin.buildhelpers.CompileTheme" classpathref="classpath.compile.theme" failonerror="yes" fork="yes" maxmemory="512m">
+            <arg value="--theme" />
+            <arg value="${theme}" />
+            <arg value="--theme-folder" />
+            <arg value="${theme.result.dir}" />
+            <arg value="--version" />
+            <arg value="${vaadin.version}" />
+            <jvmarg value="-Xss8M" />
+            <jvmarg value="-XX:MaxPermSize=256M" />
+            <jvmarg value="-Djava.awt.headless=true" />
+        </java>
+
+    </target>
+
+
+    <target name="publish-local" depends="jar">
+        <antcall target="common.publish-local">
+
+        </antcall>
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+
+    <target name="checkstyle">
+        <echo>No java files in module</echo>
+    </target>
+    <target name="test" depends="checkstyle">
+        <!--<antcall target="common.test.run" /> -->
+        <echo>WHAT? No tests for ${module.name}!</echo>
+    </target>
+
+</project>
+<?xml version="1.0"?>
+
+<project name="vaadin-uitest" basedir="." default="publish-local" xmlns:ivy="antlib:org.apache.ivy.ant">
+    <description>
+        Provides a uitest WAR containing Vaadin UI tests
+    </description>
+    <include file="../common.xml" as="common" />
+    <include file="../build.xml" as="vaadin" />
+
+    <!-- global properties -->
+    <property name="module.name" value="vaadin-uitest" />
+    <property name="uitest.dir" location="${vaadin.basedir}/uitest" />
+    <property name="result.dir" value="result" />
+    <property name="result.war" location="${result.dir}/lib/${module.name}-${vaadin.version}.war" />
+
+    <path id="classpath.compile.custom">
+    </path>
+
+    <target name="dependencies">
+        <!-- This is copied from common.xml to be able to add server.test.source 
+            to the source path -->
+
+        <ivy:resolve log="download-only" resolveid="common" conf="build, build-provided" />
+        <ivy:cachepath pathid="classpath.compile.dependencies" conf="build, build-provided" />
+    </target>
+
+    <target name="compile" description="Compiles the module" depends="dependencies">
+
+        <fail unless="module.name" message="No module name given" />
+        <property name="result.dir" location="result" />
+        <property name="src" location="${result.dir}/../src" />
+        <property name="classes" location="${result.dir}/classes" />
+        <property name="server.test.sources" location="${result.dir}/../../server/tests/src" />
+        <mkdir dir="${classes}" />
+
+        <!-- TODO: Get rid of this -->
+        <javac destdir="${classes}" source="${vaadin.java.version}" target="${vaadin.java.version}" debug="true" encoding="UTF-8" includeantruntime="false">
+            <src path="${server.test.sources}" />
+            <include name="com/vaadin/tests/data/bean/**" />
+            <include name="com/vaadin/tests/VaadinClasses.java" />
+            <include name="com/vaadin/data/util/sqlcontainer/SQLTestsConstants.java" />
+            <classpath refid="classpath.compile.dependencies" />
+            <classpath refid="classpath.compile.custom" />
+        </javac>
+
+        <javac destdir="${classes}" source="${vaadin.java.version}" target="${vaadin.java.version}" debug="true" encoding="UTF-8" includeantruntime="false">
+            <src path="${src}" />
+            <classpath location="${classes}" />
+            <classpath refid="classpath.compile.dependencies" />
+            <classpath refid="classpath.compile.custom" />
+        </javac>
+    </target>
+
+    <target name="testing-widgetset" depends="dependencies,compile">
+        <property name="module" value="com.vaadin.tests.widgetset.TestingWidgetSet" />
+        <property name="style" value="OBF" />
+        <property name="localWorkers" value="6" />
+        <property name="extraParams" value="" />
+        <property name="module.output.dir" location="${result.dir}/VAADIN/widgetsets" />
+        <property name="work.dir" location="${result.dir}/work" />
+
+        <mkdir dir="${module.output.dir}" />
+
+        <echo>Compiling ${module} to ${module.output.dir}</echo>
+
+        <!-- compile the module -->
+        <java classname="com.google.gwt.dev.Compiler" classpathref="classpath.compile.dependencies" failonerror="yes" fork="yes" maxmemory="512m">
+            <classpath location="src" />
+            <classpath location="${classes}" />
+            <arg value="-workDir" />
+            <arg value="${work.dir}" />
+            <arg value="-logLevel" />
+            <arg value="TRACE" />
+            <arg value="-war" />
+            <arg value="${module.output.dir}" />
+            <arg value="-style" />
+            <arg value="${style}" />
+
+            <arg value="-localWorkers" />
+            <arg value="${localWorkers}" />
+            <arg value="-strict" />
+            <arg line="${extraParams}" />
+            <arg value="${module}" />
+
+            <sysproperty key="vFailIfNotSerializable" value="true" />
+
+            <jvmarg value="-Xss8M" />
+            <jvmarg value="-XX:MaxPermSize=256M" />
+            <jvmarg value="-Djava.awt.headless=true" />
+        </java>
+
+    </target>
+
+    <target name="war" depends="dependencies, compile, testing-widgetset">
+        <property name="result.dir" location="result" />
+        <property name="classes" location="${result.dir}/classes" />
+        <property name="WebContent.dir" location="${vaadin.basedir}/WebContent" />
+        <property name="deps.dir" location="${result.dir}/deps" />
+        <property name="src" location="${result.dir}/../src" />
+
+        <ivy:resolve log="download-only" resolveid="common" conf="build" />
+        <ivy:cachepath pathid="classpath.runtime.dependencies" conf="build" />
+
+        <delete dir="${deps.dir}" />
+        <mkdir dir="${deps.dir}" />
+
+        <copy todir="${deps.dir}" flatten="true">
+            <path refid="classpath.runtime.dependencies" />
+        </copy>
+
+        <delete>
+            <!-- Avoid including some potentially conflicting jars in the war -->
+            <fileset dir="${deps.dir}" includes="jetty-*.jar" />
+            <fileset dir="${deps.dir}" includes="servlet-api-*.jar" />
+        </delete>
+
+        <!-- Ensure filtered webcontent files are available -->
+        <antcall target="common.filter.webcontent" />
+
+        <war destfile="${result.war}" duplicate="fail" index="true">
+            <fileset refid="common.files.for.all.jars" />
+            <fileset dir="${result.dir}">
+                <include name="VAADIN/widgetsets/**/*" />
+            </fileset>
+            <fileset dir="${WebContent.dir}">
+                <include name="statictestfiles/**" />
+                <include name="VAADIN/themes/tests-*/**" />
+                <include name="VAADIN/themes/reindeer-tests/**" />
+                <include name="VAADIN/jquery.atmosphere.js" />
+                <include name="WEB-INF/*.xml" />
+                <include name="WEB-INF/web.xml.2.4" />
+            </fileset>
+            <classes dir="${classes}" />
+            <classes dir="${src}" />
+            <lib dir="${deps.dir}" />
+        </war>
+
+    </target>
+
+    <target name="publish-local" depends="war">
+        <antcall target="common.publish-local">
+            <param name="conf" value="build" />
+        </antcall>
+    </target>
+
+    <target name="clean">
+        <antcall target="common.clean" />
+    </target>
+    <target name="checkstyle">
+        <echo>Checkstyle is disabled for uitest for now</echo>
+    </target>
+    <target name="test" depends="checkstyle">
+    </target>
+
+    <target name="test-testbench" depends="clean-testbench-errors" description="Run all TestBench based tests, including server tests">
+        <parallel>
+            <daemons>
+                <!-- Start server -->
+                <ant antfile="${uitest.dir}/vaadin-server.xml" inheritall="true" inheritrefs="true" target="deploy-and-start" />
+            </daemons>
+            <sequential>
+                <!-- Server tests -->
+
+                <!-- Sleep before running integration tests so testbench 2 
+                        tests have time to compile and start -->
+                <sleep minutes="4" />
+                <ant antfile="${uitest.dir}/integration_tests.xml" target="integration-test-all" inheritall="false" inheritrefs="false">
+                    <property name="demo.war" value="${war.file}" />
+                </ant>
+            </sequential>
+            <sequential>
+                <!-- Wait for server to start -->
+                <ant antfile="${uitest.dir}/vaadin-server.xml" target="wait-for-startup" />
+
+                <!-- Run all different kinds of TestBench tests in parallel -->
+                <parallel>
+
+                    <!-- Legacy TestBench 2 tests -->
+                    <sequential>
+                        <ant antfile="${uitest.dir}/test.xml" target="tb2-tests" />
+                        <echo message="TestBench 2 tests complete" />
+                    </sequential>
+
+                    <!-- TestBench 3 tests -->
+                    <sequential>
+                        <ant antfile="${uitest.dir}/tb3test.xml" target="run-all-tb3-tests" inheritall="true" />
+                        <echo message="TestBench 3 tests complete" />
+                    </sequential>
+                </parallel>
+            </sequential>
+        </parallel>
+    </target>
+
+    <target name="test-server" depends="clean-testbench-errors">
+       <property name="war.file" location="result/artifacts/${vaadin.version}/vaadin-uitest/vaadin-uitest-${vaadin.version}.war" />
+       <parallel>
+         <daemons>
+           <ant antfile="${uitest.dir}/vaadin-server.xml" inheritall="true" inheritrefs="true" target="deploy-and-start" />
+         </daemons>
+         <sequential>
+           <ant antfile="${uitest.dir}/integration_tests.xml" target="integration-test-all" inheritall="false" inheritrefs="false">
+             <property name="demo.war" value="${war.file}" />
+           </ant>
+         </sequential>
+       </parallel>
+    </target>
+
+    <target name="test-tb2" depends="clean-testbench-errors">
+       <property name="war.file" location="result/artifacts/${vaadin.version}/vaadin-uitest/vaadin-uitest-${vaadin.version}.war" />
+       <parallel>
+         <daemons>
+           <ant antfile="${uitest.dir}/vaadin-server.xml" inheritall="true" inheritrefs="true" target="deploy-and-start" />
+         </daemons>
+         <sequential>
+           <ant antfile="${uitest.dir}/vaadin-server.xml" target="wait-for-startup" />
+           <ant antfile="${uitest.dir}/test.xml" target="tb2-tests" />
+         </sequential>
+       </parallel>
+    </target>
+
+    <target name="test-tb3" depends="clean-testbench-errors">
+       <property name="war.file" location="result/artifacts/${vaadin.version}/vaadin-uitest/vaadin-uitest-${vaadin.version}.war" />
+       <parallel>
+         <daemons>
+           <ant antfile="${uitest.dir}/vaadin-server.xml" inheritall="true" inheritrefs="true" target="deploy-and-start" />
+         </daemons>
+         <sequential>
+           <ant antfile="${uitest.dir}/vaadin-server.xml" target="wait-for-startup" />
+           <ant antfile="${uitest.dir}/tb3test.xml" target="run-all-tb3-tests" inheritall="true" />
+         </sequential>
+       </parallel>
+    </target>
+
+    <target name="clean-testbench-errors">
+        <fail unless="com.vaadin.testbench.screenshot.directory" message="Define screenshot directory using -Dcom.vaadin.testbench.screenshot.directory" />
+        <mkdir dir="${com.vaadin.testbench.screenshot.directory}/errors" />
+        <delete>
+            <fileset dir="${com.vaadin.testbench.screenshot.directory}/errors">
+                <include name="*" />
+            </fileset>
+        </delete>
+    </target>
+
+</project>

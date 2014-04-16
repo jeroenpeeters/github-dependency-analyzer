@@ -1,0 +1,136 @@
+buildscript {
+  repositories {
+    mavenCentral()
+    maven { url "http://clojars.org/repo" }
+  }
+  dependencies {
+    classpath 'net.saliman:gradle-cobertura-plugin:2.2.2'
+    classpath 'org.apache.maven:maven-artifact:2.2.1'
+    classpath 'org.apache.avro:avro-compiler:1.7.6'
+    classpath 'org.clojars.miguno:avro-gradle-plugin:1.7.6'
+    // see https://github.com/musketyr/gradle-fatjar-plugin
+    classpath 'eu.appsatori:gradle-fatjar-plugin:0.2'
+  }
+}
+
+apply plugin: 'java'
+apply plugin: 'cobertura'
+apply plugin: 'application'
+apply plugin: 'avro-gradle-plugin'
+apply plugin: 'fatjar'
+apply plugin: 'eclipse'
+apply plugin: 'idea'
+
+// group is the groupId
+group = 'com.miguno.avro'
+//the default artifactId is the project name, which is per default the directory name of the project
+version = '0.2.0-SNAPSHOT'
+
+description = """Example MapReduce jobs that read and/or write data in Avro format"""
+
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
+
+repositories {
+  mavenCentral()
+  // See http://www.cloudera.com/content/cloudera-content/cloudera-docs/CDH4/latest/CDH4-Installation-Guide/cdh4ig_topic_31.html
+  maven { url "https://repository.cloudera.com/artifactory/cloudera-repos" }
+}
+
+dependencies {
+  compile group: 'log4j', name: 'log4j', version: '1.2.17'
+  compile group: 'com.google.guava', name: 'guava', version: '15.0'
+  compile group: 'com.beust', name: 'jcommander', version: '1.32'
+  compile group: 'org.apache.avro', name: 'avro', version: '1.7.6'
+  compile group: 'org.apache.avro', name: 'avro-mapred', version: '1.7.6', classifier: 'hadoop1'
+  compile group: 'org.apache.hadoop', name: 'hadoop-common', version: '2.0.0-cdh4.3.0'
+  compile group: 'org.apache.hadoop', name: 'hadoop-core', version: '2.0.0-mr1-cdh4.3.0'
+
+  testCompile group: 'org.apache.hadoop', name: 'hadoop-test', version: '2.0.0-mr1-cdh4.3.0'
+  testCompile group: 'org.apache.hadoop', name: 'hadoop-minicluster', version: '2.0.0-mr1-cdh4.3.0'
+  testCompile group: 'org.apache.hadoop', name: 'hadoop-hdfs', version: '2.0.0-cdh4.3.0'
+  // Workaround for a known bug in commons-daemon 1.0.3, which is a transitive dependency of hadoop-hdfs
+  testCompile("commons-daemon:commons-daemon:1.0.5") {
+    // Force version 1.0.5 because of a known bug in the 1.0.3 pom file that results in the following build error:
+    //
+    //    Could not resolve commons-daemon:commons-daemon:1.0.3: inconsistent module descriptor file found in: [...]
+    //        bad organisation: expected='commons-daemon' found='org.apache.commons'
+    //
+    force = true
+  }
+  testCompile group: 'org.testng', name: 'testng', version: '6.8.7'
+  testCompile group: 'org.uncommons', name: 'reportng', version: '1.1.4'
+  testCompile group: 'org.mockito', name: 'mockito-all', version: '1.9.0'
+  testCompile group: 'org.easytesting', name: 'fest-assert-core', version: '2.0M8'
+  testCompile group: 'junit', name: 'junit', version: '4.11'
+  // Workaround for a known issue with TestNG 6.x: explicitly add Guice (Gradle will fail to run tests otherwise)
+  testCompile group: 'com.google.inject', name: 'guice', version: '3.0'
+
+  compileAvro
+}
+
+compileAvro {
+  source = 'src/main/resources/avro'
+  destinationDir = file("generated-sources/avro")
+  stringType = 'String'
+}
+
+sourceSets {
+  main {
+    java {
+      srcDir compileAvro.destinationDir
+    }
+
+    // Ensure that resources (src/main/resources) and Avro resource files are added to CLASSPATH.
+    runtimeClasspath = files(output.resourcesDir) + files(compileAvro.source) + runtimeClasspath
+  }
+  test {
+    // Ensure that test resources (src/test/resources) are added to CLASSPATH.
+    // See http://forums.gradle.org/gradle/topics/tests_arent_executed_when_setting_the_test_runtimeclasspath and
+    // http://gradle.org/docs/current/dsl/org.gradle.api.tasks.testing.Test.html#org.gradle.api.tasks.testing.Test:classpath
+    runtimeClasspath = files(output.resourcesDir) + runtimeClasspath
+  }
+}
+
+task testng(type: Test) {
+  useTestNG() {
+    suiteXmlBuilder().suite(name: 'avro-hadoop-starter', parallel: 'tests') {
+      test (name : 'all-tests') {
+        packages {
+          'package' (name: 'com.miguno.*')
+        }
+      }
+    }
+  }
+  options {
+    listeners << 'org.uncommons.reportng.HTMLReporter'
+    listeners << 'org.uncommons.reportng.JUnitXMLReporter'
+  }
+  ext.useDefaultListeners = true
+  ext.workingDirectory = 'build/'
+}
+
+// See http://www.gradle.org/docs/current/userguide/gradle_wrapper.html
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.9'
+}
+
+test {
+  // Disable JDK 7's new bytecode verifier which requires the need for stack frames.  This is required when running
+  // this code via JDK 7.  Otherwise our unit tests will fail because of
+  // "java.lang.VerifyError: Expecting a stackmap frame at branch target [...]"
+  //
+  // See also:
+  // http://chrononsystems.com/blog/java-7-design-flaw-leads-to-huge-backward-step-for-the-jvm
+  // http://stackoverflow.com/questions/8958267/java-lang-verifyerror-expecting-a-stackmap-frame
+  //
+  jvmArgs "-XX:-UseSplitVerifier"
+}
+
+// https://github.com/stevesaliman/gradle-cobertura-plugin
+// http://ingorichter.blogspot.ch/2013/03/using-cobertura-with-gradle.html for list of options
+cobertura {
+  coverageFormats = ['xml', 'html']
+}
+
+mainClassName = "com.miguno.avro.hadoop.TweetCountTest"

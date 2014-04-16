@@ -1,0 +1,1296 @@
+description = "Apache Tapestry 5 Project"
+
+import org.apache.tools.ant.filters.ReplaceTokens
+
+apply plugin: "base"
+apply plugin: "sonar"
+
+apply from: "ssh.gradle"
+apply from: "md5.gradle"
+
+project.ext.versions = [
+    jetty: "7.6.11.v20130520",
+    tomcat: "6.0.30",
+    testng: "6.5.2",
+    easymock: "3.0",
+    servletapi: "2.5",
+    spock: "0.7-groovy-2.0",
+    hibernate: "4.3.1.Final",
+    groovy: "2.0.6",
+    slf4j: "1.7.2",
+    wro4j: "1.7.0",
+    geb: "0.9.0",
+    selenium: "2.37.1"
+]
+
+ext.continuousIntegrationBuild = Boolean.getBoolean("ci")
+
+// Provided so that the CI server can override the normal version number for nightly builds.
+project.version = tapestryVersion()
+
+// Remember that when generating a release, this should be incremented. Also don"t forget to
+// tag the release in Subversion.
+// Version number is always "5.x(.y)?-SNAPSHOT" and only gets fixed, e.g. to 5.4-alpha-1
+// during a release
+
+def tapestryVersion() {
+
+    def major = "5.4"
+    def minor = "-beta-5"
+
+    // When building on the CI server, make sure -SNAPSHOT is appended, as it is a nightly build.
+    // When building normally, or for a release, no suffix is desired.
+    continuousIntegrationBuild ? major + "-SNAPSHOT" : major + minor
+}
+
+// Let analysis.apache.org get in touch with our builds
+
+project.ext {
+    sonarUrl = System.getProperty("sonarUrl", "https://analysis.apache.org");
+    sonarDbUrl = System.getProperty("sonarDbUrl", "");
+    sonarDbUsername = System.getProperty("sonarDbUsername", "");
+    sonarDbPassword = System.getProperty("sonarDbPassword", "");
+    sonarDbDriverClassName = "com.mysql.jdbc.Driver"
+
+    stagingUrl = "https://repository.apache.org/service/local/staging/deploy/maven2/"
+    snapshotUrl = "https://repository.apache.org/content/repositories/snapshots"
+
+    doSign = !project.hasProperty("noSign") && project.hasProperty("signing.keyId")
+
+    // apacheDeployUserName and apacheDeployPassword should be specified in ~/.gradle/gradle.properties
+
+    deployUsernameProperty = isSnapshot() ? "snapshotDeployUserName" : "apacheDeployUserName"
+    deployPasswordProperty = isSnapshot() ? "snapshotDeployPassword" : "apacheDeployPassword"
+
+    canDeploy = [deployUsernameProperty, deployPasswordProperty].every { project.hasProperty(it) }
+
+    deployUsername = { getProperty(deployUsernameProperty) }
+    deployPassword = { getProperty(deployPasswordProperty) }
+}
+
+sonar {
+    server {
+        url = sonarUrl
+    }
+    database {
+        url = sonarDbUrl
+        driverClassName = sonarDbDriverClassName
+        username = sonarDbUsername
+        password = sonarDbPassword
+    }
+}
+
+allprojects {
+
+    apply plugin: "eclipse"
+    apply plugin: "idea"
+    apply plugin: "signing"
+
+
+    repositories {
+        mavenCentral()
+
+        // All things JBoss/Hibernate
+        mavenRepo name: "JBoss", url: "https://repository.jboss.org/nexus/content/repositories/releases/"
+    }
+
+    idea {
+        project {
+            // Leave at 1.5 to make sure that IDEA doesn't break the build for non-IDEA users by inserting
+            // @Override on implementations all over the place.
+            languageLevel = "1.5"
+            // But this is what most (all?) of the devs are actually using:
+            jdkName = "1.7"
+        }
+    }
+
+    configurations {
+        // Non-code artifacts, such as sources JARs and zipped JavaDocs
+        meta
+    }
+
+}
+
+// Specific to top-level build, not set for subprojects:
+
+configurations {
+    javadoc
+    published.extendsFrom archives, meta
+    if (doSign) {
+        published.extendsFrom signatures
+    }
+    binaries // additional dependencies included in the binary archive
+}
+
+dependencies {
+    javadoc project(":tapestry-javadoc")
+
+    // From tapestry-ioc:
+    binaries "javax.inject:javax.inject:1"
+    binaries "org.slf4j:slf4j-api:${versions.slf4j}"
+    binaries "commons-codec:commons-codec:1.5"
+    binaries "org.antlr:antlr-runtime:3.3", { transitive = false }
+}
+
+subprojects {
+    version = parent.version
+
+    group = "org.apache.tapestry"
+
+    configurations {
+        provided
+        deployerJars
+    }
+
+    apply plugin: "java"
+    apply plugin: "groovy" // mostly for testing
+    apply plugin: "maven"  // for deployment
+    apply plugin: "project-report"
+
+    sourceCompatibility = "1.5"
+    targetCompatibility = "1.5"
+
+    // See http://jira.codehaus.org/browse/GRADLE-784
+
+    sourceSets {
+        main {
+            compileClasspath += configurations.provided
+        }
+        test {
+            compileClasspath += configurations.provided
+            runtimeClasspath += configurations.provided
+        }
+    }
+
+    idea.module {
+        scopes.PROVIDED.plus += configurations.provided
+    }
+
+    eclipse.classpath.plusConfigurations += configurations.provided
+
+    dependencies {
+        groovy "org.codehaus.groovy:groovy-all:${versions.groovy}"
+
+        deployerJars "org.apache.maven.wagon:wagon-http-lightweight:1.0-beta-6"
+
+        testRuntime "org.slf4j:slf4j-log4j12:${versions.slf4j}"
+    }
+
+    test {
+        useTestNG()
+
+        options.suites("src/test/conf/testng.xml")
+
+        maxHeapSize "400M"
+
+        // Turn off live service reloading
+
+        systemProperties["tapestry.service-reloading-enabled"] = "false"
+
+        jvmArgs("-XX:MaxPermSize=512m", "-Dfile.encoding=UTF-8")
+    }
+
+    jar {
+        from(projectDir) {
+            include "*.txt"
+            into "META-INF"
+        }
+    }
+
+    task sourcesJar(type: Jar) {
+        dependsOn classes
+        classifier "sources"
+        from sourceSets.main.allSource
+        from(projectDir) {
+            include "*.txt"
+            into "META-INF"
+        }
+    }
+
+    artifacts {
+        archives sourcesJar
+        meta sourcesJar
+    }
+
+
+    configurations {
+        // published -- what gets uploaded to the Nexus repository
+        published.extendsFrom archives, meta
+
+        if (rootProject.doSign) {
+            published.extendsFrom signatures
+        }
+    }
+
+    if (rootProject.doSign) {
+        // sign (create PGP signature for) archives (standard JARs)
+        // and meta (sources JARs)
+        signing { sign configurations.archives, configurations.meta }
+    }
+
+    uploadPublished {
+
+        doFirst {
+            if (!canDeploy) {
+                throw new InvalidUserDataException("Missing upload credentials. Set '$deployUsernameProperty' and '$deployPasswordProperty' root project properties.")
+            }
+        }
+
+        if (canDeploy) {
+            repositories {
+
+                project.ext.deployer = repositories.mavenDeployer {
+
+                    if (doSign) {
+                        beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+                    }
+
+                    repository(url: stagingUrl) {
+                        authentication(userName: deployUsername(), password: deployPassword())
+                    }
+
+                    snapshotRepository(url: snapshotUrl) {
+                        authentication(userName: deployUsername(), password: deployPassword())
+                    }
+                }
+            }
+        }
+    }
+}
+
+subprojects.each { project.evaluationDependsOn(it.name) }
+
+subprojects {
+
+    // Prefer this version, because it has source artifacts available.
+    def servletAPI = 'org.mortbay.jetty:servlet-api-2.5:6.1.11'
+
+    configurations.all {
+
+        resolutionStrategy.force "antlr:antlr:2.7.7",
+            "cglib:cglib-nodep:2.2",
+            "commons-codec:commons-codec:1.8",
+            "commons-io:commons-io:2.4",
+            "commons-logging:commons-logging:1.1.3",
+            "hsqldb:hsqldb:2.2.8",
+            "org.antlr:antlr-runtime:3.4",
+            "org.apache.tomcat:dbcp:6.0.32",
+            "org.hamcrest:hamcrest-core:1.3",
+            "org.json:json:20140107",
+            "org.yaml:snakeyaml:1.8",
+            "xml-apis:xml-apis:1.4.01"
+
+        resolutionStrategy.eachDependency { DependencyResolveDetails details ->
+
+
+            if (details.requested.name.startsWith("servlet-api")) {
+                logger.info "Overriding dependency ${details.requested.group}:${details.requested.name}:${details.requested.version} --> $servletAPI"
+                details.useTarget servletAPI
+            }
+
+        }
+    }
+}
+
+// Cribbed from https://github.com/hibernate/hibernate-core/blob/master/release/release.gradle#L19
+
+task aggregateJavadoc(type: Javadoc) {
+
+    // Temporary: don't check on the CI server. This can be removed when the CI server is upgraded.
+    if (!continuousIntegrationBuild && !checkJDK())
+        throw new StopActionException("Update your JDK to fix VU#225657")
+
+    dependsOn configurations.javadoc
+    group "Documentation"
+
+    description "Build the aggregated JavaDocs for all modules"
+    maxMemory "512m"
+    destinationDir file("$buildDir/documentation/javadocs")
+
+    def tapestryStylesheet = isJDK7() ? file("src/javadoc/stylesheet7.css") : file("src/javadoc/stylesheet.css");
+
+    configure(options) {
+        splitIndex true
+        linkSource true
+        stylesheetFile tapestryStylesheet
+        windowTitle "Tapestry API Documentation"
+        docTitle "Tapestry JavaDoc ($project.version)"
+        bottom 'Copyright &copy; 2003-2013 <a href="http://tapestry.apache.org">The Apache Software Foundation</a>.'
+        use = true // 'use' seems to be a reserved word for the DSL
+        links "http://download.oracle.com/javase/6/docs/api/"
+        links "http://download.oracle.com/javaee/6/api/"
+        addStringOption "tagletpath", configurations.javadoc.asPath
+        addStringOption "taglet", "org.apache.tapestry5.javadoc.TapestryDocTaglet"
+        exclude "org/apache/tapestry5/internal/plastic/asm/**"
+    }
+
+    def allMainSourceSets = subprojects*.sourceSets*.main.flatten()
+    def allMainJavaFiles = allMainSourceSets*.java
+    def allMainJavaSrcDirs = allMainJavaFiles*.srcDirs
+
+    source allMainJavaFiles
+
+    classpath += files(allMainSourceSets*.compileClasspath)
+
+    inputs.files allMainJavaSrcDirs
+
+    // As part of generating the documentation, ALSO copy any related files:
+    // Any extra images (Tapestry logo)
+    // Any images stored under src/main/java ... everything but .java, .xdoc and package.html
+
+    doLast {
+        copy {
+            from allMainJavaSrcDirs
+            into aggregateJavadoc.destinationDir
+            exclude "**/*.java"
+            exclude "**/*.xdoc"
+            exclude "**/package.html"
+        }
+
+        copy {
+            from file("src/javadoc/images")
+            into aggregateJavadoc.destinationDir
+        }
+    }
+}
+
+task coffeeScriptDocs(type: Exec) {
+    group "Documentation"
+    description "Build docco documentation for all CoffeeScript sources"
+    dependsOn project(":tapestry-core").tasks.preprocessCoffeeScript
+
+    def outputDir = file("$buildDir/documentation/coffeescript")
+
+    // Note: this currently does not include the results of preprocessing the t5/core/dom.coffee file
+
+    def sources = files()
+
+    subprojects.each { sub ->
+        sources += sub.fileTree("src/main/coffeescript", { include "**/*.coffee" })
+    }
+
+    sources += project(":tapestry-core").tasks.preprocessCoffeeScript.outputs.files.asFileTree
+
+    logger.error "sources=$sources"
+
+    // Needs to be installed via "npm install -g docco"
+    executable isWindows() ? "docco.cmd" : "docco"
+    args "--output", outputDir
+    args sources.files.sort({ a, b -> a.name.compareTo b.name })
+
+    inputs.files { sources }
+    outputs.dir outputDir
+}
+
+
+
+dependencies {
+    meta aggregateJavadoc.outputs.files
+}
+
+task continuousIntegration {
+    dependsOn subprojects.build, aggregateJavadoc, subprojects.uploadPublished
+    description "Task executed on Jenkins CI server after SVN commits"
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.3'
+    description "Regenerates the Gradle Wrapper files"
+}
+
+task zippedSources(type: Zip) {
+    description "Creates a combined Zip file of all sub-project's sources"
+    group "Release artifact"
+
+    destinationDir buildDir
+    baseName "apache-tapestry"
+    version project.version
+    classifier "sources"
+
+    from project.projectDir
+    exclude "out/**"
+    exclude "**/*.iml"
+    exclude "**/*.ipr"
+    exclude "**/*.iws"
+    exclude "**/.*/**"
+    exclude "**/bin/**"
+    exclude "**/target/**"
+    exclude "**/build/**"
+    exclude "**/test-output/**"  // Left around by TestNG sometimes
+}
+
+task zippedApidoc(type: Zip) {
+    dependsOn aggregateJavadoc
+    description "Zip archive of the project's aggregate JavaDoc and CoffeeScript documentation"
+    group "Release artifact"
+
+    destinationDir buildDir
+    baseName "apache-tapestry"
+    version project.version
+    classifier "apidocs"
+
+    from file("src/docroot-template"), {
+        filter ReplaceTokens, tokens: [version: project.version]
+        include "*.html"
+    }
+
+    from file("src/docroot-template"), {
+        exclude "*.html"
+    }
+
+    into "apidocs", { from aggregateJavadoc.outputs.files }
+
+
+    into "coffeescript", { from coffeeScriptDocs.outputs.files }
+
+}
+
+task zippedBinaries(type: Zip) {
+    description "Zip archive of binaries of each sub-project"
+    // TODO: Plus dependencies?
+    group "Release artifact"
+    // This may create a few unwanted dependencies, but does
+    // seem to ensure that the subprojects are created
+    inputs.files subprojects*.configurations*.archives.artifacts
+
+    destinationDir buildDir
+    baseName "apache-tapestry"
+    version project.version
+    classifier "bin"
+
+    // This is via some experimentation
+    from subprojects*.configurations*.archives.artifacts*.file*.findAll {
+        !(it.name.endsWith(".asc") || it.name.startsWith("quickstart"))
+    }
+
+    from configurations.binaries
+
+    // Pick up various licenses and notices
+
+    from(projectDir) {
+        include "*.txt"
+    }
+
+    subprojects.each { sub ->
+        from(sub.projectDir) {
+            include "*.txt"
+            into sub.name
+        }
+    }
+}
+
+if (canDeploy) {
+
+    configurations {
+        archives
+        uploads.extendsFrom archives, signatures
+    }
+
+
+    artifacts {
+        archives zippedApidoc, zippedSources, zippedBinaries
+    }
+
+    configurations {
+        upload.extendsFrom archives, signatures
+    }
+
+    task generateMD5Checksums(type: GenMD5) {
+        group "Release artifact"
+        description "Creates MD5 checksums for archives of source and JavaDoc"
+        source tasks.withType(Zip)
+        outputDir "$buildDir/md5"
+    }
+
+    if (doSign) {
+        signing {
+            sign configurations.archives
+        }
+    }
+
+    task uploadArtifacts(type: Scp) {
+        group "Release artifact"
+        description "Uploads top-level artifacts to people.apache.org, along with MD5 checksums and PGP signatures (if signing is enabled)"
+
+        source files(generateMD5Checksums, configurations.uploads.allArtifacts.files)
+
+        host "people.apache.org"
+        userName deployUsername()
+        password deployPassword()
+
+        // The destination folder at people.apache.org needs to already exist.
+        destination "public_html/tapestry-releases"
+
+        doFirst {
+            logger.info "Uploading the following files to people.apache.org (as user '${userName}'):"
+            source.files.each { logger.info "  $it" }
+        }
+    }
+
+    task generateRelease {
+        dependsOn "quickstart:clean", continuousIntegration, subprojects.uploadPublished, uploadArtifacts
+        group "Release artifact"
+        description "Generates and uploads a final release to Apache Nexus"
+    }
+}
+
+boolean isSnapshot() {
+    project.version.contains("SNAPSHOT")
+}
+
+boolean isWindows() {
+    System.properties['os.name'].toLowerCase().contains('windows')
+}
+
+boolean isJDK7() {
+    System.properties['java.version'].startsWith("1.7.")
+}
+
+// Check JDK version to prevent VU#225657 see:
+// http://www.oracle.com/technetwork/topics/security/javacpujun2013-1899847.html
+// http://www.kb.cert.org/vuls/id/225657
+boolean checkJDK() {
+    def jdkVersion = System.properties['java.version']
+    def match = jdkVersion =~ /_(\d+)/
+
+    if (!match.find())
+        throw new IllegalStateException("""Could not parse minor version number out of "#{jdkVersion}".""")
+
+    def minor = match[0][1].toInteger()
+
+    if (jdkVersion.startsWith("1.7")) {
+        minor > 21
+    }
+    else { // JDK 6 and 5 require the same minor version
+        minor > 45
+    }
+}
+apply plugin: "groovy"
+
+repositories {
+    mavenCentral()
+}
+
+
+dependencies {
+    compile "ro.isdc.wro4j:wro4j-extensions:1.7.0"
+    gradleApi()
+}
+description = "High-level runtime transformations of Java classes"
+
+dependencies {
+    compile "org.slf4j:slf4j-api:${versions.slf4j}"
+	testCompile "org.spockframework:spock-core:$versions.spock"
+
+}
+
+test { 
+  useJUnit()
+}
+
+// Add the source directory for the imported/repackaged ASM 3.3.1 code
+
+sourceSets.main.java.srcDir "src/external/java"
+
+import org.apache.tools.ant.filters.FixCrLfFilter
+import org.apache.tools.ant.filters.ReplaceTokens
+
+// Copy the gradle wrapper files from the project root
+processResources { 
+  from(rootDir) { 
+    include "gradlew"
+    include "gradlew.bat"
+    include "gradle/**"
+    into "archetype-resources"
+  }
+}
+
+task processFiltered(type: Copy) {
+
+    ext.srcDir = file('filtered')
+
+    inputs.file srcDir
+    inputs.file file("${rootDir}/build.gradle")
+    outputs.dir sourceSets.main.output.classesDir
+
+    from srcDir
+    into sourceSets.main.output.classesDir
+
+    // Use some of the filters provided by Ant
+    filter(FixCrLfFilter)
+    filter(ReplaceTokens, tokens: [
+            quickstartVersion: version,
+            tapestryReleaseVersion: version,
+            servletApiReleaseVersion: versions.servletapi,
+            testngReleaseVersion: versions.testng,
+            easymockReleaseVersion: versions.easymock,
+            slf4jReleaseVersion: versions.slf4j,
+            year: new GregorianCalendar()[Calendar.YEAR].toString()
+    ])
+}
+
+processResources.dependsOn processFiltered
+description = "${artifactId} application"
+
+apply plugin: "war"
+apply plugin: "java"
+apply plugin: "jetty"
+
+sourceCompatibility = "1.6"
+targetCompatibility = "1.6"
+
+group = "${groupId}"
+version = "${version}"
+
+repositories {
+    mavenLocal()
+
+    mavenCentral()
+
+    // All things JBoss/Hibernate
+    mavenRepo name: "JBoss", url: "http://repository.jboss.org/nexus/content/groups/public/"
+
+    // For stable versions of the tapx libraries
+    mavenRepo name: "HLS", url: "http://howardlewisship.com/repository/"
+
+    // For non-stable versions of the tapx libraries
+    mavenRepo name: "HLS Snapshots", url: "http://howardlewisship.com/snapshot-repository/"
+
+    // For access to Apache Staging (Preview) packages
+    mavenRepo name: "Apache Staging", url: "https://repository.apache.org/content/groups/staging"
+}
+
+// This simulates Maven's "provided" scope, until it is officially supported by Gradle
+// See http://jira.codehaus.org/browse/GRADLE-784
+
+configurations {
+    provided
+}
+
+sourceSets {
+    main {
+        compileClasspath += configurations.provided
+        // To give the same path as IDEA has
+        // output.resourcesDir = 'build/production/${artifactId}'
+        // output.classesDir = 'build/production/${artifactId}'
+    }
+    test {
+        compileClasspath += configurations.provided
+        runtimeClasspath += configurations.provided
+    }
+}
+
+dependencies {
+
+    compile "org.apache.tapestry:tapestry-core:@tapestryReleaseVersion@"
+
+    // Uncomment this to add support for file uploads:
+    // compile "org.apache.tapestry:tapestry-upload:@tapestryReleaseVersion@"
+
+    // Uncomment this to add support resource minification and runtime compilation:
+    // compile "org.apache.tapestry:tapestry-wro4j:@tapestryReleaseVersion@"
+
+    // Log implementation choose one:
+    // Log4j 1.x
+    runtime "log4j:log4j:1.2.17"
+    runtime "org.slf4j:slf4j-log4j12:@slf4jReleaseVersion@"
+    // Logback
+    // runtime "ch.qos.logback:logback-classic:1.0.13"
+
+    provided "javax.servlet:servlet-api:@servletApiReleaseVersion@"
+}
+
+test {
+    useTestNG()
+
+    options.suites("src/test/conf/testng.xml")
+
+    systemProperties["tapestry.service-reloading-enabled"] = "false"
+    systemProperties["tapestry.execution-mode"] = "development"
+
+    maxHeapSize = "600M"
+
+    jvmArgs("-XX:MaxPermSize=256M")
+
+    enableAssertions = true
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.6'
+}
+
+// TODO: Configure execution mode for jettyRun task
+import t5build.*
+
+description = "Support for JSR-303 Bean Validation via the Hibernate validator implementation"
+
+dependencies {
+  compile project(':tapestry-core')
+
+  compile "javax.validation:validation-api:1.0.0.GA"
+  compile "org.hibernate:hibernate-validator:4.0.0.GA"
+
+  testCompile project(':tapestry-test')
+}
+
+task compileCoffeeScript(type: CompileCoffeeScript) {
+    outputDir "src/main/generated/compiled-coffeescript"
+}
+
+sourceSets {
+    main {
+        output.dir(compileCoffeeScript.outputDir, builtBy: compileCoffeeScript)
+    }
+}
+
+jar.manifest.attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.beanvalidator.modules.BeanValidatorModule'
+import org.gradle.plugins.ide.idea.model.*
+import t5build.*
+
+description = "Bridge to CDI for Apache Tapestry 5 Project"
+
+apply plugin: JavaPlugin
+
+buildDir = 'target/gradle-build'
+       
+project.ext.libraryVersions = [
+    javaeeapi: '6.0-4', 
+    tomee: '1.6.0', 
+    ziplock: '1.5.1',
+    junit: '4.8.1', 
+    commonsHttpclient: '3.1',
+    arquillian: '1.1.1.Final', 
+    jbossJavaeeSpec: '1.0.0.Final',
+    arquillianGlassfish: '1.0.0.CR4',
+    glassfishDistrib: '3.1.1-b04', 
+    jbossDistrib: '7.1.1.Final', 
+    cdi: '1.0-SP4',
+    jbossAS7: '7.1.1.Final', 
+    shrinkwrapDesc: '2.0.0-alpha-3'
+]
+
+
+configurations {
+    compileOnly 
+    jboss
+    glassfish
+    tomeeEmbeddedTestRuntime  { extendsFrom testRuntime, compileOnly }
+    jbossAS7ManagedTestRuntime { extendsFrom testRuntime, compileOnly }
+    glassfishManagedTestRuntime { extendsFrom testRuntime, compileOnly }
+}
+
+dependencies {
+    compile project(':tapestry-core')
+    compile project(':tapestry-ioc')
+    testCompile (project(':tapestry-test')){
+         transitive = false
+     } 
+      
+    // replace javax.enterprise:cdi-api with group: 'org.jboss.spec', name: 'jboss-javaee-6.0', version: libraryVersions.jbossJavaeeSpec to compile against full Java EE API
+    compileOnly group: 'javax.enterprise', name: 'cdi-api', version: libraryVersions.cdi
+    
+    
+    testCompile group: 'org.apache.openejb', name: 'ziplock', version: libraryVersions.ziplock
+    testCompile group: 'junit', name: 'junit', version: libraryVersions.junit
+    testCompile group: 'commons-httpclient', name: 'commons-httpclient', version: libraryVersions.commonsHttpclient
+    
+    testCompile group: 'org.jboss.arquillian.junit', name: 'arquillian-junit-container', version: libraryVersions.arquillian
+    testCompile group: 'org.jboss.shrinkwrap.descriptors', name: 'shrinkwrap-descriptors-api-javaee', version: libraryVersions.shrinkwrapDesc
+    testRuntime group: 'org.jboss.shrinkwrap.descriptors', name: 'shrinkwrap-descriptors-impl-javaee', version: libraryVersions.shrinkwrapDesc
+    
+    tomeeEmbeddedTestRuntime group: 'org.apache.openejb', name: 'arquillian-tomee-embedded', version: libraryVersions.tomee
+    
+    jbossAS7ManagedTestRuntime group: 'org.jboss.as', name: 'jboss-as-arquillian-container-managed', version: libraryVersions.jbossAS7
+    jbossAS7ManagedTestRuntime group: 'org.jboss.spec', name: 'jboss-javaee-6.0', version: libraryVersions.jbossJavaeeSpec
+    jboss "org.jboss.as:jboss-as-dist:$libraryVersions.jbossDistrib@zip"
+ 
+    glassfishManagedTestRuntime group: 'org.jboss.arquillian.container', name: 'arquillian-glassfish-managed-3.1', version: libraryVersions.arquillianGlassfish
+    glassfish "org.glassfish.distributions:glassfish:$libraryVersions.glassfishDistrib@zip"     
+}
+
+sourceSets {
+    main {
+        compileClasspath = configurations.compile + configurations.compileOnly
+    }
+    test {
+        compileClasspath = compileClasspath + configurations.compileOnly
+    }
+}
+
+idea {
+      module {
+        scopes.PROVIDED.plus += configurations.compileOnly
+      }
+    }
+
+eclipse {
+    classpath {
+        plusConfigurations += configurations.compileOnly
+    }
+}
+
+task resolveJBoss(type: Copy) {  
+    destinationDir = file('target') 
+    from { zipTree(configurations.jboss.singleFile) }
+}
+
+task resolveGlassfish(type: Copy) {
+    destinationDir = file('target')
+    from { zipTree(configurations.glassfish.singleFile) }
+}
+
+
+task tomeeEmbeddedTest(type: Test) {
+  systemProperty 'arquillian.launch', "tomee_embedded"
+}
+
+task jbossAS7ManagedTest(type: Test) {
+  systemProperty 'arquillian.launch', "jbossas_managed"
+   dependsOn { resolveJBoss }
+}
+
+task glassfishManagedTest(type: Test){
+  systemProperty 'arquillian.launch', "glassfish_managed"
+   dependsOn { resolveGlassfish }
+}
+
+tasks.withType(Test).matching({ t-> t.name.endsWith('Test') } as Spec).each { t ->
+    t.testClassesDir = sourceSets.test.output.classesDir
+    t.classpath = sourceSets.test.output + sourceSets.main.output + configurations[t.name + 'Runtime']
+}
+
+test {
+  dependsOn { tomeeEmbeddedTest }
+  setEnabled(false)
+}
+
+jar {	
+
+	manifest {	
+		attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.cdi.CDIInjectModule'
+		}
+ }
+description = "Allows Clojure functions to be injected into Tapestry services and components"
+
+dependencies {
+  compile project(':tapestry-ioc')
+  compile "org.clojure:clojure:1.5.1"
+
+  // Added just to prove that it works (TAP5-1945)
+  testCompile project(':tapestry-core')
+  testRuntime "javax.servlet:servlet-api:${versions.servletapi}"
+  testCompile "org.spockframework:spock-core:${versions.spock}"
+}
+
+test {
+  useJUnit()
+}
+
+jar {
+  manifest {
+    attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.clojure.modules.ClojureModule'
+  }
+}import org.gradle.plugins.ide.idea.model.*
+import org.apache.tools.ant.filters.ReplaceTokens
+import t5build.*
+
+description = "Central module for Tapestry, containing all core services and components"
+
+project.ext {
+    antlrSource = "src/main/antlr"
+    mainGeneratedDir = "src/main/generated"
+    testGeneratedDir = "src/test/generated"
+    antlrOutput = "$mainGeneratedDir/antlr"
+}
+
+configurations {
+    antlr3
+}
+
+dependencies {
+    compile project(':tapestry-ioc')
+    compile project(':tapestry-json')
+
+    provided project(":tapestry-test")
+    provided project(":tapestry-test-constants")
+
+    provided "javax.servlet:servlet-api:${versions.servletapi}"
+
+    compile "commons-codec:commons-codec:1.5"
+
+    // Transitive will bring in the unwanted string template library as well
+    compile "org.antlr:antlr-runtime:3.3", {
+        exclude group: "org.antlr", module: "stringtemplate"
+    }
+
+    // Antlr3 tool path used with the antlr3 task
+    antlr3 "org.antlr:antlr:3.3"
+
+    testRuntime "org.hsqldb:hsqldb:1.8.0.10"
+}
+
+// This may spin out as a plugin once we've got the details down pat
+
+task generateGrammarSource(type: JavaExec) {
+    description "Generates Java sources from Antlr3 grammars."
+    inputs.source fileTree(dir: antlrSource, include: "**/*.g")
+    outputs.dir file(antlrOutput)
+
+    classpath configurations.antlr3
+
+    main "org.antlr.Tool"
+    args "-o", "${antlrOutput}/org/apache/tapestry5/internal/antlr"
+    args inputs.sourceFiles
+
+    doFirst {
+        logger.info "Executing Antlr3 grammar generation:\n${commandLine.join(' ')}"
+    }
+}
+
+task preprocessCoffeeScript(type: PreprocessCoffeeScript) {
+}
+
+task compileCoffeeScript(type: CompileCoffeeScript) {
+    outputDir "${mainGeneratedDir}/compiled-coffeescript"
+}
+
+task compileProcessedCoffeescript(type: CompileCoffeeScript) {
+    dependsOn preprocessCoffeeScript
+    srcDir preprocessCoffeeScript.outputDir
+    outputDir "${mainGeneratedDir}/compiled-processed-coffeescript"
+}
+
+task compileTestCoffeeScript(type: CompileCoffeeScript) {
+    srcDir "src/test/coffeescript"
+    outputDir "${testGeneratedDir}/compiled-coffeescript"
+}
+
+sourceSets {
+    main {
+        output.dir(compileCoffeeScript.outputDir, builtBy: compileCoffeeScript)
+        output.dir(compileProcessedCoffeescript.outputDir, builtBy: compileProcessedCoffeescript)
+        output.dir(antlrOutput, builtBy: generateGrammarSource)
+        java {
+            srcDir antlrOutput
+        }
+    }
+    test {
+        output.dir(compileTestCoffeeScript.outputDir, builtBy: compileTestCoffeeScript)
+    }
+}
+
+clean.delete mainGeneratedDir, testGeneratedDir
+
+compileJava {
+    dependsOn generateGrammarSource
+    options.fork(memoryMaximumSize: '512m')
+}
+
+// Not sure why this is necessary:
+compileTestGroovy.dependsOn compileTestJava
+
+jar {
+    from("src/main/filtered-resources") {
+        filter(ReplaceTokens, tokens: [version: project.version])
+    }
+}
+description = "Light-weight functional programming for Flows of values"
+
+dependencies {
+  testCompile   "org.testng:testng:${versions.testng}"
+  testCompile   "commons-lang:commons-lang:2.6"
+}description = "Basic Hibernate services for Tapestry, useable outside of a Tapestry web application"
+
+
+dependencies {
+  compile project(':tapestry-ioc')
+
+    compile group: 'org.hibernate', name: 'hibernate-core', version: versions.hibernate
+
+    testCompile project(':tapestry-test')
+    testCompile "org.easymock:easymock:${versions.easymock}"
+  testCompile "org.testng:testng:${versions.testng}", { transitive = false }
+  testRuntime "org.hsqldb:hsqldb:2.2.8"
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.hibernate.modules.HibernateCoreModule'
+    }
+}description = "Provides support for simple CRUD applications built on top of Tapestry and Hibernate"
+
+dependencies {
+  compile project(':tapestry-core')
+  compile project(':tapestry-hibernate-core')
+  compile "org.jboss.logging:jboss-logging:3.1.0.GA"  
+
+  testCompile project(':tapestry-test')
+  
+  testRuntime "org.hsqldb:hsqldb:2.2.8"
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.hibernate.modules.HibernateModule'
+    }
+}description = "Internal utilties used to assist with testing; not intended for outside use"
+
+dependencies {
+    compile project(":tapestry-core")
+}description = "Utilities for integration testing a tapestry-ioc app"
+
+dependencies {
+    compile project(':tapestry-ioc')
+	compile 'junit:junit:4.11'
+}
+
+test {
+    useJUnit()
+}
+description = "A code-centric, high-performance, simple Inversion of Control container"
+
+dependencies {
+    compile project(':tapestry-func')
+    compile project(':tapestry5-annotations')
+    compile project(":plastic")
+
+    provided project(':tapestry-test')
+
+    // For now, keep these compile dependencies synchronized with the binaries dependencies
+    // of the top-level build:
+
+    compile "javax.inject:javax.inject:1"
+
+    compile "org.slf4j:slf4j-api:${versions.slf4j}"
+
+    testCompile "org.spockframework:spock-core:${versions.spock}"
+    testCompile "commons-lang:commons-lang:2.6"
+
+    provided "org.testng:testng:${versions.testng}", { transitive = false }
+}
+
+test {
+    useJUnit()
+    // Override the master build.gradle
+    systemProperties.remove("tapestry.service-reloading-enabled")
+}
+description = "JavaDoc Plugin for Tapestry that generates component reference documentation for component classes"
+
+dependencies {
+  compile project(':tapestry-core')
+  compile files(getTools())
+}
+
+/** Returns the tools.jar/classes.jar of the Java runtime. */
+File getTools() {
+  def jreRelpath = isMacOSX_1_6() ? "../classes/classes.jar" : "../lib/tools.jar"
+  def jdkRelpath = isMacOSX_1_6() ? "classes/classes.jar" : "lib/tools.jar"
+  
+  def javaHome = System.properties['java.home']
+
+  return new File(javaHome, jdkRelpath).exists() ? new File(javaHome, jdkRelpath) : new File(javaHome, jreRelpath)
+}
+
+boolean isMacOSX_1_6() {
+  System.properties['os.name'].toLowerCase().contains('mac os') &&
+      System.properties['java.version'].startsWith("1.6.")
+}
+  
+description = "Allows easy exposure of Tapestry Services as JMX MBeans"
+
+dependencies {
+  compile project(':tapestry-core')
+
+  testCompile project(':tapestry-test')
+  }
+
+test {
+    systemProperties "tapestry.service-reloading-enabled": "false"
+}
+
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.jmx.modules.JmxModule'
+    }
+}description = "Provides support for simple CRUD applications built on top of Tapestry and JPA"
+
+dependencies {
+  compile project(':tapestry-core')
+  compile "org.apache.geronimo.specs:geronimo-jpa_2.0_spec:1.1"
+
+  testCompile project(':tapestry-test')
+
+  testRuntime "com.h2database:h2:1.2.145"
+  testCompile "org.eclipse.persistence:org.eclipse.persistence.jpa:2.2.0"
+  testRuntime "org.apache.tomcat:dbcp:6.0.32"
+
+}
+
+repositories {
+  mavenRepo name: "EclipseLink", url: "http://download.eclipse.org/rt/eclipselink/maven.repo/"
+}
+
+test {
+    systemProperties "tapestry.service-reloading-enabled": "false"
+}
+
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.jpa.modules.JpaModule'
+    }
+}description = "Repackaged, improved (and tested) version of code originally from json.org"
+
+dependencies {
+
+    provided project(':tapestry-ioc')
+    testCompile "org.spockframework:spock-core:${versions.spock}"
+}
+
+test {
+    useJUnit()
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.json.modules.JSONModule'
+    }
+}description = "Kaptcha user verification support"
+
+dependencies {
+    compile project(':tapestry-core')
+    compile "com.github.axet:kaptcha:0.0.8"
+    
+    testCompile project(':tapestry-test')
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.kaptcha.modules.KaptchaModule'
+    }
+}description = "Basic MongoDB services for Tapestry, useable outside of a Tapestry web application"
+
+dependencies {
+    compile project(':tapestry-ioc')
+    testCompile project(':tapestry-test')
+
+    compile group: 'org.mongodb', name: 'mongo-java-driver', version: '2.10.1'
+
+    testCompile group: 'org.jongo', name: 'jongo', version: '0.3'
+
+    testCompile "org.spockframework:spock-core:${versions.spock}"
+
+    testCompile "de.flapdoodle.embed:de.flapdoodle.embed.mongo:1.28"
+}
+
+test {
+    useJUnit()
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.mongodb.modules.MongodbModule'
+    }
+}
+description = "Utilities for running a Tapestry application in Jetty or Tomcat as part of test suite."
+
+dependencies {
+
+    compile project(":tapestry-test-constants")
+    compile "org.eclipse.jetty:jetty-server:${versions.jetty}"
+    compile "org.eclipse.jetty:jetty-jndi:${versions.jetty}"
+    compile "org.eclipse.jetty:jetty-plus:${versions.jetty}"
+    compile "org.eclipse.jetty:jetty-webapp:${versions.jetty}"
+
+    compile "org.apache.tomcat:catalina:${versions.tomcat}"
+    compile "org.apache.tomcat:coyote:${versions.tomcat}"
+
+    compile "org.apache.tomcat:dbcp:${versions.tomcat}"
+}
+description = "Integration of Tapestry with the Spring Inversion Of Control Container"
+
+dependencies {
+  compile project(':tapestry-core')
+  compile "org.springframework:spring-web:3.1.0.RELEASE"
+
+  provided "javax.servlet:servlet-api:${versions.servletapi}"
+
+  testCompile project(':tapestry-test')
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.spring.modules.SpringModule'
+    }
+}description = "Utilities for generating random data used when populating entities"
+
+dependencies {
+    compile "org.slf4j:slf4j-api:${versions.slf4j}"
+}
+description = "[Deprecated] Utilities for integration testing of Tapestry applications using Selenium"
+
+dependencies {
+
+  compile project(":tapestry-test-data")
+  compile project(":tapestry-runner")
+
+  compile "org.seleniumhq.selenium:selenium-java:${versions.selenium}", {
+      exclude group: "org.eclipse.jetty"
+  }
+  compile "org.seleniumhq.selenium:selenium-server:${versions.selenium}", {
+      exclude group: "org.eclipse.jetty"
+  }
+
+  compile "org.testng:testng:${versions.testng}"
+  compile "org.easymock:easymock:${versions.easymock}"
+}
+description = "File Upload component, with supporting services"
+
+dependencies {
+  compile project(':tapestry-core')
+  compile "commons-fileupload:commons-fileupload:1.3.1"
+  compile "commons-io:commons-io:2.2"
+  provided "javax.servlet:servlet-api:${versions.servletapi}"
+
+  testCompile project(':tapestry-test')
+}
+
+jar {
+    manifest {
+        attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.upload.modules.UploadModule'
+    }
+}
+description = "Integration with WRO4J to perform runtime CoffeeScript compilation, JavaScript minimization, and more."
+
+dependencies {
+    compile project(":tapestry-core")
+    compile "com.github.sommeri:less4j:1.4.0"
+    compile "com.google.javascript:closure-compiler:v20131014"
+    compile "org.mozilla:rhino:1.7R4"
+
+    testCompile project(":tapestry-runner")
+    testCompile "org.gebish:geb-spock:${versions.geb}"
+    testCompile "org.spockframework:spock-core:${versions.spock}"
+
+    testCompile "org.seleniumhq.selenium:selenium-java:${versions.selenium}", {
+        exclude group: "org.eclipse.jetty"
+    }
+    testCompile "org.seleniumhq.selenium:selenium-server:${versions.selenium}", {
+        exclude group: "org.eclipse.jetty"
+    }
+}
+
+jar.manifest {
+    attributes 'Tapestry-Module-Classes': 'org.apache.tapestry5.webresources.modules.WebResourcesModule'
+}
+
+
+test {
+    useJUnit()
+
+    systemProperties("geb.build.reportsDir": "$reporting.baseDir/geb",
+        "tapestry.compiled-asset-cache-dir": "$buildDir/compiled-asset-cache",
+        "tapestry.production-mode": "false")
+}
+description = "Annotations used with Tapestry applications"

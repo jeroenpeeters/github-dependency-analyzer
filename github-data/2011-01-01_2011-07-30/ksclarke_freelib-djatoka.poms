@@ -1,0 +1,866 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>info.freelibrary</groupId>
+  <artifactId>freelib-djatoka</artifactId>
+  <packaging>maven-plugin</packaging>
+  <version>1.1.3-SNAPSHOT</version>
+  <name>FreeLibrary Djatoka</name>
+  <description>A fork of the aDORe-Djatoka JPEG2000 image server</description>
+  <url>http://projects.freelibrary.info/freelib-djatoka</url>
+  <inceptionYear>20110701</inceptionYear>
+  <licenses>
+    <license>
+      <name>GNU Lesser General Public License, Version 3.0</name>
+      <url>http://www.gnu.org/licenses/lgpl-3.0.html</url>
+      <comments>Licensed under the GNU LGPL 3.0 or later (at your option)</comments>
+    </license>
+  </licenses>
+  <scm>
+    <connection>scm:git:git@github.com:ksclarke/freelib-djatoka.git</connection>
+    <developerConnection>scm:git:git@github.com:ksclarke/freelib-djatoka.git</developerConnection>
+    <url>git@github.com:ksclarke/freelib-djatoka.git</url>
+  </scm>
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/ksclarke/freelib-djatoka/issues</url>
+  </issueManagement>
+  <organization>
+    <name>FreeLibrary</name>
+    <url>http://freelibrary.info</url>
+  </organization>
+  <developers>
+    <developer>
+      <name>Ryan Chute</name>
+      <roles>
+        <role>original developer</role>
+        <role>project architect</role>
+      </roles>
+    </developer>
+    <developer>
+      <email>ksclarke@gmail.com</email>
+      <name>Kevin S. Clarke</name>
+      <url>http://kevinclarke.info</url>
+      <roles>
+        <role>developer</role>
+        <role>fork maintainer</role>
+      </roles>
+      <timezone>America/New_York</timezone>
+    </developer>
+  </developers>
+  <!-- Project properties: These are the things you'll probably want to adjust. It's 
+    best practice not to change this file but to use a Maven settings.xml file (which 
+    can be at ${MAVEN_HOME}/conf/settings.xml or ${USER_HOME}/.m2/settings.xml). Change 
+    the property value in there and you'll override the values that are configured below... 
+    A sample skeleton settings.xml file is provided in src/main/resources if you want 
+    to copy it into a place where it will be read. -->
+  <properties>
+    <!-- The port Jetty should run at -->
+    <jetty.port>8888</jetty.port>
+    <!-- Key used to stop jetty; this should be overridden in settings.xml -->
+    <jetty.stop.key>cough</jetty.stop.key>
+    <!-- Jetty version -->
+    <jetty.version>9.0.4.v20130625</jetty.version>
+
+    <!-- The types of files you want to ingest -->
+    <djatoka.ingest.exts>tiff,tif</djatoka.ingest.exts>
+    <!-- The source image file system from which to ingest/convert images -->
+    <djatoka.ingest.data>${project.basedir}/src/test/resources/images</djatoka.ingest.data>
+    <!-- Where the JP2s should be stored -->
+    <djatoka.jp2.data>${project.basedir}/target/images</djatoka.jp2.data>
+    <!-- The cache the OpenURL system uses when it creates an object -->
+    <openurl.cache.dir>${project.basedir}/target/tmpcache</openurl.cache.dir>
+    <!-- Separate cache used for the permanent pairtree storage system -->
+    <djatoka.view.cache>${project.basedir}/target/cache</djatoka.view.cache>
+    <!-- Max TIFF file size allowed for ingest (specified in MB) -->
+    <djatoka.ingest.maxSize>900</djatoka.ingest.maxSize>
+    <!-- Supported: "", "sLUM", "sRGB", "sYCC", "iccLUM" or "iccRGB" -->
+    <djatoka.ingest.color.space>sRGB</djatoka.ingest.color.space>
+
+    <!-- List of image sources (used when a URL is passed in) -->
+    <djatoka.ingest.sources>^http://localhost/islandora/object/([a-zA-Z]*(%3A|:)[0-9a-zA-Z]*)/datastream/JP2/view.*$
+      ^http://memory.loc.gov/gmd/gmd433/g4330/g4330/([a-z0-9A-Z]*).jp2$</djatoka.ingest.sources>
+    <!-- List of image source guesses (used when ID can't be otherwise resolved) -->
+    <djatoka.ingest.guesses>http://localhost/islandora/object/{}/datastream/JP2/view
+      http://memory.loc.gov/gmd/gmd433/g4330/g4330/{}.jp2</djatoka.ingest.guesses>
+
+    <!-- The reasonable default is to not cache scale requests that aren't 1.0. Since 
+      pct:XX is so easy, though, we might want exceptions for specific ones (for full images 
+      only); one possible use case is thumbnail creation. -->
+    <djatoka.scale.cache.exceptions>0.15 0.10
+      0.05</djatoka.scale.cache.exceptions>
+
+    <!-- You shouldn't need to set anything below here; these are generic -->
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+    <console.log>false</console.log>
+
+    <freelib.build.tools.version>0.0.6</freelib.build.tools.version>
+    <maven.checkstyle.version>2.11</maven.checkstyle.version>
+    <freelib.utils.version>0.4.4</freelib.utils.version>
+    <logback.version>1.0.13</logback.version>
+    <junit.version>4.11</junit.version>
+
+    <!-- used for finding the unpacked checkstyle-suppressions.xml file -->
+    <!-- built-in for eclipse-cs tool so we make it work with maven too -->
+    <config_loc>${project.basedir}/target/classes/checkstyle</config_loc>
+  </properties>
+  <dependencies>
+    <dependency>
+      <groupId>info.freelibrary</groupId>
+      <artifactId>freelib-utils</artifactId>
+      <version>${freelib.utils.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-exec</artifactId>
+      <version>1.1</version>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>${logback.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>xml-apis</groupId>
+      <artifactId>xml-apis</artifactId>
+      <version>1.3.03</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-cli</groupId>
+      <artifactId>commons-cli</artifactId>
+      <version>1.1</version>
+    </dependency>
+    <dependency>
+      <groupId>com.martiansoftware</groupId>
+      <artifactId>jsap</artifactId>
+      <version>2.1</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-dbcp</groupId>
+      <artifactId>commons-dbcp</artifactId>
+      <version>1.2.2</version>
+    </dependency>
+    <dependency>
+      <groupId>commons-pool</groupId>
+      <artifactId>commons-pool</artifactId>
+      <version>1.4</version>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <version>${junit.version}</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty.websocket</groupId>
+      <artifactId>websocket-servlet</artifactId>
+      <version>${jetty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>org.eclipse.jetty</groupId>
+      <artifactId>jetty-servlet</artifactId>
+      <version>${jetty.version}</version>
+    </dependency>
+    <dependency>
+      <groupId>kdu</groupId>
+      <artifactId>kdu_jni</artifactId>
+      <version>0.0.0</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/lib/kdu_jni.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>imagej</groupId>
+      <artifactId>ij-ImageIO</artifactId>
+      <version>0.0.0</version>
+      <scope>system</scope>
+      <systemPath>${project.basedir}/lib/ij-ImageIO.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>org.imgscalr</groupId>
+      <artifactId>imgscalr-lib</artifactId>
+      <version>4.2</version>
+    </dependency>
+    <dependency>
+      <groupId>net.imagej</groupId>
+      <artifactId>ij</artifactId>
+      <version>1.48r</version>
+    </dependency>
+    <dependency>
+      <groupId>xom</groupId>
+      <artifactId>xom</artifactId>
+      <version>1.2.5</version>
+    </dependency>
+    <dependency>
+      <groupId>net.sf.opencsv</groupId>
+      <artifactId>opencsv</artifactId>
+      <version>2.3</version>
+    </dependency>
+    <dependency>
+      <groupId>com.fasterxml.jackson.core</groupId>
+      <artifactId>jackson-databind</artifactId>
+      <version>2.3.1</version>
+    </dependency>
+    <!-- Below here are the dependencies for our Maven mojos -->
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+      <version>3.2.1</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.plugin-tools</groupId>
+      <artifactId>maven-plugin-annotations</artifactId>
+      <version>3.2</version>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+      <version>3.2.1</version>
+    </dependency>
+  </dependencies>
+  <build>
+    <resources>
+      <!-- site's markdown template resources -->
+      <resource>
+        <directory>${basedir}/src/main/resources</directory>
+        <filtering>true</filtering>
+        <includes>
+          <include>**/*.md</include>
+        </includes>
+        <targetPath>${basedir}/src</targetPath>
+      </resource>
+      <!-- normal types of project resources -->
+      <resource>
+        <directory>${basedir}/src/main/resources</directory>
+        <filtering>true</filtering>
+        <excludes>
+          <exclude>**/*.md</exclude>
+        </excludes>
+      </resource>
+    </resources>
+    <plugins>
+      <!-- checks project's code for conformance to coding standards -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-checkstyle-plugin</artifactId>
+        <version>${maven.checkstyle.version}</version>
+        <dependencies>
+          <!-- add the newer checkstyle with throwsIndent support -->
+          <dependency>
+            <groupId>com.puppycrawl.tools</groupId>
+            <artifactId>checkstyle</artifactId>
+            <version>5.7</version>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <consoleOutput>true</consoleOutput>
+          <violationSeverity>warning</violationSeverity>
+          <configLocation>${basedir}/target/classes/checkstyle/checkstyle.xml</configLocation>
+        </configuration>
+        <executions>
+          <execution>
+            <id>checkstyle</id>
+            <phase>verify</phase>
+            <goals>
+              <goal>check</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- enforces some rules for the project, like checkstyle does for code -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-enforcer-plugin</artifactId>
+        <version>1.3.1</version>
+        <executions>
+          <execution>
+            <id>enforce-no-snapshots</id>
+            <goals>
+              <goal>enforce</goal>
+            </goals>
+            <configuration>
+              <failFast>true</failFast>
+              <rules>
+                <!-- don't want to allow snapshots -->
+                <!-- can be skipped by adding following to command line: -Denforcer.skip=true -->
+                <requireReleaseDeps>
+                  <message>Sorry, no dependency snapshots allowed! Skip this
+                    check by adding the following to the command line:
+                    -Denforcer.skip=true</message>
+                </requireReleaseDeps>
+              </rules>
+              <fail>true</fail>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- extracts project site's css and js from freelib-build-tools jar -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-dependency-plugin</artifactId>
+        <version>2.8</version>
+        <executions>
+          <execution>
+            <id>unpack</id>
+            <phase>generate-resources</phase>
+            <goals>
+              <goal>unpack</goal>
+            </goals>
+            <configuration>
+              <artifactItems>
+                <!-- copies the site stylesheets into the project -->
+                <artifactItem>
+                  <groupId>info.freelibrary</groupId>
+                  <artifactId>freelib-build-tools</artifactId>
+                  <version>${freelib.build.tools.version}</version>
+                  <type>jar</type>
+                  <includes>**/*.css,**/*.js</includes>
+                  <outputDirectory>${project.build.directory}</outputDirectory>
+                </artifactItem>
+                <!-- copies site templates into the resources directory -->
+                <artifactItem>
+                  <groupId>info.freelibrary</groupId>
+                  <artifactId>freelib-build-tools</artifactId>
+                  <version>${freelib.build.tools.version}</version>
+                  <type>jar</type>
+                  <includes>**/*.md</includes>
+                  <outputDirectory>${basedir}/src/main/resources</outputDirectory>
+                </artifactItem>
+                <!-- copies checkstyle configs so we can filter them -->
+                <artifactItem>
+                  <groupId>info.freelibrary</groupId>
+                  <artifactId>freelib-build-tools</artifactId>
+                  <version>${freelib.build.tools.version}</version>
+                  <type>jar</type>
+                  <includes>checkstyle/*.xml</includes>
+                  <outputDirectory>${basedir}/src/main/resources</outputDirectory>
+                </artifactItem>
+              </artifactItems>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- cleans up build artifacts -->
+      <plugin>
+        <artifactId>maven-clean-plugin</artifactId>
+        <version>2.5</version>
+        <configuration>
+          <filesets>
+            <fileset>
+              <directory>${basedir}/src</directory>
+              <includes>
+                <include>**/coders-welcome.md</include>
+                <include>**/testers-welcome.md</include>
+                <include>**/translators-welcome.md</include>
+                <include>**/documenters-welcome.md</include>
+              </includes>
+            </fileset>
+            <fileset>
+              <directory>${basedir}/src/main/resources/checkstyle</directory>
+            </fileset>
+          </filesets>
+        </configuration>
+      </plugin>
+      <!-- maven site generates documentation for use in project website -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-site-plugin</artifactId>
+        <version>3.3</version>
+        <configuration>
+          <generateReports>true</generateReports>
+          <inputEncoding>${project.build.sourceEncoding}</inputEncoding>
+          <outputEncoding>${project.build.sourceEncoding}</outputEncoding>
+          <reportPlugins>
+            <!-- includes information about project's dependencies -->
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>jdepend-maven-plugin</artifactId>
+            </plugin>
+            <!-- includes the standard maven project reports -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-project-info-reports-plugin</artifactId>
+              <version>2.6</version>
+              <configuration>
+                <anonymousConnection>scm:git:git@github.com:ksclarke/freelib-djatoka.git</anonymousConnection>
+                <developerConnection>scm:git:git@github.com:ksclarke/freelib-djatoka.git</developerConnection>
+              </configuration>
+              <reportSets>
+                <reportSet>
+                  <reports>
+                    <report>summary</report>
+                    <report>license</report>
+                    <report>modules</report>
+                    <report>project-team</report>
+                    <report>plugins</report>
+                    <report>dependency-info</report>
+                  </reports>
+                </reportSet>
+              </reportSets>
+            </plugin>
+            <!-- includes unit test reports -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-surefire-plugin</artifactId>
+              <version>2.16</version>
+              <configuration>
+                <forkCount>3</forkCount>
+                <reuseForks>true</reuseForks>
+              </configuration>
+            </plugin>
+            <!-- includes report of changes from the Git repo -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-changes-plugin</artifactId>
+              <version>2.9</version>
+              <reportSets>
+                <reportSet>
+                  <reports>
+                    <report>changes-report</report>
+                  </reports>
+                </reportSet>
+              </reportSets>
+            </plugin>
+            <!-- includes a changelog built from Git repo activity -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-changelog-plugin</artifactId>
+              <version>2.2</version>
+            </plugin>
+            <!-- includes javadoc documentation of the project's code -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-javadoc-plugin</artifactId>
+              <version>2.9</version>
+              <configuration>
+                <links>
+                  <link>http://docs.oracle.com/javaee/7/api/</link>
+                </links>
+              </configuration>
+              <reportSets>
+                <reportSet>
+                  <id>default</id>
+                  <reports>
+                    <report>javadoc</report>
+                  </reports>
+                </reportSet>
+                <reportSet>
+                  <id>aggregate</id>
+                  <reports>
+                    <report>aggregate</report>
+                  </reports>
+                </reportSet>
+              </reportSets>
+            </plugin>
+            <!-- findbugs finds common programming problems -->
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>findbugs-maven-plugin</artifactId>
+              <version>2.5.2</version>
+            </plugin>
+            <!-- checkstyle here generates the plugin's reports -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-checkstyle-plugin</artifactId>
+              <version>${maven.checkstyle.version}</version>
+              <configuration>
+                <consoleOutput>true</consoleOutput>
+                <configLocation>${basedir}/target/classes/checkstyle/checkstyle.xml</configLocation>
+              </configuration>
+            </plugin>
+            <!-- source code analyzer somewhat similar to findbugs -->
+            <plugin>
+              <groupId>org.apache.maven.plugins</groupId>
+              <artifactId>maven-pmd-plugin</artifactId>
+              <version>3.1</version>
+              <configuration>
+                <aggregate>true</aggregate>
+                <sourceEncoding>${project.build.sourceEncoding}</sourceEncoding>
+                <minimumTokens>100</minimumTokens>
+                <verbose>true</verbose>
+                <targetJdk>1.7</targetJdk>
+              </configuration>
+            </plugin>
+            <!-- report of code tags like TODO, FIXME, etc. -->
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>taglist-maven-plugin</artifactId>
+              <version>2.4</version>
+              <configuration>
+                <tagListOptions>
+                  <tagClasses>
+                    <tagClass>
+                      <displayName>TODOs</displayName>
+                      <tags>
+                        <tag>
+                          <matchString>TODO</matchString>
+                          <matchType>exact</matchType>
+                        </tag>
+                      </tags>
+                    </tagClass>
+                    <tagClass>
+                      <displayName>FIXMEs</displayName>
+                      <tags>
+                        <tag>
+                          <matchString>FIXME</matchString>
+                          <matchType>exact</matchType>
+                        </tag>
+                      </tags>
+                    </tagClass>
+                  </tagClasses>
+                </tagListOptions>
+              </configuration>
+            </plugin>
+            <!-- calculates test coverage of the project's code -->
+            <plugin>
+              <groupId>org.codehaus.mojo</groupId>
+              <artifactId>cobertura-maven-plugin</artifactId>
+              <version>2.5.2</version>
+              <configuration>
+                <aggregate>true</aggregate>
+                <outputDirectory>${project.reporting.outputDirectory}/cobertura</outputDirectory>
+              </configuration>
+            </plugin>
+          </reportPlugins>
+        </configuration>
+        <dependencies>
+          <!-- these three deps are used to generate the Maven site -->
+          <dependency>
+            <groupId>org.apache.maven.doxia</groupId>
+            <artifactId>doxia-module-markdown</artifactId>
+            <version>1.3</version>
+          </dependency>
+          <dependency>
+            <groupId>lt.velykis.maven.skins</groupId>
+            <artifactId>reflow-velocity-tools</artifactId>
+            <version>1.0.0</version>
+          </dependency>
+          <dependency>
+            <groupId>org.apache.velocity</groupId>
+            <artifactId>velocity</artifactId>
+            <version>1.7</version>
+          </dependency>
+        </dependencies>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-plugin-plugin</artifactId>
+        <version>3.2</version>
+        <configuration>
+          <skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
+          <goalPrefix>djatoka</goalPrefix>
+        </configuration>
+        <executions>
+          <execution>
+            <id>mojo-descriptor</id>
+            <goals>
+              <goal>descriptor</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.1</version>
+        <configuration>
+          <!-- We now require 1.7 or greater JDK -->
+          <source>1.7</source>
+          <target>1.7</target>
+        </configuration>
+      </plugin>
+      <!-- Failsafe plugin for functional tests -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <version>2.16</version>
+        <configuration>
+          <systemPropertyVariables>
+            <jetty.port>${jetty.port}</jetty.port>
+            <pairtree.root>${djatoka.jp2.data}/pairtree_root</pairtree.root>
+            <pairtree.cache>${djatoka.jp2.data}</pairtree.cache>
+          </systemPropertyVariables>
+          <includes>
+            <include>**/*FunctionalTest.java</include>
+          </includes>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- The jetty plugin is how we run djatoka from within Maven -->
+      <plugin>
+        <groupId>org.eclipse.jetty</groupId>
+        <artifactId>jetty-maven-plugin</artifactId>
+        <version>${jetty.version}</version>
+        <dependencies>
+          <dependency>
+            <groupId>org.eclipse.jetty</groupId>
+            <artifactId>jetty-servlets</artifactId>
+            <version>${jetty.version}</version>
+          </dependency>
+          <dependency>
+            <groupId>kdu</groupId>
+            <artifactId>kdu_jni</artifactId>
+            <version>0.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/kdu_jni.jar</systemPath>
+          </dependency>
+          <dependency>
+            <groupId>imagej</groupId>
+            <artifactId>ij-ImageIO</artifactId>
+            <version>0.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/ij-ImageIO.jar</systemPath>
+          </dependency>
+          <dependency>
+            <groupId>imagej</groupId>
+            <artifactId>ij</artifactId>
+            <version>0.0.0</version>
+            <scope>system</scope>
+            <systemPath>${project.basedir}/lib/ij.jar</systemPath>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <!-- Putting JVM args in CDATA to prevent wrapping -->
+          <jvmArgs><![CDATA[-Djetty.port=${jetty.port} -Dkakadu.home=${LD_LIBRARY_PATH} -Djava.library.path=${LD_LIBRARY_PATH} -DDJATOKA_HOME=${basedir} -DLD_LIBRARY_PATH=${LD_LIBRARY_PATH} -DDYLD_LIBRARY_PATH=${basedir}/${DYLD_LIBRARY_PATH}]]></jvmArgs>
+          <stopKey>${jetty.stop.key}</stopKey>
+          <stopPort>8993</stopPort>
+          <scanIntervalSeconds>5</scanIntervalSeconds>
+          <!-- Tells Maven process not to wait on the forked Jetty server -->
+          <waitForChild>${console.log}</waitForChild>
+          <!-- Access log -->
+          <requestLog implementation="org.eclipse.jetty.server.NCSARequestLog">
+            <filename>target/yyyy_mm_dd.request.log</filename>
+            <retainDays>30</retainDays>
+            <append>true</append>
+            <extended>false</extended>
+            <logTimeZone>GMT</logTimeZone>
+          </requestLog>
+        </configuration>
+        <executions>
+          <execution>
+            <id>start-jetty</id>
+            <phase>pre-integration-test</phase>
+            <goals>
+              <goal>run-forked</goal>
+            </goals>
+          </execution>
+          <execution>
+            <id>stop-jetty</id>
+            <phase>post-integration-test</phase>
+            <goals>
+              <goal>stop</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+      <!-- Plugin that enables running the command line tilecache utility -->
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>exec-maven-plugin</artifactId>
+        <version>1.2.1</version>
+        <executions>
+          <execution>
+            <goals>
+              <goal>java</goal>
+            </goals>
+          </execution>
+        </executions>
+        <configuration>
+          <systemProperties>
+            <systemProperty>
+              <key>logback.configurationFile</key>
+              <value>src/main/resources/logback.xml</value>
+            </systemProperty>
+          </systemProperties>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>2.16</version>
+        <configuration>
+          <!-- Our integration tests shouldn't be run as unit tests -->
+          <excludes>
+            <exclude>**/*IntegrationTest.java</exclude>
+            <exclude>**/*FunctionalTest.java</exclude>
+          </excludes>
+          <argLine>-XX:-UseSplitVerifier</argLine>
+        </configuration>
+      </plugin>
+    </plugins>
+    <extensions>
+      <!-- the static project site is published to an S3 bucket for viewing -->
+      <extension>
+        <groupId>org.kuali.maven.wagons</groupId>
+        <artifactId>maven-s3-wagon</artifactId>
+        <version>1.1.20</version>
+      </extension>
+    </extensions>
+  </build>
+  <profiles>
+    <profile>
+      <id>linux-32</id>
+      <activation>
+        <os>
+          <name>Linux</name>
+          <arch>i386</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Linux-x86-32</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>linux-64</id>
+      <activation>
+        <os>
+          <name>Linux</name>
+          <arch>amd64</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Linux-x86-64</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>mac-x86</id>
+      <activation>
+        <os>
+          <name>Mac OS X</name>
+        </os>
+      </activation>
+      <properties>
+        <!-- Include both b/c java.library.path is set to LD_LIBRARY_PATH -->
+        <DYLD_LIBRARY_PATH>lib/Mac-x86</DYLD_LIBRARY_PATH>
+        <LD_LIBRARY_PATH>lib/Mac-x86</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>windows</id>
+      <activation>
+        <os>
+          <family>windows</family>
+          <arch>x86</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Win32</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>solaris-x86</id>
+      <activation>
+        <os>
+          <name>SunOS</name>
+          <arch>x86</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Solaris-x86</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>solaris-sparc</id>
+      <activation>
+        <os>
+          <name>SunOS</name>
+          <arch>sparc</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Solaris-Sparc</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <profile>
+      <id>solaris-sparcv9</id>
+      <activation>
+        <os>
+          <name>Solaris</name>
+          <arch>sparc</arch>
+        </os>
+      </activation>
+      <properties>
+        <LD_LIBRARY_PATH>${project.basedir}/lib/Solaris-Sparcv9</LD_LIBRARY_PATH>
+      </properties>
+    </profile>
+    <!-- <profile> <id>functional-tests</id> <activation> <property> <name>!skipTests</name> 
+      </property> </activation> <build> <plugins> <plugin> <groupId>org.apache.maven.plugins</groupId> 
+      <artifactId>maven-failsafe-plugin</artifactId> <version>2.16</version> <configuration> 
+      <systemPropertyVariables> <jetty.port>${jetty.port}</jetty.port> <pairtree.root>${djatoka.jp2.data}/pairtree_root</pairtree.root> 
+      </systemPropertyVariables> <includes> <include>**/*FunctionalTest.java</include> 
+      </includes> </configuration> <executions> <execution> <goals> <goal>integration-test</goal> 
+      <goal>verify</goal> </goals> </execution> </executions> </plugin> </plugins> </build> 
+      </profile> -->
+    <!-- Build profile just used on Travis-CI VM to run the integration tests -->
+    <profile>
+      <id>travis</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-failsafe-plugin</artifactId>
+            <version>2.16</version>
+            <configuration>
+              <systemPropertyVariables>
+                <jetty.port>${jetty.port}</jetty.port>
+                <pairtree.root>${djatoka.jp2.data}/pairtree_root</pairtree.root>
+              </systemPropertyVariables>
+              <includes>
+                <include>**/*IntegrationTest.java</include>
+              </includes>
+            </configuration>
+            <executions>
+              <execution>
+                <goals>
+                  <goal>integration-test</goal>
+                  <goal>verify</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+    <!-- the profile configured here allows publishing the project's artifact -->
+    <profile>
+      <id>release-sign-artifacts</id>
+      <activation>
+        <property>
+          <name>performRelease</name>
+          <value>true</value>
+        </property>
+      </activation>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>sign-artifacts</id>
+                <phase>verify</phase>
+                <goals>
+                  <goal>sign</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+  <!-- enables pushing the project documentation up to an S3 bucket -->
+  <distributionManagement>
+    <site>
+      <id>s3.site</id>
+      <url>s3://projects.freelibrary.info/freelib-djatoka</url>
+    </site>
+  </distributionManagement>
+</project>

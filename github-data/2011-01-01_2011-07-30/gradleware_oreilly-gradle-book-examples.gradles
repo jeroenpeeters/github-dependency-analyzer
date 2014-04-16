@@ -1,0 +1,1115 @@
+task echoDirListViaAntBuilder() {
+    description = 'Uses the built-in AntBuilder instance to echo and list files'
+    //Docs: http://ant.apache.org/manual/Types/fileset.html
+    
+    //Echo the Gradle project name via the ant echo plugin
+    ant.echo(message: project.name)
+    ant.echo(path)
+    ant.echo("${projectDir}/samples")
+    
+    //Gather list of files in a subdirectory
+    ant.fileScanner{
+        fileset(dir:"samples")
+    }.each{
+        //Print each file to screen with the CWD (projectDir) path removed.
+        println it.toString() - "${projectDir}"
+    }
+}
+ant.importBuild 'build.xml'
+
+defaultTasks = ['antStandAloneHello', 'afterTheAntTask']
+
+task beforeTheAntTask << {
+    println "A Gradle task that precedes the Ant target"
+}
+
+task afterTheAntTask(dependsOn: "antHello") << {
+    println "A Gradle task that precedes the Ant target"
+}
+ant.importBuild 'build.xml'
+
+defaultTasks = ['gradleBuild']
+
+////////////////////////////////////////////////////////////////////////
+// Gradle paths retrieved from Ant and then built using a Gradle task
+repositories {
+    flatDir name: 'localRepository1', dirs: ant.references['antPathToLibs1']
+    flatDir name: 'localRepository2', dirs: ant.references.antPathToLibs2
+    flatDir name: 'localRepository3', dirs: "antlibs"
+}
+
+task gradleBuild << {
+    //Set classpath to include the JAR
+    println "The repositories bridged from Ant to Gradle are:"
+    println repositories*.name
+
+    println repositories.localRepository1
+    
+    println repositories['localRepository2']
+    
+    println "localRepository3 class = " + repositories.localRepository3.class
+    println "localRepository3 name = " + repositories.localRepository3.name
+    println "localRepository3 latest = " + repositories.localRepository3.latest
+    println "localRepository3 ivyPatterns = " + repositories.localRepository3.ivyPatterns
+    println "localRepository3 artifactPatterns = " + repositories.localRepository3.artifactPatterns
+    println "localRepository3 checkconsistency = " + repositories.localRepository3.checkconsistency
+    println "localRepository3 m2compatible = " + repositories.localRepository3.m2compatible
+    println "localRepository3 methods = " + repositories.localRepository3.metaClass.methods*.name.sort().unique()
+}
+ant.importBuild 'build.xml'
+
+defaultTasks = ['antBuild']
+
+////////////////////////////////////////////////////////////////////////
+// Ant paths injected by Gradle and then built using an Ant goal
+task antPathsInjectedByGradle << {
+    ant.path(id: 'gradlePathToLibs1', location: 'gradlelibs')
+    // or
+    ant.references.gradlePathToLibs2 = ant.path(location: 'gradlelibs')
+    // or
+    ant.references['gradlePathToLibs3'] = ant.path(location: file('gradlelibs').absolutePath)
+    
+    println "This task injects Gradle paths into the AntBuilder"
+}
+
+antBuild.doLast {
+    // No antBuild Task needs to be explicitly constructed
+    // antBuild task is created by the build.xml import
+    println "This Ant goal was converted to a Gradle task by the ant.importBuild call"
+}
+task zipsourceInGradle << {
+    ant.zip(destfile: 'samples-from-gradle.zip') {
+        fileset(dir: 'samples') {
+            include(name: '**.txt')
+        }
+    }
+}
+apply plugin: 'java'
+
+defaultTasks 'checkTheStyle', 'checkThePMD'
+
+//////////////////////////////////////////////////////////
+// Checkstyle example using a properties file
+// to control the loading of the Ant Task.
+task checkTheStyle << {
+    //Load the custom task
+    ant.taskdef(resource: 'checkstyletask.properties') {
+        classpath {
+            fileset(dir: 'lib/checkstyle', includes: '*.jar')
+        }
+    }
+    
+    //Use the custom task
+    ant.checkstyle(config: 'src/tools/checkstyle-sun-checks.xml') {
+        fileset(dir: 'src/main/java')
+    }
+}
+
+//////////////////////////////////////////////////////////
+// PMD example using a configuration and Gradle dependency
+// management to control the loading of the Ant Task.
+configurations {
+    myPmd
+}
+
+dependencies {
+    myPmd group: 'pmd', name: 'pmd', version: '4.2.5'
+}
+
+repositories {
+    mavenCentral()
+}
+
+task checkThePMD << {
+    ant.taskdef(name: 'myPmdTask', classname: 'net.sourceforge.pmd.ant.PMDTask', classpath: configurations.myPmd.asPath)
+    ant.myPmdTask(shortFilenames: 'true', failonruleviolation: 'true',
+      rulesetfiles: file('src/tools/pmd-basic-rules.xml').toURI().toString()) {
+        formatter(type: 'text', toConsole: 'true')
+        fileset(dir: 'src/main/java')
+    }
+}def gradlePersonName = "Fird Birfle"
+int gradlePersonAge = 43
+
+//Import the Ant build
+ant.importBuild 'build.xml'
+
+task hello << {
+    //Use a property from Gradle in an Ant call
+    ant.echo "Hello ${gradlePersonName}. I believe you are ${gradlePersonAge} years of age."
+    
+    //Use a property from Ant in a Gradle call
+    println "Hello ${ant.antPersonName}. I believe you are ${ant.antPersonAge} years of age."
+}
+task echoSystemPropertiesWithRegEx() {
+    description = "Uses Groovy's regex matching to find a match in System properties"
+    
+    def charsToFind = 'sun'
+    
+    println "SYSTEM PROPERTIES"
+    System.properties.each{
+        ant.echo("Does '${it}' contain '${charsToFind}': " + (it ==~ ".*${charsToFind}.*"))
+    }
+}
+ant.importBuild 'build.xml'task echoViaAnt << {
+    //Echo the Gradle project name via the ant echo plugin
+    ant.echo(message: project.name)
+}buildscript {
+  repositories {
+    mavenCentral()
+  }
+
+  dependencies {
+    classpath 'org.markdownj:markdownj:0.3.0-1.0.2b4'
+  }
+}
+
+import com.petebevin.markdown.MarkdownProcessor
+
+class MarkdownFilter extends FilterReader {
+  MarkdownFilter(Reader input) {
+    super(new StringReader(new MarkdownProcessor().markdown(input.text)))
+  }
+}
+
+task markdown(type: Copy) {
+  from 'src/markdown'
+  include '*.md'
+  into 'build/labs'
+  rename { it - '.md' + '.html' }
+  filter MarkdownFilter
+}task complexCopy(type: Copy) { 
+  from('src/main/templates') { 
+    include '**/*.gtpl'
+    into 'templates'
+  }
+  from('i18n')
+  from('config') { 
+    exclude 'Development*.groovy'
+    into 'config'
+  }
+  into 'build/resources'
+}
+
+import org.gradle.api.DefaultTask
+import org.gradle.api.tasks.TaskAction
+
+task greet(type: GreetingTask) { 
+  greeted = 'world'
+}
+
+//greet << { thirdGreeting() }
+
+
+class GreetingTask
+  extends DefaultTask { 
+
+  def greeted
+
+
+  @TaskAction
+  void secondGreeting() {
+    logger.lifecycle "I SAID HELLO, ${greeted}"
+  }
+
+  //  @TaskAction
+  void thirdGreeting() { 
+    logger.lifecycle "I'm tired of greeting you, ${greeted}"
+  }
+
+  @TaskAction
+  void firstGreeting() { 
+    logger.lifecycle "hello, ${greeted}"
+  }
+
+}apply plugin: 'java'
+
+repositories { 
+  mavenCentral()
+}
+
+dependencies { 
+  compile 'org.springframework:spring-context:3.1.1.RELEASE'
+}
+task helloWorld << {
+  println 'hello, world'
+}
+
+apply plugin: 'java'
+
+task helloWorldOnAMac << {
+    "say \"This says 'hello' audibly on a Mac\"".execute()
+}
+task compileStuff << {
+  print 'Building...'
+}
+
+task jarStuff(dependsOn: compileStuff) << {
+  print 'JARing...'
+}
+
+task unitTestStuff(dependsOn: compileStuff) << {
+  println 'Unit testing...'
+}
+
+task integrationTestStuff(dependsOn: jarStuff) << {
+  println 'Integration testing...'
+}
+
+task deployStuff(dependsOn: jarStuff) << {
+  println 'Deploying...'
+}
+
+task doItAll(dependsOn: [unitTestStuff, integrationTestStuff, deployStuff]) << {
+  println 'Doing it all...'
+}
+task hello << {
+  print 'hello, '
+}
+
+task world(dependsOn: hello) << {
+  println 'world'
+}ext {
+  pingLogDir = "${buildDir}/reachable"
+}
+
+tasks.addRule('Rule Usage: ping<Hostname>') { String taskName ->
+  if(taskName.startsWith('ping')) {
+    task(taskName) {
+      ext.hostname = taskName - 'ping'
+      doLast {
+        def url = new URL("http://${ext.hostname}")
+        def logString
+        try {
+          def pageContent = url.text
+          // Do some regex matching on pageContent
+          logString = "${new Date()}\t${ext.hostname}\tUP\n"
+          ext.up = true
+        }
+        catch(UnknownHostException e) {
+          logString = "${new Date()}\t${ext.hostname}\tUNKNOWN HOST\n"
+          ext.up = false
+        }
+        catch(ConnectException e) {
+          logString = "${new Date()}\t${ext.hostname}\tDOWN\n"
+          ext.up = false
+        }
+        file(pingLogDir).mkdirs()
+        file("${pingLogDir}/ping.log") << logString
+      }
+    }
+  }
+}
+afterEvaluate {
+  if (file('grammars').isDirectory()) { 
+    println "'grammars' directory found"
+
+    task testGrammars << {
+      println "Running grammar tests"
+    }
+  }
+  else {
+    println "'grammars' directory not found"
+  }
+}
+
+beforeEvaluate {
+  println "Going to see about grammars"
+}
+
+task helloWorld << {
+  println "hello, world"
+}
+//Applying the core Java plugin gives us the `test` task
+apply plugin: 'java'
+
+hasIntegTest = false
+
+task doOtherCoreThings << {
+    println "Performing work in doOtherCoreThings"
+}
+
+allprojects {
+    // afterEvaluate is run after all build files have been loaded
+    afterEvaluate { someproject ->
+        println "Evaluating if $someproject is requesting an integration test task"
+        if (someproject.hasIntegTest) {
+            // The subproject is asking for an integration test task
+            // by the fact that `hasIntegTest` is manually set to `true`.
+            
+            println "Adding an `integ-test` task to subproject `$project`"
+            
+            project.task('integ-test' type: Test, dependsOn: "test") << {
+                println "Running integ-tests for $project"
+                include '**/IntegrationTest*.*'
+            }
+        }
+    }
+}
+someproject = true
+
+task doOtherAThings << {
+    println "Performing work in doOtherAThings"
+}someproject = false
+
+task doOtherBThings << {
+    println "Performing work in doOtherBThings"
+}allprojects {
+  beforeEvaluate {
+    if (project.file('grammars').isDirectory()) { 
+      println "'grammars' found in ${project.name}"
+
+      task testGrammars << {
+        println "Running grammar tests in ${project.name}"
+      }
+    }
+    else {
+      println "'grammars' not found in ${project.name}"
+    }
+  }
+}
+
+task helloWorld {
+  doLast {
+    println "the parent says hello"
+  }
+}
+task helloWorld {
+  doLast {
+    println "subproject1 says hello"
+  }
+}
+task helloWorld {
+  doLast {
+    println "subproject2 says hello"
+  }
+}
+gradle.buildFinished { buildResult ->
+  println "BUILD FINISHED"
+  println buildResult.failure?.getClass()
+  println buildResult.failure
+}
+
+task succeed {
+  doLast {
+    println "hello, world"
+  }
+}
+
+task fail {
+  doLast {
+    throw new Exception("Build failed")
+  }
+}
+apply plugin: 'liquibase'
+
+liquibase {
+  changelogs { 
+    main {
+      file = file('changelog.groovy')
+    }
+  }
+
+  databases { 
+    sandbox {
+      url = 'jdbc:h2:db/liquibase_workshop;FILE_LOCK=NO'
+      username = 'sa'
+      password = ''
+    }
+  }
+}
+apply plugin: 'java'
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  runtime 'com.h2database:h2:1.3.153'
+}
+
+
+task createDatabaseScript {
+  group = 'database'
+  doLast { 
+    def fileName = 'starth2'
+    if(System.properties['os.name'].startsWith('Windows')) { 
+      fileName += '.bat'
+    }
+    def file = new File(projectDir, fileName)
+    file.withPrintWriter {  pw -> 
+      pw.print("java -cp ${sourceSets.main.runtimeClasspath.asPath} org.h2.tools.Server") 
+    }
+    file.setExecutable(true)
+  }
+}
+
+task startDatabase(type: JavaExec) {
+  group = 'database'
+  workingDir = projectDir
+  main = 'org.h2.tools.Server'
+  classpath = runtimeClasspath
+}
+
+task buildSchema(type: JavaExec) {
+  group = 'workshop'
+  classpath = runtimeClasspath
+  workingDir = projectDir
+  main = 'org.h2.tools.RunScript'
+  args = ['-url', 'jdbc:h2:db/liquibase_workshop;FILE_LOCK=NO', '-user', 'sa', '-script', 'create-schema-generic.sql']
+}
+
+apply plugin: 'liquibase'
+
+task liquibaseInit {
+	dependsOn << [ generateChangeLog, changeLogSync ]
+}
+import org.gradle.examples.rules.HttpPingRule
+
+ext {
+  pingLogDir = "${buildDir}/reachable"
+}
+
+tasks.addRule(new HttpPingRule(project))
+apply plugin: 'java'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+	compile 'commons-codec:commons-codec:1.6'
+}
+
+task poe(type: JavaExec) {
+	main = 'org.gradle.poetry.PoetryEmitter'
+	classpath = runtimeClasspath
+}
+apply plugin: 'java'
+apply plugin: 'maven'
+
+defaultTasks = ['install']
+
+configure(install.repositories.mavenInstaller) {
+    pom.project {
+        groupId 'com.gradleware.samples'
+        artifactId 'sample02-barestbones'
+        version '0.0.1-SNAPSHOT'
+        description ='A sample project these uses the Maven plugin and defines many attributes.'
+    }
+}
+apply plugin: 'java'
+
+//Alternate approach 1
+//defaultTasks = ['clean', 'build']
+
+//Alternate approach 2
+//defaultTasks 'clean'
+
+//Approach 3
+defaultTasks 'clean', 'build'apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    //testCompile group: 'junit', name: 'junit', version: '4.8.+' //A flexibly defined version requires an expensive server poll
+    testCompile group: 'junit', name: 'junit', version: '4.8.2'
+    compile group: 'commons-beanutils', name: 'commons-beanutils', version: '1.8.3'
+}apply plugin: 'java'
+apply plugin: 'groovy'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.8.2'
+    compile 'commons-beanutils:commons-beanutils:1.8.3'
+    //groovy 'mule:mule-extras-groovy:1.+'
+      // ^ The "+" flexible definition of a version
+      //   requires Internet access
+    groovy 'mule:mule-extras-groovy:1.1.1'
+}apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+defaultTasks = ['printDeps']
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.8.2'
+    compile group: 'commons-beanutils', name: 'commons-beanutils', version: '1.8.3'
+}
+
+task printDeps(dependsOn: build) << {
+    println "All configurations:"
+    configurations*.dependencies.each { println it }
+    
+    println "Just the default configurations:"
+    configurations.default.dependencies.each { println it }
+}
+apply plugin: 'java'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.8.2'
+    compile 'commons-beanutils:commons-beanutils:1.8.3'
+}apply plugin: 'java'apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.8.+'
+}apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+// archivesBaseName is, via the java plugin, then the Maven plugin,
+//  ultimately setting artifactId for the Maven POM generation
+// project.name is used by default, but is immutable
+archivesBaseName = 'sample01-barestbones'
+version = '0.0.1-SNAPSHOT'
+description ="A sample project these uses the Maven plugin and defines many attributes."apply plugin: 'java'
+version = '0.0.1-SNAPSHOT'apply plugin: 'maven-metadata'
+
+//Repo to retrieve the maven-metadata plugin
+buildscript {
+  repositories {
+    mavenRepo urls: ["http://repo.jfrog.org/artifactory/plugins-snapshots"]
+  }
+
+  dependencies {
+    classpath "org.gradle.plugins:gradle-m2metadata-plugin:1.0-SNAPSHOT"
+  }
+}
+apply plugin: 'java'
+
+sourceSets.main.java.srcDirs =
+  ["src/main/java", "srcAdditional/main/java"]
+
+// This add (while maintaining the default src/main/java)
+// can also be accomplished with a call:
+sourceSets.main.java.srcDirs 'srcAdditionalTwo/main/java'
+apply plugin: 'java'
+apply plugin: 'maven'
+
+  group = 'com.gradleware.samples'
+  version = '0.0.1-SNAPSHOT'
+  
+
+description = """"""
+
+sourceCompatibility = 1.5
+targetCompatibility = 1.5
+
+
+
+repositories {
+        
+    mavenRepo urls: ["http://repo1.maven.org/maven2"]
+}
+apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+
+uploadArchives {
+    repositories.mavenDeployer {
+        repository(url: "file:///Users/mccm06/Documents/Temp/Scratch/mytemprepo/")
+    }
+}
+apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+
+configurations {
+  deployerJars
+}
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  deployerJars "org.apache.maven.wagon:wagon-webdav-jackrabbit:1.0-beta-7"
+}
+
+uploadArchives {
+  repositories.mavenDeployer {
+    configuration = configurations.deployerJars
+    repository(
+      url: "http://localhost:8081/nexus/content/repositories/matthew"
+    )
+  }
+}apply plugin: 'eclipse'
+
+allprojects { 
+  apply plugin: 'java'
+}
+
+evaluationDependsOn(':codec')
+
+dependencies {
+  compile project(':codec')
+  compile project(':content')
+}
+
+[ 'shakespeare', 'williams', 'shelley', 'chesterton' ].each { poet ->
+  task "${poet}"(type: JavaExec) {
+    group = 'Encoded Poetry'
+    args = [ poet ]
+    main = 'org.gradle.example.codedpoet.CommandLine'
+    classpath sourceSets.main.runtimeClasspath, 
+              project(':codec').sourceSets.main.runtimeClasspath
+  }
+}
+
+eclipse {
+  projectName = 'EncodedPoetry'
+  
+  jdt {
+    sourceCompatibility = '1.6'
+  }
+
+  classpath {
+    downloadSources = true
+    downloadJavadoc = true
+    sourceSets = allprojects.collect { it.sourceSets.collect { it } }.flatten()
+    pathVariables DEPENDENCY_CACHE: file("${gradle.gradleUserHomeDir}/cache")
+    
+    // This code will automatically pick up new subprojects as they are added.
+    // It will include the compile, and runtime configurations.
+    subprojectConfigurations = allprojects*.configurations*.matching {
+      it.name in [ 'compile', 'runtime' ]
+    }
+    subprojectConfigurations.all.flatten().each {
+      plusConfigurations << it
+    }
+  
+    minusConfigurations << configurations.compile
+    minusConfigurations << configurations.runtime
+  }
+}
+
+task rebuildEclipse(dependsOn: [cleanEclipse, eclipse])repositories { 
+  mavenCentral() 
+}
+
+dependencies { 
+  compile 'commons-codec:commons-codec:1.5' 
+}
+allprojects { 
+  apply plugin: 'java'
+}
+
+evaluationDependsOn(':codec')
+
+dependencies {
+  compile project(':codec')
+  compile project(':content')
+}
+
+[ 'shakespeare', 'williams', 'shelley', 'chesterton' ].each { poet ->
+  task "${poet}"(type: JavaExec) {
+    group = 'Encoded Poetry'
+    args = [ poet ]
+    main = 'org.gradle.example.codedpoet.CommandLine'
+    classpath sourceSets.main.runtimeClasspath, 
+              project(':codec').sourceSets.main.runtimeClasspath
+  }
+}
+repositories { 
+  mavenCentral() 
+}
+
+dependencies { 
+  compile 'commons-codec:commons-codec:1.5' 
+}
+apply plugin: 'java'
+
+dependencies {
+  compile project(':codec')
+  compile project(':content')
+}
+
+[ 'shakespeare', 'williams', 'shelley', 'chesterton' ].each { poet ->
+  task "${poet}"(type: JavaExec) {
+    group = 'Encoded Poetry'
+    args = [ poet ]
+    main = 'org.gradle.example.codedpoet.CommandLine'
+    classpath runtimeClasspath
+  }
+}
+apply plugin: 'java'
+
+repositories { 
+  mavenCentral() 
+}
+
+dependencies { 
+  compile 'commons-codec:commons-codec:1.6' 
+}
+apply plugin: 'java'evaluationDependsOn(':codec')
+
+allprojects { 
+  apply plugin: 'java'
+}
+
+project(':codec') {
+  repositories { 
+    mavenCentral() 
+  }
+
+  dependencies { 
+    compile 'commons-codec:commons-codec:1.5' 
+  }
+}
+
+dependencies {
+  compile project(':codec')
+  compile project(':content')
+}
+
+[ 'shakespeare', 'williams', 'shelley', 'chesterton' ].each { poet ->
+  task "${poet}"(type: JavaExec) {
+    group = 'Encoded Poetry'
+    args = [ poet ]
+    main = 'org.gradle.example.codedpoet.CommandLine'
+    classpath sourceSets.main.runtimeClasspath, 
+              project(':codec').sourceSets.main.runtimeClasspath
+  }
+}
+//Run me by typing `gradle hello_world`
+
+task early << {
+    def earlynothing = 0
+}
+
+
+
+task hello_world << {
+    println "Hello World New Style."
+}
+
+
+task goodbye_world << {
+    println "echo Shell Goodbye World New Style.".execute().text
+}
+
+
+
+task late (dependsOn: goodbye_world){
+    def latenothing = 1
+}
+
+task latest << {
+    def latestnothing = 2
+}//via Luke Daley
+apply plugin: 'java'
+apply plugin: 'maven'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+defaultTasks = ['printDeps']
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.8.2'
+    compile group: 'commons-beanutils', name: 'commons-beanutils', version: '1.8.3'
+}
+
+task printDeps(dependsOn: build) << {
+    println "All configurations:"
+    configurations.each { 
+        println "\n${it.name}:"
+        [dependencies: [local: it.dependencies, all: it.allDependencies], artifacts: [local: it.artifacts, all: it.allArtifacts]].each { type, things ->
+            things.each { scope, items ->
+                println "    $type ($scope):"
+                items.each { println "        $it" }
+            }
+        }
+    }
+    println "Just the default configurations:"
+    configurations.default.dependencies.each { println it }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.0-milestone-3'
+}
+apply plugin: 'java'
+apply plugin: 'maven'
+apply plugin: 'sonar'
+
+group = 'com.gradleware.samples'
+version = '0.0.1-SNAPSHOT'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.8.2'
+}//From https://github.com/wangliyu/Weld-Gradle
+
+apply plugin: 'java'
+apply plugin: 'eclipse'
+apply plugin: 'project-report'
+
+group = 'org.lxw.weld.sample'
+version = '1.0-SNAPSHOT'
+sourceCompatibility = 1.6
+
+repositories {
+	mavenRepo(urls: ['http://repository.jboss.org/nexus/content/groups/public/', 'http://repository.jboss.org/maven2'])
+	mavenCentral()
+}
+
+dependencies {
+	compile "javax.enterprise:cdi-api:1.0-SP1", "javax.servlet:servlet-api:2.5", "javax.faces:jsf-api:2.0.0-RC", "javax.el:el-api:2.2", "org.slf4j:slf4j-api:1.5.8"
+	runtime "org.jboss.weld:weld-core:1.0.1-SP1"
+
+	testCompile "org.testng:testng:5.12.1", "org.jboss.shrinkwrap:shrinkwrap-api:1.0.0-alpha-11", "org.jboss.arquillian:arquillian-testng:1.0.0.Alpha4", "org.jboss.arquillian:arquillian-api:1.0.0.Alpha4"
+
+	testRuntime "org.slf4j:slf4j-simple:1.5.8", "org.jboss.arquillian.container:arquillian-jbossas-remote-6:1.0.0.Alpha4", "org.jboss.jbossas:jboss-as-client:6.0.0.20100911-M5"
+}
+
+manifest.mainAttributes('Created-By': System.properties['java.runtime.version'] + ' (' + System.properties['java.vm.vendor'] + ')',
+						'Implementation-Title': 'weld-gradle',
+						'Implementation-Version': version,
+						'Implementation-Vendor': 'www.lxw.org')
+
+test {
+	useTestNG()
+}apply from: 'liquibase.gradle'
+
+task copyFiles(type: Copy) {
+  from 'resources'
+  into 'target'
+  include '**/*.xml', '**/*.txt', '**/*.properties'
+}apply plugin: 'java'
+
+println "Hello at the top level in the configuration phase"
+
+copy {
+    from 'before'
+    into 'after'
+}
+task createDatabase(type: MySqlTask) {
+  sql = 'CREATE DATABASE IF NOT EXISTS example'
+}
+
+task createUser(type: MySqlTask, dependsOn: createDatabase) {
+  sql = "GRANT ALL PRIVILEGES ON example.* TO exampleuser@localhost IDENTIFIED BY 'passw0rd'"
+}
+
+task createTable(type: MySqlTask, dependsOn: createUser) {
+  username = 'exampleuser'
+  password = 'passw0rd'
+  database = 'example'
+  sql = 'CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, username VARCHAR(100))'
+}
+task createDatabase(type: MySqlTask) {
+  sql = 'CREATE DATABASE IF NOT EXISTS example'
+}
+
+task createUser(type: MySqlTask, dependsOn: createDatabase) {
+  sql = "GRANT ALL PRIVILEGES ON example.* TO exampleuser@localhost IDENTIFIED BY 'passw0rd'"
+}
+
+task createTable(type: MySqlTask, dependsOn: createUser) {
+  username = 'exampleuser'
+  password = 'passw0rd'
+  database = 'example'
+  sql = 'CREATE TABLE IF NOT EXISTS users (id BIGINT PRIMARY KEY, username VARCHAR(100))'
+}
+
+class MySqlTask extends DefaultTask {
+  def hostname = 'localhost'
+  def port = 3306
+  def sql
+  def database
+  def username = 'root'
+  def password = 'password'
+  
+  @TaskAction
+  def runQuery() {
+    def cmd
+    if(database) {
+      cmd = "mysql -u ${username} -p${password} -h ${hostname} -P ${port} ${database} -e "
+    }
+    else {
+      cmd = "mysql -u ${username} -p${password} -h ${hostname} -P ${port} -e "
+    }
+    project.exec {
+      commandLine = cmd.split().toList() + sql
+    }
+  }
+}apply plugin: 'java'
+
+task customJar(type: Jar) {
+  manifest {
+    attributes firstKey: 'firstValue', secondKey: 'secondValue'
+  }
+  archiveName = 'hello.jar'
+  destinationDir = file("${buildDir}/jars")
+  from sourceSets.main.output
+}
+apply plugin: 'java'
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  compile 'commons-codec:commons-codec:1.5'
+}
+
+task encode(type: JavaExec, dependsOn: classes) {
+  main = 'org.gradle.example.commandline.MetaphoneEncoder'
+  args = "The rain in Spain falls mainly in the plain".split().toList()
+  classpath sourceSets.main.output.classesDir
+  classpath configurations.runtime
+}
+apply plugin: 'groovy'
+
+repositories {
+	mavenCentral()
+}
+
+dependencies {
+//    groovy 'org.codehaus.groovy:groovy:1.7.10'
+    testCompile ('org.easyb:easyb:0.9.8') 
+	testCompile 'org.codehaus.geb:geb-core:0.5.1'
+	testCompile 'org.codehaus.geb:geb-easyb:0.5.1'
+	testCompile 'org.seleniumhq.selenium:selenium-htmlunit-driver:2.0a7'
+}
+
+test.doLast {
+   ant.taskdef(name: "easyb", classname:"org.easyb.ant.BehaviorRunnerTask", classpath: sourceSets.test.runtimeClasspath.asPath)
+
+    ant.easyb( classpath: sourceSets.test.runtimeClasspath.asPath, failureProperty:'easyb_failed' ) {
+        report( location:"${project.testResultsDir}/story.html", format:"html" )
+        behaviors( dir: "src/test/stories" ) {
+            include( name:"**/*.story" )
+        }
+   }
+
+   ant.fail( if:'easyb_failed', message: 'Failures in easyb stories') 
+}
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.8.2'
+}
+
+test {
+   include '**/Test*.*'
+}
+
+task integrationTest(type: Test, dependsOn: "test") << {
+   include '**/IntegrationTest*.*'
+}
+
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.8.2'
+}
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile 'junit:junit:4.8.2'
+}
+
+test {
+    maxParallelForks = 5
+    forkEvery = 50
+}
+apply plugin: "groovy"
+
+repositories {
+  mavenCentral()
+}
+
+dependencies {
+  groovy("org.codehaus.groovy:groovy-all:1.7.5")
+  testCompile "org.spockframework:spock-core:0.5-groovy-1.7"
+
+  // dependencies used by examples in this project
+  //  (not required for using Spock)
+  testRuntime "com.h2database:h2:1.2.147"
+}
+apply plugin: 'java'
+
+repositories {
+    mavenCentral()
+}
+
+test {
+    useTestNG()
+}
+
+dependencies {
+    testCompile 'org.testng:testng:6.0.1'
+}
+apply plugin: 'jetty'
+
+configurations {
+  provided
+}
+
+dependencies {
+  provided 'javax.servlet:servlet-api:2.4'
+  compile configurations.provided
+}
+
+repositories {
+  mavenCentral()
+}
+apply plugin: 'java'
+
+task wrapper(type: Wrapper) {
+  gradleVersion = '1.0-milestone-6'
+}

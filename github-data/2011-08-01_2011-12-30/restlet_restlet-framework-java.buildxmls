@@ -1,0 +1,2218 @@
+﻿<?xml version="1.0"?>
+
+<!-- ============================================================
+     Restlet Framework build script - Copyright 2005-2014 Restlet
+     ============================================================ -->
+
+<project name="Restlet Framework - Master" default="rebuild">
+	<!-- ============================ -->
+	<!-- ===  Properties setting  === -->
+	<!-- ============================ -->
+
+	<!-- Load system specific properties -->
+	<property file="custom.properties" />
+
+	<!-- Load default properties -->
+	<property file="build.properties" />
+
+	<!-- General properties -->
+	<!-- Increment the build number -->
+	<buildnumber />
+
+	<!-- Current year -->
+	<tstamp>
+		<format property="current-year" pattern="yyyy" />
+	</tstamp>
+
+	<!-- Maven time stamp -->
+	<tstamp>
+		<format property="maven-snapshot-timestamp" pattern="yyyyMMdd.HHmmss" />
+	</tstamp>
+
+	<tstamp>
+		<format property="build.date" pattern="yyyyMMdd-HHmm" />
+	</tstamp>
+
+	<!-- Location properties -->
+	<property name="tools" location="tools" />
+	<property name="dist" location="dist" />
+	<property name="temp" location="temp" />
+	<property name="tmpl" location="tmpl" />
+	<property name="editions-dir" location="editions" />
+	<property name="modules" location="../modules" />
+	<property name="libs" location="../libraries" />
+
+	<!-- Version properties -->
+	<loadproperties srcFile="${tmpl}/config/version.${meta.release-type}.properties">
+		<filterchain>
+			<expandproperties/>
+		</filterchain>
+	</loadproperties>
+
+	<property name="parent-maven-groupId" value="org.restlet" />
+	<property name="parent-maven-artifactId" value="org.restlet.parent" />
+	<property name="parent-maven-version" value="${version-maven}" />
+	<property name="eclipse-version-suffix" value="v${build.date}" />
+	<property name="eclipse-version-full" value="${version-manifest-prefix}${eclipse-version-suffix}" />
+
+	<!-- Set the property that will enable the generation of miscellaneous files -->
+	<condition property="do-miscgeneration">
+		<istrue value="${miscgeneration}" />
+	</condition>
+
+	<!-- ======================= -->
+	<!-- ===  Paths setting  === -->
+	<!-- ======================= -->
+	<path id="forge-path">
+		<fileset dir="${tools}/forge" includes="**/*.jar" />
+	</path>
+	<path id="fmpp-path">
+		<fileset dir="${tools}/fmpp" includes="**/*.jar" />
+	</path>
+	<path id="bnd-path">
+		<fileset dir="${tools}/bnd" includes="**/*.jar" />
+	</path>
+
+	<!-- =================== -->
+	<!-- ===  Ant Tasks  === -->
+	<!-- =================== -->
+
+	<!-- Ant Contrib -->
+	<taskdef resource="net/sf/antcontrib/antcontrib.properties">
+		<classpath>
+			<fileset dir="${tools}/ant-contrib" includes="**/*.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- FMPP (FreeMarker-based text file PreProcessor) -->
+	<taskdef name="fmpp" classname="fmpp.tools.AntTask">
+		<classpath>
+			<path refid="fmpp-path" />
+			<path refid="forge-path" />
+		</classpath>
+	</taskdef>
+
+	<!-- BND (handling of OSGI bundles) -->
+	<taskdef resource="aQute/bnd/ant/taskdef.properties" classpathref="bnd-path" />
+
+	<!-- Project checker -->
+	<taskdef name="projectChecker" classname="checker.ProjectChecker">
+		<classpath>
+			<fileset dir="${tools}/fmpp" includes="**/*.jar" />
+			<fileset dir="${tools}/forge" includes="**/*.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- Check the project configuration 
+	<projectChecker rootDir="../" maven="${maven}" verbose = "${verbose}" />-->
+
+	<!-- = = = = = = = = = = = = = = = = =
+          macrodef: generate-edition          
+         = = = = = = = = = = = = = = = = = -->
+	<macrodef name="generate-edition" description="Generate the source code for a target edition.">
+		<attribute name="edition" />
+		<sequential>
+			<mkdir dir="${editions-dir}/@{edition}" />
+			<!-- Generate the properties files -->
+			<fmpp sourceroot="${tmpl}/editions" outputroot="${editions-dir}/@{edition}" dataroot="${basedir}" includes="*.properties">
+				<data expandproperties="true">
+					values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+					project: get(values, "project")
+					editions: get(values, "editions")
+    				editionKey: @{edition}
+    				edition: get(editions, @{edition})
+					currentYear: ${current-year}
+    			</data>
+			</fmpp>
+			<!-- Generate the dependencies.txt file -->
+			<fmpp sourceroot="${tmpl}/text" outputroot="${editions-dir}/@{edition}" dataroot="${basedir}" includes="dependencies.txt">
+				<data expandproperties="true">
+					values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+					project: get(values, "project")
+					editions: get(values, "editions")
+					editionKey: @{edition}
+    				edition: get(editions, @{edition})
+					currentYear: ${current-year}
+    			</data>
+			</fmpp>
+			<!-- Generate the POM files. -->
+			<echo message="Generate the POM files" />
+			<fmpp sourceroot="${tmpl}/editions" outputroot="${editions-dir}/@{edition}/poms" dataroot="${basedir}" includes="*pom.tmpl">
+				<data expandproperties="true">
+					values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+					project: get(values, "project")
+					editions: get(values, "editions")
+					editionKey: @{edition}
+    				edition: get(editions, @{edition})
+					currentYear: ${current-year}
+					ant: antProperties()
+    			</data>
+			</fmpp>
+
+			<move file="${editions-dir}/@{edition}/poms/org.restlet.parent.pom.tmpl" tofile="${editions-dir}/@{edition}/poms/org.restlet.parent.pom" />
+			<!-- Process the build.xml file. -->
+			<loadfile property="paths" srcFile="${tmpl}/editions/paths.tmpl" />
+			<loadfile property="generate-sources" srcFile="${tmpl}/editions/generate-sources.tmpl" />
+			<loadfile property="generate-javadocs" srcFile="${tmpl}/editions/javadocs.tmpl" />
+			<loadfile property="generate-mavenjavadocs" srcFile="${tmpl}/editions/maven-javadocs.tmpl" />
+			<loadfile property="stage-modules" srcFile="${tmpl}/editions/stage-modules.tmpl" />
+			<loadfile property="stage-extras" srcFile="${tmpl}/editions/stage-extras.tmpl" />
+			<loadfile property="generate-classes-extras" srcFile="${tmpl}/editions/generate-classes-extras.tmpl" />
+			<!-- Pre-process the build file since ant and freemarker shares the same syntax. -->
+			<copy file="${tmpl}/editions/build.xml" tofile="${editions-dir}/@{edition}/build.tmpl" overwrite="true">
+				<filterchain>
+					<replaceregex pattern="\$\{" replace="*DOLLAR*{" flags="g" />
+					<replacestring from="@edition@" to="Edition for ${edition.mediumLabel}" />
+					<!-- nb: ant tokens can't contain "<" characters -->
+					<replacestring from="@paths@" to="${paths}" />
+					<replacestring from="@generate-sources@" to="${generate-sources}" />
+					<replacestring from="@generate-javadocs@" to="${generate-javadocs}" />
+					<replacestring from="@generate-mavenjavadocs@" to="${generate-mavenjavadocs}" />
+					<replacestring from="@stage-modules@" to="${stage-modules}" />
+					<replacestring from="@stage-extras@" to="${stage-extras}" />
+					<replacestring from="@generate-classes-extras@" to="${generate-classes-extras}" />
+				</filterchain>
+			</copy>
+			<!-- Process it as a Freemarker template. -->
+			<fmpp sourcefile="${editions-dir}/@{edition}/build.tmpl" outputfile="${editions-dir}/@{edition}/build.xml" dataroot="${basedir}" expert="true">
+				<data expandproperties="true">
+					values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+					project: get(values, "project")
+					editions: get(values, "editions")
+    				editionKey: @{edition}
+    				edition: get(editions, @{edition})
+					currentYear: ${current-year}
+    			</data>
+			</fmpp>
+			<delete file="${editions-dir}/@{edition}/build.tmpl" />
+			<!-- Post-process the build file since ant and freemarker share the same syntax. -->
+			<replace file="${editions-dir}/@{edition}/build.xml" token="*DOLLAR*" value="$" />
+
+			<copy file="build.properties" todir="${editions-dir}/@{edition}" overwrite="true" />
+			<echo append="true" file="${editions-dir}/@{edition}/build.properties">
+				build.number: ${build.number}
+				eclipse-version-full: ${eclipse-version-full}
+			</echo>
+			<copy file="custom.properties" todir="${editions-dir}/@{edition}" overwrite="true" failonerror="false" />
+			<ant antfile="build.xml" target="generate-sources" dir="${editions-dir}/@{edition}/" inheritall="false" />
+		</sequential>
+	</macrodef>
+
+
+	<!-- = = = = = = = = = = = = = = = = =
+          macrodef: exec-edition          
+         = = = = = = = = = = = = = = = = = -->
+	<macrodef name="exec-edition" description="Executes a task for a target edition">
+		<attribute name="edition" />
+		<attribute name="target" default="build" />
+		<sequential>
+			<for param="task" delimiter=" " list="@{target}">
+				<sequential>
+					<if>
+						<available file="${editions-dir}/@{edition}/build.xml" property="build.@{edition}.present" />
+						<then>
+							<ant antfile="build.xml" target="@{task}" dir="${editions-dir}/@{edition}/" inheritall="false">
+								<property name="build.number" value="${build.number}" />
+								<property name="eclipse-version-full" value="${eclipse-version-full}" />
+							</ant>
+						</then>
+					</if>
+				</sequential>
+			</for>
+		</sequential>
+	</macrodef>
+
+	<!-- = = = = = = = = = = = = = = = = =
+          Definition of targets          
+         = = = = = = = = = = = = = = = = = -->
+	<target name="generate-misc" if="do-miscgeneration" description="Generates miscellaneous files.">
+		<delete dir="${temp}/misc" />
+		<!-- Generate editions matrix file -->
+		<fmpp sourceroot="${tmpl}/text" outputroot="${temp}/misc" dataroot="${basedir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				editions: get(values, "editions")
+				ant: antProperties()
+			</data>
+			<include name="editionsMatrix.txt" />
+		</fmpp>
+		<!-- Generate modules/type file -->
+		<fmpp sourceroot="${tmpl}/text" outputroot="${temp}/misc" dataroot="${basedir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				editions: get(values, "editions")
+			</data>
+			<include name="mcs.properties" />
+		</fmpp>
+		<!-- prepare the common time stamp for the maven distribution -->
+		<!-- Revision number -->
+		<mkdir dir="${temp}" />
+		<!-- Snapshot? -->
+		<condition property="is.snapshot" else="false">
+			<contains string="${version-maven}" substring="-SNAPSHOT" />
+		</condition>
+		<echo message="maven-timestamp:${maven-snapshot-timestamp}${line.separator}" file="${temp}/snapshot.properties" append="false" />
+		<echo message="svn-revision:" file="${temp}/snapshot.properties" append="true" />
+		<exec executable="git" output="${temp}/snapshot.properties" append="true">
+			<arg line="rev-list --max-count=1 HEAD" />
+		</exec>
+		<echo message="${line.separator}" file="${temp}/snapshot.properties" append="true" />
+	</target>
+
+	<!-- CLEAN target -->
+	<target name="clean" description="Clean the staging area.">
+		<!-- Remove final distribution directory. -->
+		<delete includeEmptyDirs="true" verbose="false" quiet="false" failonerror="false">
+			<fileset dir="${dist}" />
+		</delete>
+		<!-- Remove temp directory. -->
+		<delete includeEmptyDirs="true" verbose="false" quiet="false" failonerror="false">
+			<fileset dir="${temp}" />
+		</delete>
+		<!-- Remove editions temp and dist directory. -->
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<exec-edition edition="@{edition}" target="clean" />
+			</sequential>
+		</for>
+	</target>
+
+
+	<!-- CLEAN-FULL target -->
+	<target name="clean-full" depends="clean, clean-editions" description="Clean the working area" />
+
+	<!-- CLEAN-EDITIONS target -->
+	<target name="clean-editions" description="Clean the editions root directory">
+		<delete includeEmptyDirs="true" verbose="false" quiet="false" failonerror="false">
+			<fileset dir="${editions-dir}" includes="*/**" excludes="readme.txt" />
+		</delete>
+	</target>
+
+	<target name="build" description="Build the editions without generating the source code.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<echo message="Build the edition @{edition}" />
+				<exec-edition edition="@{edition}" target="build" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="rebuild" depends="clean-full, generate, build" description="Clean the temp files, regenerate the source code and build the editions." />
+
+	<target name="generate" depends="generate-misc" description="Regenerate the source code.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<echo message="Generate the source code of the edition @{edition}" />
+				<generate-edition edition="@{edition}" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="generate-javadocs" description="Regenerate the javadocs of the editions.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<echo message="Generate javadocs of the edition @{edition}" />
+				<exec-edition edition="@{edition}" target="generate-javadocs" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="regenerate" depends="clean-editions, generate" description="Clean and regenerate the source code." />
+
+	<target name="verify" description="Verify editions.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<exec-edition edition="@{edition}" target="verify" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="verify-checkstyle" description="Verify editions.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<exec-edition edition="@{edition}" target="verify-checkstyle" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="verify-findbugs" description="Verify editions.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<exec-edition edition="@{edition}" target="verify-findbugs" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="verify-tests" description="Verify editions.">
+		<for param="edition" delimiter="," list="${editions}" trim="true">
+			<sequential>
+				<exec-edition edition="@{edition}" target="verify-tests" />
+			</sequential>
+		</for>
+	</target>
+
+</project>
+﻿<?xml version="1.0"?>
+
+<!-- ============================================================
+     Restlet Framework build script - Copyright 2005-2014 Restlet
+     ============================================================ -->
+
+<project name="Restlet Framework - @edition@" default="rebuild">
+	<!-- ============================ -->
+	<!-- ===  Properties setting  === -->
+	<!-- ============================ -->
+
+	<!-- Load system specific properties -->
+	<property file="custom.properties" />
+
+	<!-- Load default properties -->
+	<property file="build.properties" />
+
+	<!-- Library properties -->
+	<property file="libraries.properties" />
+
+	<!-- Module properties -->
+	<property file="modules.properties" />
+
+	<!-- Edition properties -->
+	<property file="edition.properties" />
+
+	<!-- General properties -->
+	<property name="author" value="Jerome Louvel" />
+	<property name="vendor" value="Restlet" />
+	<property name="excludes" value="**/.emptyDir **/package.html **/overview.html" />
+
+	<!-- Location properties -->
+	<property name="tools" location="../../tools" />
+	<property name="bin" location="../../bin" />
+	<property name="tmpl" location="../../tmpl" />
+	<property name="build-dir" location="../../../build" />
+	<property name="libs" location="../../../libraries" />
+	<property name="mods" location="../../../modules" />
+	<property name="temp" location="${basedir}/temp" />
+	<property name="temp-base" location="../../temp" />
+	<property name="dist-base" location="dist" />
+	<property name="final-dist-base" location="../../dist" />
+	<property name="images" location="../../images" />
+	<property name="pom-mods" location="modules" />
+	<property name="mod" location="modules" />
+	<property name="lib" location="libraries" />
+	<property name="poms" location="poms" />
+
+	<!-- Version properties -->
+	<loadproperties srcFile="${tmpl}/config/version.${meta.release-type}.properties">
+		<filterchain>
+			<expandproperties/>
+		</filterchain>
+	</loadproperties>
+
+	<!-- Miscellaneous Maven properties -->
+	<property name="mod-maven-groupId" value="org.restlet.${edition}" />
+	<property name="parent-maven-groupId" value="org.restlet.${edition}" />
+	<property name="parent-maven-artifactId" value="org.restlet.parent" />
+	<property name="parent-maven-version" value="${version-maven}" />
+
+	<property name="dist-path" value="restlet-${edition}-${version-compact}" />
+	<property name="final-dist-path" value="restlet-${version-compact}" />
+	<property name="jdk1.4-home" value="jdk1.4-home" />
+
+	<property name="dist-classic" location="${dist-base}/classic/${dist-path}" />
+	<property name="dist-eclipse" location="${dist-base}/eclipse/${dist-path}" />
+	<property name="dist-maven2" location="${dist-base}/maven2/${dist-path}" />
+	<property name="dist-p2" location="${dist-base}/p2/${dist-path}" />
+	<property name="classes" location="${temp}/classes" />
+	<property name="docs" location="${temp}/docs" />
+	<property name="docs-api" location="${docs}/api" />
+	<property name="docs-engine" location="${docs}/engine" />
+	<property name="docs-ext" location="${docs}/ext" />
+	<property name="uml-reports" location="${temp}/uml-reports" />
+	<property name="uml-reports-api" location="${uml-reports}/api" />
+	<property name="icons" location="${images}/ico" />
+	<property name="final-dist-classic" location="${final-dist-base}/classic/${final-dist-path}/${edition}" />
+	<property name="final-dist-eclipse" location="${final-dist-base}/eclipse/${final-dist-path}/${edition}" />
+	<property name="final-dist-maven2" location="${final-dist-base}/maven2/${final-dist-path}" />
+	<property name="final-dist-p2" location="${final-dist-base}/p2/${final-dist-path}" />
+
+	<!-- Create the time stamp -->
+	<tstamp>
+		<format property="release-date" pattern="yyyy-MM-dd" />
+	</tstamp>
+
+	<!-- Current year -->
+	<tstamp>
+		<format property="current-year" pattern="yyyy" />
+	</tstamp>
+
+	<!-- Used for all string replacement operations  -->
+	<echo file="filterset.properties">
+		version-full: ${version-full}
+		version-compact: ${version-compact}
+		version-minor: ${version-minor}
+		release-date: ${release-date}
+		icons-dir: ${icons}
+		images-dir: ${images}
+		license-dir: ${dist-classic}
+		dist: ${dist-classic}
+		dist-base: ${dist-base}
+		edition: ${edition}
+		edition-full-label: ${edition-full-label}
+		edition-medium-label: ${edition-medium-label}
+		edition-short-label: ${edition-short-label}	
+		parent-group-id: ${parent-maven-groupId}
+		parent-artifact-id: ${parent-maven-artifactId}
+		parent-version: ${parent-maven-version}
+		group-id: ${mod-maven-groupId}
+	</echo>
+
+	<condition property="ant-old">
+		<not>
+			<or>
+				<contains string="${ant.version}" substring="version 1.8" />
+				<contains string="${ant.version}" substring="version 1.9" />
+			</or>
+		</not>
+	</condition>
+
+	<!-- Set the property that will enable the Javadoc target -->
+	<condition property="do-javadoc">
+		<istrue value="${javadoc}" />
+	</condition>
+
+	<!-- Set the property that will enable the FindBugs target -->
+	<condition property="do-findbugs">
+		<and>
+			<istrue value="${findbugs}" />
+			<istrue value="${verify}" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the CheckStyle target -->
+	<condition property="do-checkstyle">
+		<and>
+			<istrue value="${checkstyle}" />
+			<istrue value="${verify}" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the Nsis target -->
+	<condition property="do-nsis">
+		<and>
+			<istrue value="${nsis}" />
+			<istrue value="${package}" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the stage-maven target -->
+	<condition property="do-maven">
+		<istrue value="${maven}" />
+	</condition>
+
+	<!-- Set the property that will enable the verify target -->
+	<condition property="do-verify">
+		<and>
+			<istrue value="${verify}" />
+			<isset property="mod-core-test-id" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the package target -->
+	<condition property="do-package">
+		<istrue value="${package}" />
+	</condition>
+
+	<!-- Set the property that indicates that the edition uses bundles for OSGi and PDE eclipse plugin -->
+	<condition property="do-eclipse-pde">
+		<and>
+			<istrue value="${eclipse-pde}" />
+			<isset property="modules-p2" />
+			<isset property="libraries-p2" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the stage-p2 target -->
+	<condition property="do-p2">
+		<and>
+			<istrue value="${p2}" />
+			<istrue value="${do-eclipse-pde}" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the package target -->
+	<condition property="do-package-p2">
+		<and>
+			<istrue value="${do-p2}" />
+			<istrue value="${package}" />
+		</and>
+	</condition>
+
+	<!-- Set the property that will enable the package target -->
+	<condition property="do-package-maven">
+		<and>
+			<istrue value="${do-maven}" />
+			<istrue value="${package}" />
+		</and>
+	</condition>
+	
+	<!-- Set the property that will enable the generation of the Javadoc of implementation classes -->
+	<condition property="exclude-packages" value="">
+		<isfalse value="${javadoc-hide}" />
+	</condition>
+	<condition property="exclude-packages" value="**.internal.*">
+		<istrue value="${javadoc-hide}" />
+	</condition>
+
+	<!-- Set the debug level property -->
+	<condition property="debuglevel" value="source,lines,vars">
+		<and>
+			<istrue value="${debug-source}" />
+			<istrue value="${debug-lines}" />
+			<istrue value="${debug-vars}" />
+		</and>
+	</condition>
+	<condition property="debuglevel" value="source,lines">
+		<and>
+			<istrue value="${debug-source}" />
+			<istrue value="${debug-lines}" />
+			<isfalse value="${debug-vars}" />
+		</and>
+	</condition>
+	<condition property="debuglevel" value="source,vars">
+		<and>
+			<istrue value="${debug-source}" />
+			<isfalse value="${debug-lines}" />
+			<istrue value="${debug-vars}" />
+		</and>
+	</condition>
+	<condition property="debuglevel" value="lines,vars">
+		<and>
+			<isfalse value="${debug-source}" />
+			<istrue value="${debug-lines}" />
+			<istrue value="${debug-vars}" />
+		</and>
+	</condition>
+	<condition property="debuglevel" value="lines">
+		<and>
+			<isfalse value="${debug-source}" />
+			<istrue value="${debug-lines}" />
+			<isfalse value="${debug-vars}" />
+		</and>
+	</condition>
+	<condition property="debuglevel" value="vars">
+		<and>
+			<isfalse value="${debug-source}" />
+			<isfalse value="${debug-lines}" />
+			<istrue value="${debug-vars}" />
+		</and>
+	</condition>
+
+	<condition property="bundle.libraries.optional.dependencies" value="true">
+		<and>
+			<istrue value="${do-eclipse-pde}" />
+			<istrue value="${eclipse-pde-optional-dependencies}" />
+		</and>
+	</condition>
+
+	<!-- ======================= -->
+	<!-- ===  Paths setting  === -->
+	<!-- ======================= -->
+
+	<!-- Include the definition of paths regarding edition modules -->
+	<!-- @paths@ -->
+	<path id="path-none" />
+	<path id="forge-path">
+		<fileset dir="${tools}/forge" includes="**/*.jar" />
+	</path>
+	<path id="bnd-path">
+		<fileset dir="${tools}/bnd" includes="**/*.jar" />
+	</path>
+
+	<!-- =================== -->
+	<!-- ===  Ant Tasks  === -->
+	<!-- =================== -->
+
+	<!-- Findbugs -->
+	<taskdef name="findbugs" classname="edu.umd.cs.findbugs.anttask.FindBugsTask">
+		<classpath>
+			<pathelement location="${tools}/findbugs/lib/findbugs-ant.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- Checkstyle -->
+	<taskdef resource="checkstyletask.properties">
+		<classpath>
+			<pathelement location="${tools}/checkstyle/checkstyle-all-4.2.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- NSIS 1.3 -->
+	<taskdef name="nsis" classname="net.sf.nsisant.Task">
+		<classpath>
+			<pathelement location="${tools}/nsis/nsisant-1.3.custom.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- Ant Contrib -->
+	<taskdef resource="net/sf/antcontrib/antcontrib.properties">
+		<classpath>
+			<fileset dir="${tools}/ant-contrib" includes="**/*.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- FMPP (FreeMarker-based text file PreProcessor) -->
+	<taskdef name="fmpp" classname="fmpp.tools.AntTask">
+		<classpath>
+			<fileset dir="${tools}/fmpp" includes="**/*.jar" />
+			<fileset dir="${tools}/forge" includes="**/*.jar" />
+		</classpath>
+	</taskdef>
+	<!-- Gae Code checker -->
+	<taskdef name="gaeCodeChecker" classname="checker.GaeCodeChecker">
+		<classpath>
+			<fileset dir="${tools}/forge" includes="**/*.jar" />
+		</classpath>
+	</taskdef>
+
+	<!-- BND (handling of OSGI bundles) -->
+	<taskdef resource="aQute/bnd/ant/taskdef.properties" classpathref="bnd-path" />
+
+	<!-- ==================== -->
+	<!-- ===  Ant Macros  === -->
+	<!-- ==================== -->
+
+	<!-- Compile using preferences -->
+	<macrodef name="compile">
+		<attribute name="source" default="${jdk.compilation.version}" />
+		<attribute name="target" default="${jdk.compilation.version}" />
+		<attribute name="debug" default="${debug}" />
+		<attribute name="debuglevel" default="${debuglevel}" />
+		<attribute name="optimize" default="${optimize}" />
+		<attribute name="srcdir" />
+		<attribute name="destdir" />
+		<attribute name="classpathref" default="path-none" />
+		<attribute name="includes" default="*/**" />
+		<attribute name="excludes" default="" />
+		<attribute name="verbose" default="${verbose}" />
+		<sequential>
+			<mkdir dir="@{destdir}" />
+			<javac target="@{target}" source="@{source}" debug="@{debug}" deprecation="false" encoding="UTF-8" debuglevel="@{debuglevel}" optimize="@{optimize}" verbose="@{verbose}" srcdir="@{srcdir}" destdir="@{destdir}" includes="@{includes}" excludes="@{excludes}" bootclasspath="${custombootclasspath}" includeantruntime="false">
+				<classpath refid="@{classpathref}" />
+			</javac>
+		</sequential>
+	</macrodef>
+
+	<macrodef name="gwtCompileModule">
+		<attribute name="name" />
+		<attribute name="module" />
+		<sequential>
+			<java classname="com.google.gwt.dev.Compiler" fork="true" failonerror="true">
+				<classpath>
+					<path refid="mod-@{name}-path">
+					</path>
+					<pathelement path="${mod}/${mod-@{name}-id}/src" />
+				</classpath>
+				<arg value="-validateOnly" />
+				<arg value="-strict" />
+				<arg value="@{module}" />
+			</java>
+		</sequential>
+	</macrodef>
+
+	<!-- Compile a module -->
+	<macrodef name="compileModule">
+		<attribute name="name" />
+		<sequential>
+			<compile srcdir="${mod}/${mod-@{name}-id}/src" destdir="${classes}/${mod-@{name}-id}" classpathref="mod-@{name}-path" excludes="${mod-@{name}-compile-excludes}" />
+		</sequential>
+	</macrodef>
+
+	<!-- Find bugs in a module -->
+	<macrodef name="findbugsModule">
+		<attribute name="name" />
+		<sequential>
+			<findbugs debug="false" home="${tools}/findbugs" output="html" outputFile="${temp}/findbugs/${mod-@{name}-id}-fb.html">
+				<auxClasspath refid="mod-@{name}-path" />
+				<sourcePath path="${mod}/${mod-@{name}-id}/src" />
+				<class location="${classes}/${mod-@{name}-id}" />
+			</findbugs>
+		</sequential>
+	</macrodef>
+
+	<!-- Check style of a module -->
+	<macrodef name="checkstyleModule">
+		<attribute name="name" />
+		<sequential>
+			<checkstyle config="checks.xml" failOnViolation="false">
+				<fileset dir="${mod}/${mod-@{name}-id}/src" includes="**/*.java" />
+				<!-- Location of cache-file. Something that is project specific -->
+				<property key="checkstyle.cache.file" file="${temp}/checkstyle/cachefile" />
+				<formatter type="xml" tofile="${temp}/checkstyle/${mod-@{name}-id}-cs.xml" />
+			</checkstyle>
+			<xslt in="${temp}/checkstyle/${mod-@{name}-id}-cs.xml" out="${temp}/checkstyle/${mod-@{name}-id}-cs.html" style="checks.xsl" />
+		</sequential>
+	</macrodef>
+
+	<!-- Package a library -->
+	<macrodef name="stageLibrary">
+		<!-- Package a library -->
+		<attribute name="name" />
+		<sequential>
+			<!-- Create a destination directory -->
+			<mkdir dir="${dist-classic}/lib/${lib-@{name}-root}" />
+
+			<!-- Copy all library content into the destination folder -->
+			<copy todir="${dist-classic}/lib/${lib-@{name}-root}">
+				<fileset dir="${libs}/${lib-@{name}-root}" excludes="bin, .classpath, .project, build.properties" />
+			</copy>
+		</sequential>
+	</macrodef>
+
+	<!-- Generate a manifest.mf file for a module -->
+	<macrodef name="generateModuleManifest">
+		<attribute name="name" description="name of the module" />
+		<attribute name="dir" description="The path of the directory where to generate the META-INF/MANIFEST.MF file" />
+		<attribute name="source" default="false" description="'true' to just declare the list of required bundles in the manifest file using the 'Require-Bundle' attribute - fine for development. 'false' to generate a manifest file without the 'Require-Bundle' attribute " />
+		<sequential>
+			<!-- Create the Manifest -->
+			<mkdir dir="@{dir}/META-INF" />
+			<delete failonerror="false" file="@{dir}/META-INF/MANIFEST.MF" />
+			<manifest file="@{dir}/META-INF/MANIFEST.MF">
+				<attribute id="Bundle-SymbolicName" name="Bundle-SymbolicName" value="${mod-@{name}-id}" />
+				<attribute id="Bundle-Version" name="Bundle-Version" value="${eclipse-version-full}" />
+				<attribute id="Bundle-Vendor" name="Bundle-Vendor" value="${vendor}" />
+				<attribute id="Bundle-RequiredExecutionEnvironment" name="Bundle-RequiredExecutionEnvironment" value="${bundle.required-execution-environment}" />
+				<section name="${mod-@{name}-id}">
+					<attribute name="Implementation-Title" value="${mod-@{name}-id}" />
+					<attribute name="Implementation-Version" value="${version-full} (build ${build.number})" />
+					<attribute name="Implementation-Vendor" value="${vendor}" />
+				</section>
+			</manifest>
+			<if>
+				<isset property="mod-@{name}-activator" />
+				<then>
+					<manifest file="@{dir}/META-INF/MANIFEST.MF" mode="update">
+						<attribute id="Bundle-Activator" name="Bundle-Activator" value="${mod-@{name}-activator}" />
+					</manifest>
+				</then>
+			</if>
+			<if>
+				<isset property="mod-@{name}-ds" />
+				<then>
+					<manifest file="@{dir}/META-INF/MANIFEST.MF" mode="update">
+						<attribute id="Service-Component" name="Service-Component" value="${mod-@{name}-ds}" />
+					</manifest>
+				</then>
+			</if>
+			<condition property="include-@{name}-pattern" value="org/restlet/test/**">
+				<equals arg1="@{name}" arg2="core-test" />
+			</condition>
+			<condition property="include-@{name}-pattern" value="org/restlet/**">
+				<equals arg1="@{name}" arg2="core" />
+			</condition>
+			<property name="include-@{name}-pattern" value="org/restlet/ext/@{name}/**" />
+			<dirset id="mod-@{name}-exported-packages" dir="${mod}/${mod-@{name}-id}/src">
+				<include name="${include-@{name}-pattern}" />
+				<!-- <exclude name="**/internal/**" /> -->
+			</dirset>
+			<pathconvert pathsep="," dirsep="." property="mod-@{name}-export-package" refid="mod-@{name}-exported-packages">
+				<map from="${mod}/${mod-@{name}-id}/src/" to='' />
+			</pathconvert>
+			<manifest file="@{dir}/META-INF/MANIFEST.MF" mode="update">
+				<attribute id="Export-Package" name="Export-Package" value="${mod-@{name}-export-package}" />
+			</manifest>
+			<if>
+				<equals arg1="@{source}" arg2="true" />
+				<then>
+					<manifest file="@{dir}/META-INF/MANIFEST.MF" mode="update">
+						<attribute id="Require-Bundle" name="Require-Bundle" value="${mod-@{name}-require-bundle}" />
+					</manifest>
+				</then>
+			</if>
+		</sequential>
+	</macrodef>
+
+	<!-- Package a module -->
+	<macrodef name="stageModule">
+		<attribute name="name" />
+		<attribute name="includeSource" default="false" />
+		<sequential>
+			<mkdir dir="${temp}/jar-extras/@{name}" />
+			<if>
+				<istrue value="${do-p2}" />
+				<then>
+					<pathconvert property="mod-@{name}-ds" dirsep="/" pathsep="," setonempty="false">
+						<map from="${mod}/${mod-@{name}-id}/" to=""/>
+						<fileset dir="${mod}/${mod-@{name}-id}/" includes="OSGI-INF/**" />
+					</pathconvert>
+					<generateModuleManifest name="@{name}" dir="${temp}/jar-extras/@{name}"/>
+				</then>
+			</if>
+			<copy todir="${temp}/jar-extras/@{name}" failonerror="false">
+				<fileset dir="${mod}/${mod-@{name}-id}/" includes="OSGI-INF/**" />
+			</copy>
+
+			<!-- Create plugin jar -->
+			<mkdir dir="${dist-classic}/lib" />
+			<condition property="source-exclude-patterns-@{name}" value="**/package.html, **/*.java">
+				<equals arg1="@{includeSource}" arg2="false" />
+			</condition>
+			<property name="source-exclude-patterns-@{name}" value="**/package.html" />
+			<delete failonerror="false" file="${dist-classic}/lib/${mod-@{name}-id}.jar" />
+			<jar destfile="${dist-classic}/lib/${mod-@{name}-id}.jar" filesetmanifest="merge">
+				<fileset dir="${classes}/${mod-@{name}-id}" />
+				<fileset dir="${temp}/jar-extras/@{name}" />
+				<fileset dir="${mod}/${mod-@{name}-id}/src" excludes="${source-exclude-patterns-@{name}}" />
+			</jar>
+			<!-- Update the manifest file -->
+			<if>
+				<istrue value="${do-p2}" />
+				<then>
+					<bndwrap jars="${dist-classic}/lib/${mod-@{name}-id}.jar" output="${dist-classic}/lib/${mod-@{name}-id}.jar" />
+				</then>
+			</if>
+
+			<!-- Create extension source jar file -->
+			<mkdir dir="${dist-classic}/src" />
+			<copy todir="${dist-classic}/src/${mod-@{name}-id}">
+				<fileset dir="${mod}/${mod-@{name}-id}/src" excludes="${excludes}" />
+			</copy>
+		</sequential>
+	</macrodef>
+
+	<!-- Generate the Maven 2.x files for a hosted library -->
+	<macrodef name="maven2Library">
+		<attribute name="name" />
+		<sequential>
+			<propertyregex property="lib-dir-@{name}-maven-groupId" input="${lib-@{name}-maven-groupId}" regexp="\." replace="/" global="true" casesensitive="false" />
+			<property name="lib-dir-@{name}-maven" value="${dist-maven2}/${lib-dir-@{name}-maven-groupId}/${lib-@{name}-maven-artifactId}/${lib-@{name}-maven-version}" />
+			<mkdir dir="${lib-dir-@{name}-maven}" />
+
+			<copy file="${libs}/${lib-@{name}-root}/${lib-@{name}-package}.jar" tofile="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.jar" overwrite="true" />
+			<copy file="${poms}/${lib-@{name}-package}.pom" tofile="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.pom" overwrite="true" />
+			<checksum file="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.jar" algorithm="MD5" fileext=".md5" />
+			<checksum file="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.jar" algorithm="SHA" fileext=".sha1" />
+			<checksum file="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.pom" algorithm="MD5" fileext=".md5" />
+			<checksum file="${lib-dir-@{name}-maven}/${lib-@{name}-maven-artifactId}-${lib-@{name}-maven-version}.pom" algorithm="SHA" fileext=".sha1" />
+		</sequential>
+	</macrodef>
+
+	<macrodef name="maven2Module">
+		<attribute name="name" />
+		<sequential>
+			<propertyregex property="mod-dir-maven-groupId" input="${mod-maven-groupId}" regexp="\." replace="/" global="true" casesensitive="false" />
+
+			<!-- All files generated from the modules are stamped with the current full version number -->
+			<property name="mod-dir-@{name}-maven" value="${dist-maven2}/${mod-dir-maven-groupId}/${mod-@{name}-id}/${version-maven}" />
+			<mkdir dir="${mod-dir-@{name}-maven}" />
+
+			<copy file="${dist-classic}/lib/${mod-@{name}-id}.jar" tofile="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.jar" overwrite="true" />
+
+			<jar destfile="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}-sources.jar" filesetmanifest="merge">
+				<fileset dir="${mod}/${mod-@{name}-id}/src" includes="**/*" />
+			</jar>
+			<!-- @generate-mavenjavadocs@ -->
+
+			<copy file="${poms}/${mod-@{name}-id}.pom" tofile="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.pom" overwrite="true" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.jar" algorithm="MD5" fileext=".md5" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.jar" algorithm="SHA" fileext=".sha1" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}-sources.jar" algorithm="MD5" fileext=".md5" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}-sources.jar" algorithm="SHA" fileext=".sha1" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.pom" algorithm="MD5" fileext=".md5" />
+			<checksum file="${mod-dir-@{name}-maven}/${mod-@{name}-id}-${version-maven}.pom" algorithm="SHA" fileext=".sha1" />
+
+		</sequential>
+	</macrodef>
+
+	<macrodef name="p22Module">
+		<attribute name="name" />
+		<sequential>
+			<!-- Generation of bundle and feature. -->
+			<copy file="${dist-classic}/lib/${mod-@{name}-id}.jar" tofile="${dist-p2}/plugins/${mod-@{name}-id}_${eclipse-version-full}.jar" />
+			<copy file="${temp}/p2/feature.@{name}.xml" tofile="${dist-p2}/features/feature.xml" />
+			<zip destfile="${dist-p2}/features/${mod-@{name}-id}_${eclipse-version-full}.jar" basedir="${dist-p2}/features" includes="feature.xml" update="false" />
+			<delete file="${dist-p2}/features/feature.xml" />
+			<!-- Generation of source bundle. -->
+			<delete dir="${temp}/@{name}" />
+			<mkdir dir="${temp}/@{name}" />
+			<copy todir="${temp}/@{name}" overwrite="true">
+				<fileset dir="${mod}/${mod-@{name}-id}/src" />
+			</copy>
+
+			<mkdir dir="${temp}/@{name}/META-INF" />
+			<manifest file="${temp}/@{name}/META-INF/MANIFEST.MF" mode="replace">
+				<attribute id="Eclipse-SourceBundle" name="Eclipse-SourceBundle" value="${mod-@{name}-id};version=${eclipse-version-full}" />
+				<attribute id="Bundle-SymbolicName" name="Bundle-SymbolicName" value="${mod-@{name}-id}.source" />
+				<attribute id="Bundle-Version" name="Bundle-Version" value="${eclipse-version-full}" />
+			</manifest>
+			<zip destfile="${dist-p2}/plugins/${mod-@{name}-id}.source_${eclipse-version-full}.jar" basedir="${temp}/@{name}" update="false" />
+			<delete dir="${temp}/@{name}" />
+		</sequential>
+	</macrodef>
+
+	<macrodef name="p22Library">
+		<attribute name="name" />
+		<sequential>
+			<copy todir="${dist-p2}/plugins" overwrite="true">
+				<fileset dir="${libs}/${lib-@{name}-root}" />
+				<mapper type="glob" from="*.jar" to="*_${eclipse-version-full}.jar" />
+			</copy>
+		</sequential>
+	</macrodef>
+
+	<!-- ===================== -->
+	<!-- ===  Ant Targets  === -->
+	<!-- ===================== -->
+
+	<!-- GENERAL targets -->
+	<target name="build" depends="generate, verify, integrate, stage, package" description="Full build." />
+	<target name="rebuild" depends="clean, generate, verify, integrate, stage, package" description="Full build from scratch." />
+
+	<!-- CLEAN target -->
+	<target name="clean" description="Clean the staging area.">
+		<delete includeEmptyDirs="true" verbose="false" quiet="false" failonerror="false">
+			<fileset dir="${dist-base}">
+				<include name="*/${dist-path}/**/*" />
+				<include name="*/${dist-path}" />
+			</fileset>
+		</delete>
+		<!-- Delete the classes and Javadoc directories, etc -->
+		<delete includeEmptyDirs="true" verbose="false" quiet="false" failonerror="false">
+			<fileset dir="${temp}" />
+		</delete>
+	</target>
+
+	<!-- GENERATE target -->
+	<target name="generate" depends="generate-classes, generate-templates, generate-javadocs" description="Generate files." />
+
+	<target name="generate-sources" description="Generate the sources.">
+		<!-- @generate-sources@ -->
+		<!-- Generate libraries -->
+		<if>
+			<istrue value="${do-eclipse-pde}" />
+			<then>
+				<copy todir="${lib}" overwrite="true" includeEmptyDirs="false">
+					<fileset dir="${libs}" />
+				</copy>
+				<antcall target="generate-modules-eclipse-artifacts" inheritall="true" />
+				<antcall target="generate-libraries-eclipse-artifacts" inheritall="true" />
+			</then>
+		</if>
+	</target>
+
+	<target name="generate-templates" description="Generate template-based files.">
+		<!-- Generate the Changes file -->
+		<copy file="${tmpl}/text/changes.txt" todir="${docs}" overwrite="true">
+			<filterset begintoken="@" endtoken="@" filtersfile="filterset.properties" />
+		</copy>
+
+		<!-- Generate the NSIS files -->
+		<copy file="${tmpl}/nsis/common.nsh" todir="${temp}" overwrite="true" />
+		<copy file="${tmpl}/nsis/setup.nsi" todir="${temp}" overwrite="true">
+			<filterset begintoken="@" endtoken="@" filtersfile="filterset.properties" />
+		</copy>
+	</target>
+
+	<target name="generate-libraries-eclipse-artifacts" if="do-eclipse-pde" description="Generates the manifest.mf files for the libraries">
+		<!-- Generate eclipse .classpath, .project, .properties files -->
+		<echo message="Generate eclipse .classpath, .project, .properties files" />
+		<fmpp sourceroot="${tmpl}/eclipse" outputroot="${lib}" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				ant: antProperties()
+			</data>
+			<include name="library.classpath.tmpl" />
+			<include name="library.project.tmpl" />
+			<include name="library.build.properties.tmpl" />
+		</fmpp>
+		<delete file="${lib}/library.classpath.tmpl" />
+		<delete file="${lib}/library.project.tmpl" />
+		<delete file="${lib}/library.build.properties.tmpl" />
+		<!-- Generate bnd definition files -->
+		<echo message="Generate bnd definition files" />
+		<copy file="${tmpl}/bundles/bndbis.bnd" todir="${temp}/definitions/libs" />
+		<fmpp sourceroot="${tmpl}/bundles" outputroot="${temp}/definitions/libs" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				ant: antProperties()
+			</data>
+			<include name="bndLibrary.tmpl" />
+		</fmpp>
+		<delete file="${temp}/definitions/libs/bndLibrary.tmpl" />
+		<fmpp sourceroot="${tmpl}/bundles" outputroot="${temp}/definitions/libs" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				ant: antProperties()
+			</data>
+			<include name="bndGlobalLibrary.tmpl" />
+		</fmpp>
+		<delete file="${temp}/definitions/libs/bndGlobalLibrary.tmpl" />
+
+		<!-- Generate ant manifest generation script -->
+		<echo message="Generate ant manifest generation script" />
+		<fmpp sourcefile="${tmpl}/bundles/extractmanifestLibrary.tmpl" outputfile="${lib}/extractmanifestLibrary.xml" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				ant: antProperties()
+			</data>
+		</fmpp>
+		<ant antfile="${lib}/extractmanifestLibrary.xml" dir="${lib}" inheritAll="true" />
+		<delete file="${lib}/extractmanifestLibrary.tmpl" />
+	</target>
+
+	<target name="generate-modules-eclipse-artifacts" if="do-eclipse-pde" description="Generates the manifest.mf files for the unique source code">
+		<!-- Generate the P2 feature files. -->
+		<echo message="Generate the P2 feature files" />
+		<fmpp sourceroot="${tmpl}/eclipse" outputroot="${temp}/p2" dataroot="${build-dir}">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				editions: get(values, "editions")
+				editionKey: ${edition}
+   				edition: get(editions, ${edition})
+				currentYear: ${current-year}
+				ant: antProperties()
+   			</data>
+			<include name="feature.tmpl" />
+		</fmpp>
+
+		<!-- Generate eclipse .classpath, .project, .properties files -->
+		<echo message="Generate eclipse .classpath, .project, .properties files" />
+		<fmpp sourceroot="${tmpl}/eclipse" outputroot="${mod}" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				editions: get(values, "editions")
+   				edition: get(editions, ${edition})
+				ant: antProperties()
+			</data>
+			<include name="module.classpath.tmpl" />
+			<include name="module.project.tmpl" />
+			<include name="module.build.properties.tmpl" />
+		</fmpp>
+		<delete file="${mod}/module.classpath.tmpl" />
+		<delete file="${temp}/module.project.tmpl" />
+		<delete file="${temp}/module.build.properties.tmpl" />
+
+		<!-- Generate bnd definition files -->
+		<echo message="Generate bnd definition files" />
+		<fmpp sourceroot="${tmpl}/bundles" outputroot="${temp}/definitions/modules" dataroot="${build-dir}" expert="true">
+			<data expandproperties="true">
+				values: dataLoader.ForgeLoader("project.xml", "../modules", "../libraries")
+				project: get(values, "project")
+				ant: antProperties()
+			</data>
+			<include name="bndModule.tmpl" />
+		</fmpp>
+		<delete file="${temp}/definitions/modules/bndModule.tmpl" />
+	</target>
+
+	<!-- COMPILE target -->
+	<target name="generate-classes" description="Compile the Java source files.">
+		<mkdir dir="${classes}" />
+		<for param="module" delimiter=" " list="${modules-sorted-by-dep}">
+			<sequential>
+				<compileModule name="@{module}" />
+				<!-- @generate-classes-extras@ -->
+			</sequential>
+		</for>
+	</target>
+
+	<target name="generate-javadocs" if="do-javadoc" depends="generate-classes" description="Generate the Javadocs.">
+		<!-- Generate the javadocs overview files -->
+		<copy todir="${temp}/javadocs-overviews" overwrite="true">
+			<fileset dir="${tmpl}/javadocs" includes="*.tmpl" />
+			<globmapper from="*.tmpl" to="*.html" />
+			<filterset begintoken="@" endtoken="@" filtersfile="filterset.properties" />
+		</copy>
+		<!-- @generate-javadocs@ -->
+	</target>
+
+	<!-- umlgraph target -->
+	<target name="umlgraph">
+		<!-- Generate UML graphics for the Restlet API -->
+		<javadoc packagenames="org.restlet.*" excludepackagenames="${exclude-packages}" destdir="${uml-reports-api}" classpathref="path-all" author="true" version="true" use="true" windowtitle="Restlet API ${version-full}" doctitle="Restlet API ${version-full}" overview="${temp}/javadocs/overview-api.html" stylesheetfile="${tmpl}/javadocs/stylesheet.css" verbose="${verbose}">
+			<sourcepath>
+				<pathelement path="${mod}/${mod-core-id}/src/" />
+			</sourcepath>
+
+			<bottom>Copyright 2005-2014 Restlet</bottom>
+
+			<group title="Restlet API">
+				<package name="org.restlet*" />
+			</group>
+
+			<link href="http://download.oracle.com/javase/1.5.0/docs/api/" />
+			<doclet name="org.umlgraph.doclet.UmlGraphDoc" path="${tools}/umlgraph/umlgraph.jar">
+				<param name="-attributes" />
+				<param name="-operations" />
+				<param name="-qualify" />
+				<param name="-types" />
+				<param name="-visibility" />
+			</doclet>
+		</javadoc>
+		<apply executable="dot" dest="${uml-reports-api}" parallel="false" failifexecutionfails="false" failonerror="false" verbose="false">
+			<arg value="-Tpng" />
+			<arg value="-o" />
+			<targetfile />
+			<srcfile />
+			<fileset dir="${uml-reports-api}" includes="*.dot" />
+			<mapper type="glob" from="*.dot" to="*.png" />
+		</apply>
+		<delete verbose="false" quiet="true">
+			<fileset dir="${uml-reports-api}" includes="**/*.dot, **/*.map" />
+		</delete>
+	</target>
+
+	<!-- VERIFY target -->
+	<target name="verify" if="do-verify" depends="verify-ant, verify-tests, verify-findbugs, verify-checkstyle" description="Verify build." />
+
+	<target name="verify-ant" if="ant-old" description="Check the Ant version for potential issues with JUnit.">
+		<echo message="For easier integration with JUnit, we recommand usage of Ant 1.8 or higher." />
+		<echo message="Otherwise, make sure that you have JUnit's JAR into you Ant's lib directory." />
+		<echo message="Current version: ${ant.version}" />
+	</target>
+
+	<target name="verify-tests" if="do-verify" depends="verify-ant" description="Execute the tests suites.">
+		<mkdir dir="${temp}/test" />
+
+		<echo>See the JUnit log file for more details: ${temp}/test/TEST-org.restlet.test.RestletTestSuite.txt.</echo>
+		<junit printsummary="true" fork="true" haltonfailure="true" haltonerror="true" filtertrace="true" showoutput="${verbose}" errorproperty="errorprop" failureproperty="failprop">
+			<classpath>
+				<path location="${mod}/${mod-core-test-id}/src" />
+				<path refid="mod-core-test-path" />
+			</classpath>
+			<formatter type="plain" />
+			<test name="org.restlet.test.RestletTestSuite" todir="${temp}/test" />
+		</junit>
+
+		<fail if="failprop" message="At least one failure during junit tests." taskname="verify-tests" />
+		<fail if="errorprop" message="At least one error during junit tests." taskname="verify-tests" />
+	</target>
+
+	<target name="verify-findbugs" if="do-findbugs" description="Attempts to find bugs.">
+		<mkdir dir="${temp}/findbugs" />
+		<for param="module" delimiter=" " list="${modules}">
+			<sequential>
+				<findbugsModule name="${module" />
+			</sequential>
+		</for>
+	</target>
+
+	<target name="verify-checkstyle" if="do-checkstyle" description="Check the style of the code.">
+		<mkdir dir="${temp}/checkstyle" />
+		<for param="module" delimiter=" " list="${modules}">
+			<sequential>
+				<checkstyleModule name="${module" />
+			</sequential>
+		</for>
+	</target>
+
+	<!-- Integrate target -->
+	<target name="integrate" depends="" description="Integrate files from other projects." />
+
+	<!-- STAGE target -->
+	<target name="stage" description="Stage the packaging step.">
+		<antcall target="stage-classic" />
+		<antcall target="stage-maven" />
+		<antcall target="stage-p2" />
+	</target>
+
+	<!-- STAGE-CLASSIC target (Stage the packaging step) -->
+	<target name="stage-classic" description="Stage the packaging step of classic distribution.">
+		<!-- Prepare distribution directories -->
+		<delete dir="${dist-classic}" verbose="false" quiet="true" includeEmptyDirs="true" />
+		<mkdir dir="${dist-classic}/lib" />
+		<!-- <mkdir dir="${dist-classic}/lib/poms" /> -->
+		<mkdir dir="${dist-classic}/src" />
+
+		<!-- Copy the binaries -->
+		<if>
+			<equals arg1="${edition}" arg2="jse" />
+			<then>
+				<mkdir dir="${dist-classic}/bin" />
+				<copy todir="${dist-classic}/bin">
+					<fileset dir="${bin}" />
+				</copy>
+			</then>
+		</if>
+
+		<!-- Copy the Javadoc -->
+		<if>
+			<istrue value="${do-javadoc}" />
+			<then>
+				<copy todir="${dist-classic}/docs/api">
+					<fileset dir="${docs-api}" />
+				</copy>
+				<copy todir="${dist-classic}/docs/engine">
+					<fileset dir="${docs-engine}" />
+				</copy>
+				<mkdir dir="${docs-ext}" />
+				<copy todir="${dist-classic}/docs/ext">
+					<fileset dir="${docs-ext}" />
+				</copy>
+			</then>
+		</if>
+
+		<!-- Copy text notes -->
+		<copy file="${docs}/changes.txt" tofile="${dist-classic}/changes.txt" />
+		<copy file="${tmpl}/text/copyright.txt" tofile="${dist-classic}/copyright.txt" />
+		<copy file="dependencies.txt" tofile="${dist-classic}/lib/readme.txt">
+			<filterset begintoken="@" endtoken="@" filtersfile="filterset.properties" />
+		</copy>
+		<copy file="${tmpl}/text/docs.txt" tofile="${dist-classic}/docs/readme.txt" />
+		<copy file="${tmpl}/text/src.txt" tofile="${dist-classic}/src/readme.txt" />
+		<copy file="${tmpl}/text/license.txt" tofile="${dist-classic}/license.txt" />
+		<copy file="${tmpl}/text/readme.txt" tofile="${dist-classic}/readme.txt" />
+		<copy file="${tmpl}/text/trademarks.txt" tofile="${dist-classic}/trademarks.txt" />
+
+		<!-- Copy the build properties files. -->
+		<copy todir="${dist-classic}/src">
+			<fileset dir="${basedir}" includes="*.properties" />
+		</copy>
+
+		<!-- Packages libraries -->
+		<for param="library" delimiter=" " list="${libraries-classic}">
+			<sequential>
+				<stageLibrary name="@{library}" />
+			</sequential>
+		</for>
+
+		<!-- Package modules -->
+
+		<!-- Complete the jar file with extra files -->
+		<!-- @stage-extras@ -->
+		<!-- @stage-modules@ -->
+	</target>
+
+	<target name="stage-maven" depends="stage-classic, stage-maven-2" if="do-maven" description="Generate the maven distributions." />
+
+	<!-- STAGE-MAVEN-2 target -->
+	<target name="stage-maven-2" if="do-maven" description="Generate the maven-2.x distributions.">
+		<delete dir="${dist-maven2}" verbose="false" quiet="true" includeEmptyDirs="true" />
+		<for param="module" delimiter=" " list="${modules}">
+			<sequential>
+				<maven2Module name="@{module}" />
+			</sequential>
+		</for>
+		<for param="package" delimiter=" " list="${packages-maven}">
+			<sequential>
+				<maven2Library name="@{package}" />
+			</sequential>
+		</for>
+
+		<!-- Add the parent pom -->
+		<property name="mod-restlet-parent-version-maven" value="${version-maven}" />
+		<propertyregex property="mod-restlet-parent-dir-maven-groupId" input="${parent-maven-groupId}" regexp="\." replace="/" global="true" casesensitive="false" />
+
+		<!-- All files generated from the modules are stampped with the current full version number -->
+		<property name="mod-dir-restlet-parent-maven2" value="${dist-maven2}/${mod-restlet-parent-dir-maven-groupId}/${parent-maven-artifactId}/${version-maven}" />
+		<mkdir dir="${mod-dir-restlet-parent-maven2}" />
+
+		<copy file="${poms}/${parent-maven-artifactId}.pom" tofile="${mod-dir-restlet-parent-maven2}/${parent-maven-artifactId}-${mod-restlet-parent-version-maven}.pom" overwrite="true" />
+		<checksum file="${mod-dir-restlet-parent-maven2}/${parent-maven-artifactId}-${mod-restlet-parent-version-maven}.pom" algorithm="MD5" fileext=".md5" />
+		<checksum file="${mod-dir-restlet-parent-maven2}/${parent-maven-artifactId}-${mod-restlet-parent-version-maven}.pom" algorithm="SHA" fileext=".sha1" />
+	</target>
+
+	<!-- STAGE-P2 target -->
+	<target name="stage-p2" if="do-p2" description="Generate the p2 distribution.">
+		<for param="module" delimiter=" " list="${modules-p2}">
+			<sequential>
+				<p22Module name="@{module}" />
+			</sequential>
+		</for>
+		<for param="library" delimiter=" " list="${libraries-p2}">
+			<sequential>
+				<p22Library name="@{library}" />
+			</sequential>
+		</for>
+	</target>
+
+	<!-- PACKAGE target -->
+	<target name="package" if="do-package" depends="package-classic, package-maven, package-p2" description="Generate the distribution.">
+		<!-- copy final artifacts to the final distribution directory -->
+		<move todir="${final-dist-base}">
+			<fileset dir="${dist-base}">
+				<include name="restlet-${edition}-${version-compact}.*"/>
+			</fileset>
+		</move>
+	</target>
+
+	<target name="package-classic" if="do-package" depends="package-classic-zip, package-classic-nsis" description="Generate the classic distributions.">
+		<move todir="${final-dist-classic}">
+			<fileset dir="${dist-classic}" />
+		</move>
+	</target>
+
+	<target name="package-maven" if="do-package-maven" description="Generate the maven distributions.">
+		<move todir="${final-dist-maven2}">
+			<fileset dir="${dist-maven2}" />
+		</move>
+	</target>
+
+	<target name="package-p2" if="do-package-p2" description="Generate the p2 distributions.">
+		<move todir="${final-dist-p2}">
+			<fileset dir="${dist-p2}" />
+		</move>
+	</target>
+
+	<!-- PACKAGE-ZIP target (generation of final Zip file) -->
+	<target name="package-classic-zip" if="do-package" description="Generate the final zip file for the classic distribution.">
+		<delete file="${dist-base}/restlet-${edition}-${version-compact}.zip" />
+		<zip destfile="${dist-base}/restlet-${edition}-${version-compact}.zip" basedir="${dist-base}/classic" includes="${dist-path}/**/*" />
+	</target>
+
+	<!-- PACKAGE-NSIS target (generation of Windows installer) -->
+	<target name="package-classic-nsis" if="do-nsis" description="Generate the windows installer for the classic distribution.">
+		<nsis path="${nsis-makensis-path}" script="${temp}/setup.nsi" verbosity="2" uninstallfilelist="${dist-classic}/uninstall.log">
+			<fileset dir="${dist-classic}" includes="**/*" />
+		</nsis>
+	</target>
+
+</project>
+<project name="checkstyle" default="compile.checkstyle" basedir=".">
+
+  <!-- set global properties for this build -->
+  <!-- Give user a chance to override without editing this file -->
+  <!-- (and without typing -D each time it compiles it) -->
+  <property name="target.dir" value="${basedir}/target" />
+  <property file="checkstyle.buildproperties" />
+  <property file="${user.home}/checkstyle.buildproperties" />
+
+  <property name="version" value="4.2" />
+  <property name="ant.jar" value="${ant.home}/lib/ant.jar" />
+  <property name="xerces.jar" value="${ant.home}/lib/xercesImpl.jar" />
+  <property name="xml-apis.jar" value="${ant.home}/lib/xml-apis.jar" />
+  <property name="antlr.jar" value="lib/antlr.jar" />
+  <property name="velocity.jar" value="lib/velocity-dep-1.4.jar" />
+  <property name="jdom.jar" value="lib/jdom-b9.jar" />
+  <property name="junit.jar" value="lib/junit.jar" />
+  <property name="beanutils.jar" value="lib/commons-beanutils-core.jar" />
+  <property name="collections.jar" value="lib/commons-collections.jar" />
+  <property name="cli.jar" value="lib/commons-cli.jar" />
+  <property name="logging.jar" value="lib/commons-logging.jar" />
+  <property name="tools.jar" value="${java.home}/../lib/tools.jar" />
+  <property name="emma.enabled" value="true" />
+
+  <property name="checkstyle.dir"
+            value="src/checkstyle/com/puppycrawl/tools/checkstyle" />
+  <property name="checkstyle.grammar.dir"
+            value="${checkstyle.dir}/grammars" />
+  <property name="testreport.dir" value="${target.dir}/testreports"/>
+  <property name="dist.dir" value="${target.dir}/dist"/>
+  <property name="checkstyle.dest" value="${target.dir}/checkstyle" />
+  <property name="tests.dest" value="${target.dir}/tests" />
+  <property name="testinputs.dest" value="${target.dir}/testinputs" />
+  <property name="emma.dest" value="${target.dir}/emma" />
+
+  <property name="xdocs.src" value="src/xdocs"/>
+  <property name="xdocs.dest" value="${target.dir}/docs"/>
+  <property name="checkstyle.minimum.javaversion" value="1.4" />
+  <property name="checkstyle.testinputs.minimum.javaversion" value="1.5" />
+  <property name="testcases" value="**/*Test.java"/>
+
+  <path id="build.classpath">
+    <pathelement location="${antlr.jar}" />
+    <pathelement location="${collections.jar}" />
+    <pathelement location="${cli.jar}" />
+    <pathelement location="${beanutils.jar}" />
+    <pathelement location="${logging.jar}" />
+    <pathelement location="${ant.jar}" />
+    <pathelement location="${tools.jar}" />
+  </path>
+
+  <path id="run.classpath">
+    <pathelement location="${checkstyle.dest}" />
+    <pathelement location="${antlr.jar}" />
+    <path refid="build.classpath" />
+  </path>
+
+  <!-- add classes to generate Javadoc -->
+  <path id="javadoc.classpath">
+    <path refid="run.classpath" />
+  </path>
+
+  <path id="tests.buildpath">
+    <pathelement location="${junit.jar}" />
+    <path refid="run.classpath" />
+  </path>
+
+  <path id="tests.runpath">
+    <!-- Need the instrumented classes first -->
+    <pathelement location="${emma.dest}/classes" />
+    <pathelement location="${tests.dest}" />
+    <pathelement location="${testinputs.dest}" />
+    <pathelement path="${xerces.jar}"/>
+    <pathelement path="${xml-apis.jar}"/>
+    <pathelement location="lib/emma.jar"/>
+    <path refid="tests.buildpath" />
+  </path>
+
+  <path id="velocity.classpath">
+    <pathelement location="${velocity.jar}"/>
+    <pathelement location="${jdom.jar}" />
+  </path>
+
+  <target name="display.classpath" description="Displays the run classpath">
+    <property name="asd" refid="run.classpath" />
+    <echo message="Classpath is ${asd}" />
+  </target>
+
+  <!-- -->
+  <!-- Cleanup targets -->
+  <!-- -->
+  <target name="clean" description="Cleans any directories and generated files">
+    <delete>
+      <fileset dir="src/checkstyle">
+        <include name="**/Generated*"/>
+        <include name="**/expandedjava*.g"/>
+      </fileset>
+    </delete>
+    <delete dir="${target.dir}" />
+    <delete file="velocity.log" />
+  </target>
+
+  <!-- -->
+  <!-- ANTLR targets -->
+  <!-- -->
+
+  <!-- Checks whether the grammar file is newer that the generated code -->
+  <target name="-check.antlr"
+          description="Checks whether the grammar file is newer that the generated code">
+    <uptodate property="uptodate.antlr"
+              targetfile="${checkstyle.grammar.dir}/GeneratedJavaLexer.java" >
+      <srcfiles dir= "${checkstyle.grammar.dir}" includes="java.g"/>
+    </uptodate>
+  </target>
+
+  <!-- Conditionally will compile the grammar. Deliberately do not use the -->
+  <!-- antlr task as it requirs the ANTLR classes to be in the classpath -->
+  <!-- which creates lots of problems. -->
+  <target name="build.antlr" depends="-check.antlr" unless="uptodate.antlr"
+          description="Conditionally compiles the grammar files">
+    <java classname="antlr.Tool"
+          classpath="${antlr.jar}"
+          fork="yes"
+          failonerror="true"
+          dir="${checkstyle.grammar.dir}">
+      <arg value="java.g" />
+    </java>
+  </target>
+
+  <!-- -->
+  <!-- COMPILE TARGETS -->
+  <!-- -->
+  <target name="compile.checkstyle" depends="build.antlr"
+          description="Compiles the source code">
+    <mkdir dir="${checkstyle.dest}" />
+    <depend srcdir="src/checkstyle"
+            destdir="${checkstyle.dest}" closure="yes"/>
+    <javac srcdir="src/checkstyle"
+           destdir="${checkstyle.dest}"
+           includes="**/*.java"
+           deprecation="on" debug="on"
+           source="${checkstyle.minimum.javaversion}"
+           target="${checkstyle.minimum.javaversion}"
+           classpathref="build.classpath"
+           encoding="iso-8859-1"
+           includeAntRuntime="false"/>
+
+    <propertyfile file="${checkstyle.dest}/checkstylecompilation.properties">
+      <entry key="checkstyle.compile.version" value="${version}"/>
+      <entry key="checkstyle.compile.timestamp" type="date" value="now" pattern="E MMMM dd yyyy, HH:mm z"/>
+    </propertyfile>
+
+    <native2ascii src="src/checkstyle"
+                  dest="${checkstyle.dest}"
+                  encoding="EUC-JP"
+                  includes="**/*_ja.properties" />
+
+    <copy todir="${checkstyle.dest}">
+      <fileset dir="src/checkstyle" includes="**/*.properties"/>
+      <fileset dir="src/checkstyle" includes="**/*.xml"/>
+      <fileset dir="src/checkstyle" includes="**/*.dtd"/>
+    </copy>
+
+    <!-- fix for bug #594469:
+         create a copy of the english property file, necessary to run
+         the tests in an environment that has a supported language (e.g. de)
+         in the default locale. See algorithm in ResourceBundle.getBundle() -->
+
+    <copy todir="${checkstyle.dest}" >
+      <fileset dir="src/checkstyle" includes="**/messages.properties"/>
+      <mapper type="glob" from="*messages.properties" to="*messages_en.properties"/>
+    </copy>
+
+    <javadoc sourcefiles="src/checkstyle/com/puppycrawl/tools/checkstyle/api/TokenTypes.java"
+             classpathref="javadoc.classpath"
+             encoding="iso-8859-1"
+             source="${checkstyle.minimum.javaversion}"
+             failonerror="yes">
+      <doclet name="com.puppycrawl.tools.checkstyle.doclets.TokenTypesDoclet"
+              path="${checkstyle.dest}">
+        <param name="-destfile" value="${checkstyle.dest}/com/puppycrawl/tools/checkstyle/api/tokentypes.properties"/>
+      </doclet>
+    </javadoc>
+  </target>
+
+  <target name="compile.testinputs" description="Compile test inputs">
+    <mkdir dir="${testinputs.dest}" />
+    <depend srcdir="src/testinputs" destdir="${testinputs.dest}" closure="yes"/>
+    <!-- start of a change to turn on compilation of all input files -->
+    <!-- under JDK1.5. -->
+    <javac srcdir="src/testinputs"
+           destdir="${testinputs.dest}"
+           deprecation="on" debug="on"
+           source="${checkstyle.testinputs.minimum.javaversion}"
+           target="${checkstyle.testinputs.minimum.javaversion}"
+           includeAntRuntime="false">
+      <exclude name="**/j2ee/*" />
+      <exclude name="**/InputAssertIdentifier.java" />
+      <exclude name="**/InputClone.java" />
+      <exclude name="**/InputCovariant.java" />
+      <exclude name="**/InputGrammar.java" />
+      <exclude name="**/InputImport.java" />
+      <exclude name="**/InputJUnitTest.java" />
+      <exclude name="**/InputSetterGetter.java" />
+      <exclude name="**/InputSimple.java" />
+      <exclude name="**/InputValidMethodIndent.java" />
+      <exclude name="**/Post13KeywordsAsIdentifiersOK.java" />
+    </javac>
+  </target>
+
+  <!-- Compiles only the test code. Input files are excluded from
+       compilation, they contain code like assert statements
+       that does not compile on all JDKs -->
+  <target name="compile.tests" depends="compile.checkstyle, setup.emma"
+          description="Compiles the test code">
+
+    <mkdir dir="${tests.dest}" />
+    <depend srcdir="src/tests" destdir="${tests.dest}" closure="yes"/>
+    <javac srcdir="src/tests"
+           destdir="${tests.dest}"
+           deprecation="on" debug="on"
+           classpathref="tests.buildpath"
+           encoding="iso-8859-1"
+           source="${checkstyle.minimum.javaversion}"
+           target="${checkstyle.minimum.javaversion}"
+           includeAntRuntime="false"/>
+
+    <!-- now instrument the classes -->
+    <mkdir dir="${emma.dest}/classes"/>
+    <emma enabled="${emma.enabled}">
+      <instr destdir="${emma.dest}/classes"
+             metadatafile="${emma.dest}/metadata.emma"
+             >
+        <instrpath>
+          <pathelement location="${checkstyle.dest}"/>
+        </instrpath>
+        <filter excludes="com.puppycrawl.tools.checkstyle.doclets.*"/>
+        <filter excludes="com.puppycrawl.tools.checkstyle.gui.*"/>
+        <filter excludes="com.puppycrawl.tools.checkstyle.grammars.*"/>
+      </instr>
+    </emma>
+  </target>
+
+  <!-- -->
+  <!-- TEST TARGETS -->
+  <!-- -->
+
+  <!-- Run the GUI -->
+  <target name="run.gui" depends="compile.checkstyle"
+          description="Run the GUI for displaying a tree">
+    <java classname="com.puppycrawl.tools.checkstyle.gui.Main"
+          fork="yes" classpathref="run.classpath">
+    </java>
+  </target>
+
+  <!-- runs the command line version on a file -->
+  <target name="run.checkstyle" depends="compile.tests"
+          description="Runs the command line version on a file">
+    <java classname="com.puppycrawl.tools.checkstyle.Main"
+          fork="yes"
+          dir="."
+          classpathref="run.classpath">
+      <sysproperty key="checkstyle.allow.tabs" value="yes"/>
+      <arg value="-c"/>
+      <arg file="checkstyle_checks.xml"/>
+      <arg value="src/testinputs/com/puppycrawl/tools/checkstyle/InputSimple.java"/>
+    </java>
+    <java classname="com.puppycrawl.tools.checkstyle.Main"
+          fork="yes"
+          dir="."
+          classpathref="run.classpath">
+      <arg value="-c"/>
+      <arg file="checkstyle_checks.xml"/>
+      <arg value="-r"/>
+      <arg file="src/checkstyle/com/puppycrawl/tools/checkstyle/api"/>
+    </java>
+  </target>
+
+  <target name="enable.todo" description="Will enable checking for TODO's">
+    <property name="todo.pattern" value="TODO:"/>
+  </target>
+
+  <target name="checkstyle.checkstyle" depends="compile.checkstyle"
+          description="Runs checkstyle against it's own sources">
+    <taskdef name="checkstyle"
+             classname="com.puppycrawl.tools.checkstyle.CheckStyleTask">
+      <classpath refid="run.classpath"/>
+    </taskdef>
+    <delete file="${target.dir}/cachefile" />
+
+    <property name="checkstyle.pattern.todo" value="NOTHingWillMatCH_-"/>
+    <property name="check.config" location="checkstyle_checks.xml"/>
+    <property name="translation.severity" value="error"/>
+    <checkstyle config="${check.config}">
+      <fileset dir="src/checkstyle"
+               includes="**/*.java,**/*.properties"
+               excludes="**/Generated*.java,**/gui/*,**/transmogrify/*"/>
+      <formatter type="plain"/>
+      <formatter type="xml" toFile="${target.dir}/cs_errors.xml"/>
+      <classpath refid="run.classpath"/>
+      <property key="checkstyle.cache.file" file="${target.dir}/cachefile"/>
+      <property key="checkstyle.header.file" file="java.header"/>
+      <property key="checkstyle.importcontrol.file" file="import-control.xml"/>
+      <property key="checkstyle.suppressions.file"
+                file="suppressions.xml"/>
+    </checkstyle>
+  </target>
+
+  <target name="checkstyle.style" depends="compile.checkstyle"
+          description="Runs checkstyle against it's own sources to test generation of error reports">
+    <taskdef name="checkstyle"
+             classname="com.puppycrawl.tools.checkstyle.CheckStyleTask">
+      <classpath refid="run.classpath"/>
+    </taskdef>
+    <delete file="${target.dir}/cachefile" />
+
+    <property name="checkstyle.pattern.todo" value="NOTHingWillMatCH_-"/>
+    <property name="check.config" location="checkstyle_checks.xml"/>
+    <property name="translation.severity" value="error"/>
+    <checkstyle failonviolation="false" config="${check.config}">
+      <fileset dir="src/checkstyle"
+               includes="**/*.java,**/*.properties"
+               excludes="**/Generated*.java,**/gui/*,,**/transmogrify/*"/>
+      <formatter type="xml" toFile="${target.dir}/cs_errors.xml"/>
+      <classpath refid="run.classpath"/>
+      <property key="checkstyle.cache.file" file="${target.dir}/cachefile"/>
+      <property key="checkstyle.header.file" file="java.header"/>
+      <property key="checkstyle.importcontrol.file" file="import-control.xml"/>
+      <property key="checkstyle.suppressions.file"
+                file="suppressions.xml"/>
+    </checkstyle>
+    <mkdir dir="${target.dir}/style/frames"/>
+    <mkdir dir="${target.dir}/style/noframes"/>
+    <mkdir dir="${target.dir}/style/simple"/>
+    <mkdir dir="${target.dir}/style/csv"/>
+    <mkdir dir="target/style/author"/>
+    <style basedir="${target.dir}"
+           destdir="${target.dir}/style/noframes"
+           includes="cs_errors.xml"
+           style="contrib/checkstyle-noframes.xsl"/>
+    <style basedir="${target.dir}"
+           destdir="${target.dir}/style/frames"
+           includes="cs_errors.xml"
+           style="contrib/checkstyle-frames.xsl"/>
+    <style basedir="${target.dir}"
+           destdir="${target.dir}/style/simple"
+           includes="cs_errors.xml"
+           style="contrib/checkstyle-simple.xsl"/>
+    <style out="${target.dir}/style/csv/report-csv.txt"
+           in="${target.dir}/cs_errors.xml"
+           style="contrib/checkstyle-csv.xsl"/>
+    <style basedir="target"
+           destdir="target/style/author"
+           includes="cs_errors.xml"
+           style="contrib/checkstyle-author.xsl"/>
+  </target>
+
+  <!-- Targets to verify that JUnit is in the classpath -->
+  <target name="-check.junit"
+          description="Checks whether JUnit is in the classpath">
+    <available property="have.junit"
+               classname="junit.framework.TestListener"/>
+  </target>
+
+  <target name="-require.junit" depends="-check.junit" unless="have.junit"
+          description="Fails if JUnit is not present in the classpath">
+    <fail message="Need to have JUnit in your CLASSPATH to run the tests. Consider using the one in the lib directory."/>
+  </target>
+
+  <!-- Targets to verify that Xalan is in the classpath -->
+  <target name="-check.xalan"
+          description="Checks whether xalan is in the classpath">
+    <condition property="have.xalan">
+      <or>
+        <!-- jdk 1.3 with modern Xalan -->
+        <available classname="org.apache.xalan.Version" />
+        <!-- Xalan classes in jdk 1.4 (beta 3) are OK for running -->
+        <!-- the tests, but there is no Version class in jdk 1.4: -->
+        <!-- fallback to stable jaxp implementation class -->
+        <available classname="org.apache.xalan.transformer.TransformerImpl"/>
+        <!--
+             In JDK 1.5 Sun has decided to repackage Xalan in it's own
+             package com.sun.org.apache..., see Java bug 4740355.
+             Additionally at least Ant 1.6.2 is required to make junitreport
+             work with Xalan XSLTC and/or JDK 1.5 (Ant bug 27541)
+             -->
+        <and>
+          <equals arg1="${ant.java.version}" arg2="1.5" />
+          <!-- TODO: find a more elegant way to specify *minimum* version -->
+          <not>
+            <or>
+              <contains string="${ant.version}" substring="version 1.4" />
+              <contains string="${ant.version}" substring="version 1.5" />
+              <contains string="${ant.version}" substring="version 1.6.0" />
+              <contains string="${ant.version}" substring="version 1.6.1" />
+            </or>
+          </not>
+        </and>
+      </or>
+    </condition>
+  </target>
+
+  <target name="-require.xalan" depends="-check.xalan" unless="have.xalan"
+          description="Fails if xalan is not present in the classpath">
+    <fail>
+Need to have Xalan in your CLASSPATH to run the tests.
+You can download it from http://xml.apache.org/.
+Alternatively you can upgrade JDK 1.4 or higher.
+For users of JDK 1.5 at least version 1.6.2 of Ant is required.
+    </fail>
+  </target>
+
+  <!-- To run the tests need Xalan in the classpath -->
+  <target name="run.tests"
+          depends="compile.tests,-require.ant15,-require.junit,-require.xalan,compile.testinputs"
+          description="Runs the tests for checkstyle">
+
+    <mkdir dir="${testreport.dir}"/>
+    <property name="testinputs.dir"
+              location="${basedir}/src/testinputs/com/puppycrawl/tools/checkstyle"/>
+
+    <junit printsummary="yes"
+           fork="yes"
+           forkmode="perBatch"
+           haltonfailure="no"
+           showoutput="yes"
+           failureProperty="tests.have.failed">
+
+      <sysproperty key="testinputs.dir" value="${testinputs.dir}"/>
+      <sysproperty key="checkstyle.use.recursive.algorithm"
+                   value="${checkstyle.use.recursive.algorithm}"/>
+      <sysproperty key="checkstyle.root" value="${basedir}" />
+
+      <sysproperty key="emma.coverage.out.file"
+                   file="${emma.coverage.out.file}"
+                   />
+      <sysproperty key="emma.coverage.out.merge"
+                   value="true" />
+
+      <formatter type="xml" />
+      <classpath refid="tests.runpath"/>
+      <batchtest todir="${testreport.dir}">
+        <fileset dir="src/tests">
+          <include name="${testcases}" />
+        </fileset>
+      </batchtest>
+    </junit>
+
+    <junitreport todir="${testreport.dir}">
+      <fileset dir="${testreport.dir}">
+        <include name="TEST-*.xml"/>
+      </fileset>
+      <report todir="${testreport.dir}"/>
+    </junitreport>
+
+    <property name="report"
+              value="${basedir}/${testreport.dir}/index.html"/>
+
+    <!-- generate the emma report -->
+    <emma enabled="${emma.enabled}">
+      <report sourcepath="src/checkstyle">
+        <fileset dir="${emma.dest}" includes="*.emma"/>
+        <html outfile="${emma.report.dir}/index.html"/>
+      </report>
+    </emma>
+
+    <fail if="tests.have.failed"
+          message="Unit tests failed - Report is available in ${report}"/>
+  </target>
+
+  <!-- -->
+  <!-- DIST TARGETS -->
+  <!-- -->
+  <target name="build.bindist" depends="compile.checkstyle, javadoc, xdocs"
+          description="Builds the compressed distribution files">
+    <delete dir="${dist.dir}/checkstyle-${version}" />
+    <mkdir dir="${dist.dir}/checkstyle-${version}" />
+    <copy file="config/manifest.mf" todir="${target.dir}">
+      <filterset>
+        <filter token="CHECKSTYLE_VERSION" value="${version}" />
+      </filterset>
+    </copy>
+    <jar jarfile="${dist.dir}/checkstyle-${version}/checkstyle-${version}.jar"
+         basedir="${checkstyle.dest}"
+         excludes="**/j2ee/**"
+         manifest="${target.dir}/manifest.mf" />
+    <jar jarfile="${dist.dir}/checkstyle-${version}/checkstyle-optional-${version}.jar"
+         basedir="${checkstyle.dest}"
+         includes="**/j2ee/**"/>
+    <!-- copy the JARS and make a mega JAR out of them -->
+    <copy file="${antlr.jar}" todir="${dist.dir}/checkstyle-${version}" />
+    <copy file="${beanutils.jar}" todir="${dist.dir}/checkstyle-${version}" />
+    <copy file="${collections.jar}" todir="${dist.dir}/checkstyle-${version}" />
+    <copy file="${cli.jar}" todir="${dist.dir}/checkstyle-${version}" />
+    <copy file="${logging.jar}" todir="${dist.dir}/checkstyle-${version}" />
+    <jar jarfile="${dist.dir}/checkstyle-${version}/checkstyle-all-${version}.jar"
+    	 manifest="${target.dir}/manifest.mf" 
+    	 filesetmanifest="skip">
+        <zipfileset src="${dist.dir}/checkstyle-${version}/antlr.jar" excludes="META-INF/*"/>
+        <zipfileset src="${dist.dir}/checkstyle-${version}/commons-beanutils-core.jar" excludes="META-INF/*,overview.html"/>
+        <zipfileset src="${dist.dir}/checkstyle-${version}/commons-collections.jar" excludes="META-INF/*"/>
+        <zipfileset src="${dist.dir}/checkstyle-${version}/commons-cli.jar" excludes="META-INF/*"/>
+        <zipfileset src="${dist.dir}/checkstyle-${version}/commons-logging.jar" excludes="META-INF/*"/>
+        <zipfileset src="${dist.dir}/checkstyle-${version}/checkstyle-${version}.jar" excludes="META-INF/*"/>
+    </jar>	
+    <!-- copy stuff without filtering -->
+    <copy todir="${dist.dir}/checkstyle-${version}">
+      <fileset dir=".">
+        <include name="**/.cvsignore"/>
+        <include name="**/CVS"/>
+        <include name="*.xml"/>
+        <include name="LICENSE*"/>
+        <include name="README"/>
+        <include name="RIGHTS.antlr"/>
+        <include name="TODO"/>
+        <include name="contrib/**"/>
+        <include name="java.header"/>
+      </fileset>
+    </copy>
+
+    <!-- Make the docs directory -->
+    <mkdir dir="${dist.dir}/checkstyle-${version}/docs" />
+    <copy todir="${dist.dir}/checkstyle-${version}/docs">
+      <fileset dir="${xdocs.dest}"/>
+    </copy>
+
+    <!-- create the final zip & tar/gzip files -->
+    <zip zipfile="${dist.dir}/checkstyle-${version}.zip">
+      <fileset dir="${dist.dir}">
+        <include name="checkstyle-${version}/**"/>
+      </fileset>
+    </zip>
+    <tar tarfile="${dist.dir}/checkstyle-${version}.tar" longfile="gnu"
+         basedir="${dist.dir}" includes="checkstyle-${version}/**" />
+    <gzip zipfile="${dist.dir}/checkstyle-${version}.tar.gz"
+          src="${dist.dir}/checkstyle-${version}.tar" />
+  </target>
+
+  <target name="build.srcdist" depends="checkstyle.checkstyle"
+          description="Builds the compressed source files for distribution">
+    <delete dir="${dist.dir}/checkstyle-src-${version}" />
+    <mkdir dir="${dist.dir}/checkstyle-src-${version}" />
+    <copy todir="${dist.dir}/checkstyle-src-${version}">
+      <fileset dir=".">
+        <exclude name="src/checkstyle/**/Generated*"/>
+        <include name="*.xml"/>
+        <include name="LICENSE*"/>
+        <include name="README"/>
+        <include name="RIGHTS.antlr"/>
+        <include name="TODO"/>
+        <include name="build.xml"/>
+        <include name="config/**"/>
+        <include name="contrib/**"/>
+        <include name="java.header"/>
+        <include name="lib/**"/>
+        <include name="src/**"/>
+      </fileset>
+    </copy>
+
+    <!-- Produce the final distributions -->
+    <zip zipfile="${dist.dir}/checkstyle-src-${version}.zip">
+      <fileset dir="${dist.dir}">
+        <include name="checkstyle-src-${version}/**"/>
+      </fileset>
+    </zip>
+    <tar tarfile="${dist.dir}/checkstyle-src-${version}.tar" longfile="gnu"
+         basedir="${dist.dir}" includes="checkstyle-src-${version}/**" />
+    <gzip zipfile="${dist.dir}/checkstyle-src-${version}.tar.gz"
+          src="${dist.dir}/checkstyle-src-${version}.tar" />
+  </target>
+
+  <!-- -->
+  <!-- DOC TARGETS -->
+  <!-- -->
+  <target name="javadoc" depends="compile.checkstyle"
+          description="Creates the javadoc html files">
+    <mkdir dir="${xdocs.dest}/api" />
+    <javadoc sourcepath="src/checkstyle" destdir="${xdocs.dest}/api"
+             Windowtitle="Checkstyle API"
+             classpathref="javadoc.classpath"
+             Use="true"
+             Footer="&lt;a target=&quot;_top&quot; href=&quot;./{@docRoot}/../index.html&quot;&gt;Back to the Checkstyle Home Page&lt;/a&gt;"
+             useExternalFile="yes"
+             encoding="iso-8859-1"
+             source="${checkstyle.minimum.javaversion}"
+             failonerror="yes" >
+      <link packagelistLoc="${basedir}/config/jdk-package-list"
+              offline="yes"
+              href="http://java.sun.com/j2se/1.4.2/docs/api/" />
+      <link packagelistLoc="${basedir}/config/antlr-package-list"
+              offline="yes"
+              href="http://www.antlr.org/javadoc/" />
+      <fileset dir="src/checkstyle">
+        <include name="**/*.java"/>
+        <exclude name="**/Generated*.java" />
+        <exclude name="**/gui/*.java" />
+        <exclude name="**/checks/**"/>
+      </fileset>
+    </javadoc>
+  </target>
+
+  <target name="xdocs" depends="compile.checkstyle"
+          description="generate documentation">
+
+    <mkdir dir="${xdocs.dest}"/>
+
+    <mkdir dir="${target.dir}/xdocs"/>
+
+    <copy todir="${target.dir}/xdocs">
+      <fileset dir="${xdocs.src}">
+        <exclude name="**/*.css"/>
+        <exclude name="**/*.gif"/>
+        <exclude name="**/*.png"/>
+      </fileset>
+      <filterset>
+        <filter token="CHECKSTYLE_VERSION" value="${version}" />
+      </filterset>
+    </copy>
+
+    <javadoc sourcepath="src/checkstyle" destdir="${target.dir}/xdocs"
+             classpathref="build.classpath"
+             source="${checkstyle.minimum.javaversion}"
+             failonerror="yes">
+      <doclet name="com.puppycrawl.tools.checkstyle.doclets.CheckDocsDoclet"
+              path="${checkstyle.dest}">
+      </doclet>
+      <fileset dir="src/checkstyle">
+        <include name="**/checks/**/*Check.java" />
+        <exclude name="**/checks/j2ee/AbstractInterfaceCheck.java" />
+      </fileset>
+    </javadoc>
+
+    <taskdef name="anakia" classname="org.apache.velocity.anakia.AnakiaTask">
+      <classpath refid="velocity.classpath"/>
+    </taskdef>
+
+    <copy todir="${xdocs.dest}">
+      <fileset dir="${xdocs.src}">
+        <include name="**/*.css"/>
+        <include name="**/*.gif"/>
+        <include name="**/*.png"/>
+      </fileset>
+    </copy>
+
+    <anakia basedir="${target.dir}/xdocs"
+            destdir="${xdocs.dest}/"
+            extension=".html"
+            style="site.vsl"
+            projectFile="stylesheets/project.xml"
+            excludes="**/stylesheets/**"
+            includes="**/*.xml"
+            lastModifiedCheck="true"
+            templatePath="${xdocs.src}/stylesheets">
+    </anakia>
+
+  </target>
+
+  <!-- Added for GUMP testing -->
+  <target name="gump.setup" description="Sets up any properties">
+    <property name="translation.severity" value="ignore"/>
+  </target>
+
+  <target name="gump" depends="gump.setup,build.bindist,build.srcdist,run.tests"
+          description="Runs the test for GUMP testing"/>
+
+
+  <!-- Targets to verify that Xerces is in the classpath -->
+  <target name="-check.xerces"
+          description="Checks whether xerces is in the classpath">
+    <condition property="have.xerces">
+      <available classname="org.apache.xerces.parsers.SAXParser"/>
+    </condition>
+  </target>
+
+  <target name="-require.xerces" depends="-check.xerces" unless="have.xerces"
+          description="Fails if xerces is not present in the classpath">
+    <fail message="Need to have Xerces-J in your CLASSPATH to run the tests. You can download it from http://xml.apache.org/."/>
+  </target>
+
+  <target name="validate.xml"
+          depends="-require.xerces"
+          description="Validates checkstyle XML file">
+    <xmlvalidate file="checkstyle_checks.xml">
+      <xmlcatalog>
+        <dtd
+          publicId="-//Puppy Crawl//DTD Check Configuration 1.1//EN"
+          location="${checkstyle.dir}/configuration_1_1.dtd"/>
+      </xmlcatalog>
+    </xmlvalidate>
+  </target>
+
+  <!-- Targets to verify that ANT version if at least 1.5 -->
+  <target name="-check.ant15">
+    <echo>version is ${ant.version}</echo>
+    <condition property="have.ant15">
+      <not>
+        <or>
+          <equals arg1="${ant.version}"
+                  arg2="Ant version 1.4.1 compiled on October 11 2001"/>
+        </or>
+      </not>
+    </condition>
+  </target>
+
+  <target name="-require.ant15" depends="-check.ant15" unless="have.ant15">
+    <fail message="Need at least version 1.5 of ANT - you have ${ant.version}"/>
+  </target>
+
+  <target name="checkstyle.run" depends="compile.checkstyle"
+          description="Runs checkstyle.">
+    <taskdef name="checkstyle"
+             classname="com.puppycrawl.tools.checkstyle.CheckStyleTask">
+      <classpath refid="run.classpath"/>
+    </taskdef>
+    <delete file="${target.dir}/cachefile" />
+
+    <property name="checkstyle.pattern.todo" value="NOTHingWillMatCH_-"/>
+    <property name="check.config" location="checkstyle_checks.xml"/>
+    <property name="translation.severity" value="error"/>
+    <checkstyle config="${custom.config}" file="${file.to.check}">
+      <formatter type="plain"/>
+      <formatter type="xml" toFile="${target.dir}/cs_errors.xml"/>
+      <classpath refid="run.classpath"/>
+    </checkstyle>
+  </target>
+
+  <target name="setup.emma">
+    <taskdef resource="emma_ant.properties">
+      <classpath>
+        <fileset dir="lib" includes="emma*.jar"/>
+      </classpath>
+    </taskdef>
+
+    <property name="emma.coverage.out.file"
+              value="${emma.dest}/coverage.emma"/>
+    <property name="emma.report.dir" value="${emma.dest}/report"/>
+    <mkdir dir="${emma.report.dir}"/>
+  </target>
+
+  <!-- contrib related targets -->
+  <property name="bcel.dest" value="${target.dir}/bcel" />
+  <property name="bcel.src" value="contrib/bcel/src/checkstyle/" />
+
+  <path id="bcel.classpath">
+    <pathelement location="${bcel.jar}" />
+    <path refid="run.classpath" />
+  </path>
+
+  <target name="compile.bcel" depends="compile.checkstyle"
+          description="Compiles bcel-checks">
+    <echo message="${bcel.jar}" />
+    <mkdir dir="${bcel.dest}" />
+    <depend srcdir="${bcel.src}"
+            destdir="${bcel.dest}" closure="yes"/>
+    <javac srcdir="${bcel.src}"
+           destdir="${bcel.dest}"
+           includes="**/*.java"
+           deprecation="on" debug="on"
+           source="${checkstyle.minimum.javaversion}"
+           target="${checkstyle.minimum.javaversion}"
+           classpathref="bcel.classpath"
+           encoding="iso-8859-1"
+           includeAntRuntime="false"/>
+
+    <copy todir="${bcel.dest}">
+      <fileset dir="${bcel.src}" includes="**/*.properties"/>
+      <fileset dir="${bcel.src}" includes="**/*.xml"/>
+      <fileset dir="${bcel.src}" includes="**/*.dtd"/>
+    </copy>
+  </target>
+</project>
+<?xml version="1.0" encoding="iso-8859-1"?>
+<project name="style" default="checkstyle.style" basedir=".">
+
+  <property name="checkstyle-all.jar" value="C:/javautil/checkstyle-3.4/checkstyle-all-3.4.jar" />
+  <property name="java2html.jar" value="C:/javautil/java2html/java2html.jar" />
+  <property name="src.dir" value="T:\2004\eclipse\workspace\checkstyle\src\checkstyle\com\puppycrawl\tools\checkstyle\checks" />
+  <property name="check.config" value="T:/2004/eclipse/workspace/checkstyle/docs/sun_checks.xml" />
+  <property name="dest.dir" value="target/cs-errors"/>
+  <property name="html.dir" value="src_html"/>
+
+  <!-- -->
+  <!-- Cleanup targets -->
+  <!-- -->
+  <target name="clean" description="Cleans any directories and generated files">
+      <delete dir="target" />
+  </target>
+
+  <!-- -->
+  <!-- Create syntax-highlighted HTML files from Java source files. -->
+  <!-- Requires java2html, http://www.java2html.de/                 -->
+  <!-- -->
+  <target name="java.to.html"
+          description="Creates HTML files with syntax highlighting from Java source files">
+
+    <taskdef name="java2html"
+             classname="de.java2html.anttasks.Java2HtmlTask"
+             classpath="${java2html.jar}"   
+    />
+    <java2html srcdir="${src.dir}"
+               destdir="target/${html.dir}"
+               includes="**/*.java"
+               outputFormat="html"
+               tabs="4"
+               style="eclipse"
+               showLineNumbers="true"
+               addLineAnchors="true"
+               showFileName="true"
+               includeDocumentHeader="true"
+               includeDocumentFooter="true"
+    />
+  </target>
+    
+  <taskdef resource="checkstyletask.properties"
+           classpath="${checkstyle-all.jar}"/>
+
+  <!-- -->
+  <!-- Run checkstyle and generate error report with links to source code -->
+  <!-- -->
+  <target name="checkstyle.style"
+          depends="java.to.html"
+          description="Runs checkstyle and generates an error report with links to source code">
+    
+    <mkdir dir="target"/>
+    <checkstyle failonviolation="false" config="${check.config}">
+      <fileset dir="${src.dir}"
+               includes="**/*.java,**/*.properties"
+               excludes="**/Generated*.java,**/gui/*,,**/transmogrify/*"/>
+      <formatter type="xml" toFile="target/cs_errors.xml"/>
+    </checkstyle>
+    <mkdir dir="target/cs-errors"/>
+    <style basedir="target"
+           destdir="target/cs-errors"
+           includes="cs_errors.xml"
+           style="checkstyle-noframes.xsl">
+       <param name="src.dir" expression="${src.dir}"/>
+       <param name="html.dir" expression="../${html.dir}"/>
+     </style>
+  </target>
+  
+</project>

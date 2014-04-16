@@ -1,0 +1,116 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="jmp" basedir="." default="build">
+
+    <tstamp prefix="now" />
+    <property name="version" value="0.2.0" />
+    <property name="build.dir" value="build" />
+    <property name="javac.source" value="1.7" />
+    <property name="javac.debug" value="false" />
+    <property name="javac.encoding" value="8859_1"/>
+
+    <property name="lib.dir" value="lib" />
+    <property name="src.dir" value="src" />
+
+    <condition property="config" value="conf/jmp.properties">
+        <not>
+            <isset property="config" />
+        </not>
+    </condition>
+
+    <path id="classpath">
+        <fileset dir="${lib.dir}">
+            <include name="commons-io-2.4.jar" />
+            <include name="commons-codec-1.9.jar" />
+            <include name="Ehcache/ehcache-core-2.5.2.jar" />
+            <include name="log4j-1.2.17.jar" />
+            <include name="junit-4.11.jar" />
+            <include name="hamcrest-core-1.3.jar" />
+        </fileset>
+    </path>
+
+    <target name="init" description="Create the build dir" depends="clean">
+        <mkdir dir="${build.dir}" />
+    </target>
+
+    <target name="build" description="Build" depends="">
+        <antcall target="init" />
+
+        <javac destdir="${build.dir}"
+            includeantruntime="false"
+            classpathref="classpath"
+            debug="${javac.debug}"
+            encoding="${javac.encoding}"
+            source="${javac.source}">
+            <src path="${src.dir}" />
+        </javac>
+
+        <delete file="jmp-${version}.jar"/>
+
+        <jar destfile="jmp-${version}.jar"
+             basedir="${build.dir}"
+             manifest="JarManifest"
+             compress="true"
+             update="true"
+        >
+            <fileset dir="${build.dir}" />
+        </jar>
+
+        <antcall target="clean" />
+    </target>
+
+    <target name="clean" description="Remove all work files." depends="">
+        <delete dir="${build.dir}" />
+    </target>
+
+    <target name="run" description="Run JMP">
+        <antcall target="test" />
+        <java jar="jmp-${version}.jar"
+              classpathref="classpath"
+              fork="true"
+              failonerror="true">
+            <jvmarg value="-Xmx2g" />
+            <jvmarg value="-Xshare:off" />
+            <jvmarg value="-server" />
+            <jvmarg value="-XX:+UseCompressedOops" />
+
+            <sysproperty key="config" value="${config}" />
+        </java>
+    </target>
+
+    <target name="test" depends="build">
+        <junit haltonfailure="true">
+            <classpath>
+              <path refid="classpath"/>
+              <pathelement location="bin" />
+              <pathelement path="${java.class.path}"/>
+              <pathelement location="jmp-${version}.jar" />
+            </classpath>
+            <batchtest>
+                <fileset dir="${src.dir}">
+                    <include name="**/*Test*" />
+                </fileset>
+            </batchtest>
+            <formatter type="brief" usefile="false"/>
+        </junit>
+    </target>
+    
+    <target name="sign" depends="test">
+        <delete file="jmp-${version}.jar.asc"/>
+        
+        <exec executable="gpg">
+            <arg value="-ab" />
+            <arg value="jmp-${version}.jar" />
+        </exec>
+    </target>
+
+    <target name="deploy" depends="sign">
+        <exec executable="scp">
+            <arg value="pom.xml" />
+            <arg value="jmp-${version}.jar" />
+            <arg value="jmp-${version}.jar.asc" />
+            <arg value="clojars@clojars.org:" />
+        </exec>
+    </target>
+
+</project>
+

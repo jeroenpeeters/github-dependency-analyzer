@@ -1,0 +1,2685 @@
+<project name="plovr" basedir="." default="build">
+
+  <property file="${basedir}/build.properties" />
+  <property file="${basedir}/default.build.properties" />
+
+  <property name="src.dir" value="${basedir}/src" />
+  <property name="test.dir" value="${basedir}/test" />
+  <property name="testdata.dir" value="${basedir}/testdata" />
+  <property name="www.dir" value="${basedir}/www" />
+  <property name="demo.dir" value="${www.dir}/demo" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="scripts.dir" value="${basedir}/scripts" />
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="classes.dir" value="${build.dir}/classes" />
+  <property name="soy-resources.dir" value="${build.dir}/soy-resources" />
+  <property name="build.dir.www" value="${build.dir}/www" />
+  <property name="build.dir.www.jsdoc" value="${build.dir.www}/jsdoc" />
+  <property name="javadoc.dir" value="${build.dir.www}/javadoc" />
+
+  <property name="closure.dir" value="${basedir}/closure" />
+  <property name="closure-compiler.dir" value="${closure.dir}/closure-compiler" />
+  <property name="closure-library.dir" value="${closure.dir}/closure-library" />
+  <property name="closure-stylesheets.dir" value="${closure.dir}/closure-stylesheets" />
+  <property name="closure-templates.dir" value="${closure.dir}/closure-templates" />
+
+  <!--
+    Use -Dtest.class to change what tests are run on the command-line.
+    i.e., -Dtest.class=PlovrSoySyntaxExceptionTest will run just that test class.
+  -->
+  <property name="test.class" value="*Test"/>
+
+  <available file="${build.dir}/plovr.jar"
+             type="file"
+             property="jar.present"
+             />
+
+  <path id="plovr.classpath">
+    <!-- All jars listed here must also be included in plovr.jar -->
+    <fileset dir="${lib.dir}" includes="*.jar" />
+    <fileset dir="${closure-compiler.dir}/lib"
+             includes="args4j.jar,
+                       json.jar,
+                       jsr305.jar,
+                       protobuf-java.jar"
+             />
+    <fileset dir="${closure-compiler.dir}/build/lib"
+             includes="rhino.jar"
+             />
+    <fileset dir="${closure-templates.dir}/java/lib"
+             includes="aopalliance.jar,
+                       guice-3.0.jar,
+                       guice-assistedinject-3.0.jar,
+                       guice-multibindings-3.0.jar,
+                       icu4j-4_8_1_1.jar,
+                       javax.inject.jar"
+             />
+
+    <pathelement location="${classes.dir}" />
+    <!-- Include src.dir to include resources, such as modules.soy -->
+    <pathelement location="${src.dir}" />
+  </path>
+
+  <target name="clean" description="remove all generated files">
+    <delete dir="${build.dir}" />
+
+    <!-- Clean Closure Templates genfiles. -->
+    <ant dir="${closure-templates.dir}" target="clean" inheritAll="false" useNativeBasedir="true" />
+
+    <!-- No need to clean ${closure-templates.dir}/build or
+         ${closure-compiler.dir}/build because plovr's "compile" target does
+         not use those directories. It compiles Closure Templates and Closure
+         Compiler Java files into its own build/classes directory.
+    -->
+  </target>
+
+  <target name="pre-compile"
+      description="Closure Tools build steps that must be done before building plovr">
+    <!-- Build intermediate Closure Templates target for its genfiles. -->
+    <ant dir="${closure-templates.dir}" target="compile" inheritAll="false" useNativeBasedir="true" />
+
+    <ant dir="${closure-compiler.dir}" target="rhino-jarjar" inheritAll="false" useNativeBasedir="true" />
+
+    <ant dir="${closure-stylesheets.dir}" target="javacc" inheritAll="false" useNativeBasedir="true" />
+  </target>
+  
+  <target name="compile" depends="pre-compile" description="compile Java source code">
+    <mkdir dir="${classes.dir}" />
+    <!--
+      Compile Closure Stylesheets genfiles separately because it triggers deprecation
+      warnings, and we would like to compile with warnings treated as errors.
+     -->
+    <javac destdir="${classes.dir}"
+           classpathref="plovr.classpath"
+           debug="on"
+           fork="false"
+           target="1.7"
+           source="1.7"
+           includeantruntime="false"
+           encoding="UTF-8"
+           >
+      <compilerarg value="-Werror"/>
+      <src path="${closure-stylesheets.dir}/src" />
+      <src path="${closure-stylesheets.dir}/build/genfiles" />
+    </javac>
+    <javac destdir="${classes.dir}"
+           classpathref="plovr.classpath"
+           debug="on"
+           deprecation="on"
+           fork="true"
+           target="1.7"
+           source="1.7"
+           includeantruntime="true"
+           encoding="UTF-8"
+           >
+      <compilerarg value="-Werror"/>
+      <src path="${src.dir}" />
+      <src path="${test.dir}" />
+      <src path="${closure-compiler.dir}/src" />
+      <src path="${closure-compiler.dir}/gen" />
+      <src path="${closure-templates.dir}/java/src" />
+      <src path="${closure-templates.dir}/build/genfiles" />
+    </javac>
+
+    <!-- Move Messages.properties where ScriptRuntime.java expects it. -->
+    <mkdir dir="${classes.dir}/rhino_ast/java/com/google/javascript/rhino/" />
+    <copy file="${closure-compiler.dir}/src/com/google/javascript/rhino/Messages.properties"
+          todir="${classes.dir}/rhino_ast/java/com/google/javascript/rhino/" />
+
+    <!-- Move ParserConfig.properties where ParserRunner.java expects it. -->
+    <copy file="${closure-compiler.dir}/src/com/google/javascript/jscomp/parsing/ParserConfig.properties"
+          todir="${classes.dir}/com/google/javascript/jscomp/parsing" />
+
+    <!-- Copy the JavaScript files from Soy into a directory named "soy". -->
+    <mkdir dir="${soy-resources.dir}/soy" />
+    <copy file="${closure-templates.dir}/javascript/soyutils_usegoog.js"
+          todir="${soy-resources.dir}/soy"
+          />
+    <copy file="${closure-templates.dir}/javascript/soyutils.js"
+          todir="${soy-resources.dir}/soy"
+          />
+
+    <!-- Copy resources needed for org.plovr package. -->
+    <copy todir="${classes.dir}/org/plovr">
+      <fileset dir="${src.dir}/org/plovr">
+        <include name="**/*.js" />
+        <include name="**/*.soy" />
+      </fileset>
+    </copy>
+    
+    <!-- Include these files to support the "info" command. -->
+    <mkdir dir="${classes.dir}/revisions"/>
+    <copy todir="${basedir}/build/classes/revisions/">
+      <fileset dir="${basedir}/tools/imports/" includes="rev-*" />
+    </copy>
+    <exec executable="bash">
+      <arg value="${basedir}/insert-plovr-revision.sh" />
+    </exec>
+
+  </target>
+
+  <target name="test"
+          depends="jar"
+          description="run the unit tests">
+    <mkdir dir="build/testoutput"/>
+    <junit failureproperty="hasFailingTests"
+           showoutput="true">
+      <formatter type="plain" usefile="false" />
+      <formatter type="xml" />
+
+      <batchtest fork="yes" todir="build/testoutput">
+        <fileset dir="${test.dir}">
+          <include name="**/${test.class}.java" />
+        </fileset>
+      </batchtest>
+      <classpath refid="plovr.classpath"></classpath>
+    </junit>
+
+    <junitreport todir="build/testoutput">
+       <fileset dir="build/testoutput" includes="*.xml"/>
+       <report todir="build/testoutput" />
+    </junitreport>
+
+    <fail if="hasFailingTests" />
+
+    <ant dir="${testdata.dir}" target="build" />
+  </target>
+
+  <target name="externs">
+    <mkdir dir="${classes.dir}" />
+    <exec executable="bash"
+          output="${classes.dir}/externs_manifest.txt"
+          failonerror="true">
+      <arg value="${basedir}/listfiles.sh" />
+      <arg value="${closure-compiler.dir}/externs" />
+    </exec>
+
+    <mkdir dir="${classes.dir}/contrib" />
+    <exec executable="bash"
+          output="${classes.dir}/contrib_externs.txt"
+          failonerror="true">
+      <arg value="${basedir}/tools/externs/listcontrib.sh" />
+      <arg value="${closure-compiler.dir}/contrib/externs" />
+      <arg value="${classes.dir}/contrib" />
+    </exec>
+  </target>
+
+  <target name="library">
+    <mkdir dir="${classes.dir}" />
+    <exec executable="bash"
+          output="${classes.dir}/library_manifest.txt"
+          failonerror="true">
+      <arg value="${basedir}/listfiles.sh" />
+      <arg value="${closure-library.dir}/closure/goog" />
+    </exec>
+  </target>
+
+  <target name="third_party">
+    <mkdir dir="${classes.dir}" />
+    <exec executable="bash"
+          output="${classes.dir}/third_party_manifest.txt"
+          failonerror="true">
+      <arg value="${basedir}/listfiles.sh" />
+      <arg value="${closure-library.dir}/third_party/closure/goog" />
+    </exec>
+  </target>
+
+  <target name="jar"
+          depends="compile, externs, library, third_party"
+          description="build plovr.jar">
+    <mkdir dir="${build.dir}" />
+    
+    <!-- Copy resources needed for org.plovr.docgen package. -->
+    <copy todir="${classes.dir}/org/plovr/docgen">
+      <fileset dir="${src.dir}/org/plovr/docgen">
+        <include name="*.soy" />
+        <include name="*.css" />
+      </fileset>
+    </copy>
+
+    <jar destfile="${build.dir}/plovr.jar">
+      <zipfileset dir="${closure-compiler.dir}/externs/"
+                  includes="**/*.js"
+                  prefix="externs"
+                  />
+      <zipfileset dir="${closure-library.dir}/closure/goog/"
+                  includes="**/*.js"
+                  excludes="deps.js"
+                  prefix="closure/goog"
+                  />
+      <zipfileset dir="${closure-library.dir}/third_party/closure/goog/"
+                  includes="**/*.js"
+                  excludes="deps.js"
+                  prefix="third_party/closure/goog"
+                  />
+      <zipfileset dir="${soy-resources.dir}"
+                  includes="**/*.js"
+                  />
+      <zipgroupfileset dir="${lib.dir}"
+                       includes="*.jar"
+                       />
+      <zipgroupfileset dir="${closure-compiler.dir}/lib"
+                       includes="args4j.jar,
+                                 json.jar,
+                                 jsr305.jar,
+                                 protobuf-java.jar"
+                       />
+      <zipgroupfileset dir="${closure-compiler.dir}/build/lib"
+                       includes="rhino.jar"
+                       />
+      <zipgroupfileset dir="${closure-templates.dir}/java/lib"
+                       includes="aopalliance.jar,
+                                 guice-3.0.jar,
+                                 guice-assistedinject-3.0.jar,
+                                 guice-multibindings-3.0.jar,
+                                 icu4j-core.jar,
+                                 javax.inject.jar"
+                       />
+
+      <fileset dir="${classes.dir}" />
+      <manifest>
+        <attribute name="Main-Class" value="org.plovr.cli.Main" />
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="integration-test"
+          depends="jar"
+          description="build the jar and run it on localhost:9818">
+    <echo>Visit http://localhost:9818/compile?id=integration-test</echo>
+    <java jar="${build.dir}/plovr.jar" fork="true">
+      <arg value="serve" />
+      <arg line="--port 9818" />
+      <arg value="${testdata.dir}/example/integration-test-config.js" />
+      <arg value="${testdata.dir}/modules/plovr-config.js" />
+      <jvmarg value="-Xdebug" />
+      <jvmarg value="-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8000"/>
+    </java>
+  </target>
+
+  <target name="test-soyweb-server"
+          description="run the soyweb server in debug mode on localhost:9811">
+    <echo>Visit http://localhost:9811/hello</echo>
+    <java jar="${build.dir}/plovr.jar" fork="true">
+      <jvmarg value="-Xdebug" />
+      <jvmarg value="-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8000"/>
+      <arg value="soyweb" />
+      <arg line="--dir ${testdata.dir}/soy-server" />
+    </java>
+  </target>
+
+  <target name="generate-options-documentation"
+          description="generate the documentation for ConfigOption.java"
+          depends="compile">
+    <mkdir dir="${build.dir.www}" />
+    <java fork="true"
+          classname="org.plovr.ConfigOptionDocumentationGenerator"
+          output="${build.dir.www}/options.html"
+          failonerror="true"
+          logerror="true"
+          >
+      <classpath refid="plovr.classpath"></classpath>
+   </java>
+  </target>
+
+  <target name="develop-documentation"
+          description="run the soyweb server in debug mode to develop docs">
+    <echo>Visit http://localhost:9811/</echo>
+    <java jar="${build.dir}/plovr.jar" fork="true">
+      <jvmarg value="-Xdebug" />
+      <jvmarg value="-Xrunjdwp:transport=dt_socket,server=y,suspend=n,address=8000"/>
+      <arg value="soyweb" />
+      <arg line="--template base" />
+      <arg line="--dir ${www.dir}" />
+      <arg line="--globals ${basedir}/www-globals.js" />
+    </java>
+  </target>
+
+  <target name="javadoc"
+          description="generate HTML Javadoc for the org.plovr Java code"
+          >
+    <mkdir dir="${javadoc.dir}" />
+    <javadoc sourcepath="${src.dir}"
+             destdir="${javadoc.dir}"
+             protected="true"
+             windowtitle="plovr"
+             classpathref="plovr.classpath"
+             >
+      <link href="http://download.oracle.com/javase/6/docs/api/" />
+      <link href="http://docs.guava-libraries.googlecode.com/git/javadoc/" />
+      <link href="http://google-gson.googlecode.com/svn/tags/gson-1.7.1/docs/javadocs/" />
+      <link href="http://closure-compiler.googlecode.com/svn/trunk/javadoc/" />
+      <link href="http://closure-templates.googlecode.com/svn/trunk/javadoc-complete/" />
+    </javadoc>
+  </target>
+  
+  <!--
+  This runs plovr such that classfiles from build/classes are loaded before
+  those in plovr.jar. This way, when developing the documentation generation
+  logic, there is no need to rebuild plovr.jar as part of the build step.
+  plovr.jar is included in the classpath only to include resources and
+  classfiles from jars in the lib directory.
+  -->
+  <target name="generate-closure-library-jsdoc"
+          description="Generates HTML documentation for Closure Library">
+    <exec executable="bash" failonerror="true">
+      <arg value="${scripts.dir}/generate-closure-library-jsdoc.sh" />
+    </exec>
+  </target>
+
+  <target name="serve-prod-documentation"
+          description="run the soyweb server on plovr.com to serve the docs"
+          depends="generate-options-documentation, javadoc">
+    <fail unless="jar.present">
+      The plovr jar has not been built. Run "ant jar" to build it.
+    </fail>
+
+    <mkdir dir="${build.dir.www}" />
+    <copy todir="${build.dir.www}">
+      <fileset dir="${www.dir}" includes="**/*" />
+    </copy>
+    <java jar="${build.dir}/plovr.jar"
+          fork="true"
+          maxmemory="128m">
+      <arg value="soyweb" />
+      <arg line="--template base" />
+      <arg line="--dir ${build.dir.www}" />
+      <arg line="--static" />
+      <arg line="--globals ${basedir}/prod-globals.js" />
+    </java>
+  </target>
+
+  <target name="run-demo" description="run the demo">
+    <fail unless="jar.present">
+      The plovr jar has not been built. Run "ant jar" to build it.
+    </fail>
+
+    <java jar="${build.dir}/plovr.jar"
+          dir="${demo.dir}"
+          fork="true"
+          maxmemory="128m">
+      <arg value="serve" />
+      <arg value="${demo.dir}/demo-config.js" />
+      <arg value="${testdata.dir}/modules/plovr-config.js" />
+    </java>
+
+  </target>
+
+  <target name="build" depends="jar" />
+
+  <target name="all"
+          description="build all deliverables for the plovr project"
+          depends="clean,
+                   jar,
+                   test,
+                   generate-options-documentation,
+                   generate-closure-library-jsdoc,
+                   javadoc"
+          />
+</project>
+<!--
+ Copyright 2009 Google Inc.
+
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+
+     http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+-->
+<project name="compiler" basedir="." default="jar" xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+  <!--
+    Use -Dtest.class to change what tests are run on the command-line.
+    i.e., -Dtest.class=CommandLineRunnerTest will run just that test class.
+  -->
+  <property name="test.class" value="*Test"/>
+
+  <!--
+    Use -Dtest.fork to specify whether or not to fork the process.
+    Some machines run better with forking turned off.
+  -->
+  <property name="test.fork" value="true"/>
+
+  <!-- Force java 6 -->
+  <property name="ant.build.javac.source" value="1.6" />
+  <property name="ant.build.javac.target" value="1.6" />
+
+  <!-- define other variables -->
+  <property name="javac.debug" value="on" />
+  <property name="src.dir" value="${basedir}/src" />
+  <property name="gen.dir" value="${basedir}/gen" />
+  <property name="test.dir" value="${basedir}/test" />
+  <property name="externs.dir" value="${basedir}/externs" />
+  <!-- To workaround Ant limitation on overriding properties set on the
+       command-line, define a unique property to allow "build.dir" to
+       be change without forcing the build of Rhino to the same directory.
+  -->
+  <property name="closure.build.dir" value="${basedir}/build" />
+  <property name="build.dir" value="${closure.build.dir}" />
+  <property name="buildlib.dir" value="${build.dir}/lib" />
+  <property name="classes.dir" value="${build.dir}/classes" />
+  <property name="testClasses.dir" value="${build.dir}/test" />
+  <property name="javadoc.dir" value="${build.dir}/javadoc" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="tools.dir" value="${basedir}/tools" />
+  <property name="compiler-jarfile"
+            value="${build.dir}/${ant.project.name}.jar" />
+  <property name="num-fuzz-tests" value="10000"/>
+
+  <property name="jsonml.dir" value="${basedir}/src/com/google/javascript/jscomp/jsonml" />
+  <property name="jsonml-classes.dir" value = "${build.dir}/jsonml-classes" />
+  <property name="jsonml-jarfile" value="${build.dir}/secure_compiler.jar" />
+
+  <property name="webservice.dir" value="${basedir}/src/com/google/javascript/jscomp/webservice" />
+  <property name="webservice-classes.dir" value = "${build.dir}/webservice-classes" />
+  <property name="webservice-jarfile" value="${build.dir}/webservice.jar" />
+
+  <!-- The following server is used to deploy releases to maven central via Sonatypes
+       publishing service which runs on oss.sonatype.org.
+
+       You will need to have an account on sonatype.org to push releases.  You can
+       override these values if you want to deploy to a different repository
+  -->
+  <property name="maven-repository-url" value="https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+  <property name="maven-repository-id" value="sonatype-nexus-staging" />
+
+  <!-- proto compiler used to generate java classes from .proto files -->
+  <property name="protoc.executable" value="protoc"/>
+
+  <property file="build.properties" />
+
+  <!-- maven ant tasks -->
+  <path id="maven-ant-tasks.classpath" path="${tools.dir}/maven-ant-tasks-2.1.3.jar" />
+  <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+           uri="antlib:org.apache.maven.artifact.ant"
+           classpathref="maven-ant-tasks.classpath" />
+
+  <!-- gather release version -->
+  <target name="relversion">
+    <exec outputproperty="build.relVersion"
+      executable="git"
+      failonerror="false"
+      failifexecutionfails="false"
+      dir=".">
+      <arg value="describe"/>
+      <arg value="--tag"/>
+      <arg value="--always"/>
+    </exec>
+  </target>
+
+  <!-- compile rhino -->
+  <target name="rhino">
+    <ant antfile="build.xml"
+         inheritAll="false"
+         dir="lib/rhino/"
+         target="jar">
+      <property name="build.dir" value="${buildlib.dir}"/>
+      <property name="no-e4x" value="true"/>
+    </ant>
+  </target>
+
+  <target name="rhino-jarjar"
+          depends="rhino"
+          description="Renamespaces Rhino">
+    <taskdef name="jarjar"
+             classname="com.tonicsystems.jarjar.JarJarTask"
+             classpath="lib/jarjar.jar"/>
+    <jarjar destfile="${buildlib.dir}/rhino.jar" update="true">
+      <zipfileset src="${buildlib.dir}/rhino1_7R5pre/js.jar"/>
+      <rule pattern="org.mozilla.javascript.**"
+            result="com.google.javascript.rhino.head.@1"/>
+    </jarjar>
+  </target>
+
+  <target name="protobuf-gen">
+    <fileset dir="${src.dir}" id="proto.classpath">
+      <include name="**/*.proto"/>
+    </fileset>
+    <pathconvert property="protofiles" pathsep=" " refid="proto.classpath"/>
+    <echo message="${protoc.executable} -I ${src.dir} --java_out=${gen.dir} ${protofiles}"/>
+    <exec executable="${protoc.executable}" searchpath="true">
+      <arg line="-I ${src.dir}"/>
+      <arg line="--java_out=${gen.dir}"/>
+      <arg line="${protofiles}"/>
+    </exec>
+  </target>
+
+  <!-- Generate pom.xml with the proper rel build number -->
+  <target name="pom" depends="relversion">
+    <copy file="closure-compiler.pom" tofile="${build.dir}/pom.xml">
+      <filterset>
+        <filter token="build.relVersion"
+             value="${build.relVersion}"/>
+      </filterset>
+    </copy>
+
+    <property name="compiler-jarfile-nodeps" value="${build.dir}/closure-${ant.project.name}-${build.relVersion}.jar" />
+    <property name="compiler-jarfile-javadoc" value="${build.dir}/closure-${ant.project.name}-${build.relVersion}-javadoc.jar" />
+    <property name="compiler-jarfile-sources" value="${build.dir}/closure-${ant.project.name}-${build.relVersion}-sources.jar" />
+
+    <artifact:pom id="project" file="${build.dir}/pom.xml" />
+  </target>
+
+  <target name="mvn-install"
+          depends="jar-nodeps,jar-javadoc,jar-sources,pom"
+          description="Install closure-compiler artifacts into the local maven repo">
+    <artifact:install file="${compiler-jarfile-nodeps}">
+      <pom refid="project"/>
+      <attach file="${compiler-jarfile-javadoc}" classifier="javadoc"/>
+      <attach file="${compiler-jarfile-sources}" classifier="sources"/>
+    </artifact:install>
+  </target>
+
+  <!-- The mvn-deploy target takes the generated maven artifacts and pushes
+       them to the Sonatype repository.  You will need to have a
+       gpg key defined and account set up. More docs on how to do this here:
+
+       https://docs.sonatype.org/display/Repository/Sonatype+OSS+Maven+Repository+Usage+Guide
+  -->
+
+  <target name="mvn-deploy"
+    depends="mvn-install"
+    description="Signs and Deploys closure-compiler artifacts to the central maven repo">
+
+    <!-- sign and deploy the main artifact -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${build.dir}/pom.xml" />
+      <arg value="-Dfile=${compiler-jarfile-nodeps}" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+
+    <!-- sign and deploy the sources artifact -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${build.dir}/pom.xml" />
+      <arg value="-Dfile=${compiler-jarfile-sources}" />
+      <arg value="-Dclassifier=sources" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+
+    <!-- sign and deploy the javadoc artifact -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${build.dir}/pom.xml" />
+      <arg value="-Dfile=${compiler-jarfile-javadoc}" />
+      <arg value="-Dclassifier=javadoc" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+  </target>
+
+  <!-- Sync maven dependencies listed in pom.xml -->
+  <target name="mvn-deps-sync" description="sync dependencies/jars in closure-compiler.pom to lib" depends="pom">
+    <artifact:dependencies filesetid="dependency.fileset"
+                           pathid="dependency.classpath"
+                           pomrefid="project"
+                           versionsId="dependency.versions"/>
+    <mkdir dir="${lib.dir}"/>
+    <copy todir="${lib.dir}">
+      <fileset refid="dependency.fileset" />
+      <!-- This mapper strips off all leading directory information -->
+      <mapper classpathref="maven-ant-tasks.classpath"
+          classname="org.apache.maven.artifact.ant.VersionMapper"
+          from="${dependency.versions}" to="flatten" />
+    </copy>
+  </target>
+
+  <!-- set the classpath for the project              -->
+  <!-- this includes the generated source class files -->
+  <!-- and every jar in the /lib directory            -->
+
+  <path id="srcclasspath.path">
+    <pathelement location="${classes.dir}" />
+    <fileset dir="${lib.dir}">
+      <include name="args4j.jar"/>
+      <include name="guava.jar"/>
+      <include name="json.jar"/>
+      <include name="jsr305.jar"/>
+      <include name="protobuf-java.jar"/>
+    </fileset>
+    <fileset dir="${buildlib.dir}">
+      <include name="rhino.jar"/>
+    </fileset>
+  </path>
+
+  <path id="allclasspath.path">
+    <pathelement location="${classes.dir}" />
+    <fileset dir="${lib.dir}">
+      <include name="*.jar"/>
+    </fileset>
+    <fileset dir="${buildlib.dir}">
+      <include name="rhino.jar"/>
+    </fileset>
+  </path>
+
+  <target name="clean" description="delete generated files">
+    <delete dir="${build.dir}" />
+  </target>
+
+  <target name="compile"
+          description="compile the source code"
+          depends="rhino-jarjar,relversion">
+    <mkdir dir="${classes.dir}" />
+    <javac srcdir="${gen.dir}"
+           destdir="${classes.dir}"
+           excludes=".svn,.git"
+           debug="${javac.debug}">
+      <classpath refid="srcclasspath.path" />
+    </javac>
+    <javac srcdir="${src.dir}"
+           destdir="${classes.dir}"
+           excludes=".svn,.git,**/jsonml/**,**/webservice/**,**/testing/**"
+           debug="${javac.debug}">
+      <classpath refid="srcclasspath.path" />
+    </javac>
+
+    <!-- Move Messages.properties where ScriptRuntime.java expects it. -->
+    <mkdir dir="${classes.dir}/rhino_ast/java/com/google/javascript/rhino/" />
+    <copy file="${src.dir}/com/google/javascript/rhino/Messages.properties"
+          todir="${classes.dir}/rhino_ast/java/com/google/javascript/rhino/" />
+
+    <!-- Move ParserConfig.properties where ParserRunner.java expects it. -->
+    <copy file="${src.dir}/com/google/javascript/jscomp/parsing/ParserConfig.properties"
+          todir="${classes.dir}/com/google/javascript/jscomp/parsing" />
+
+    <propertyfile
+        file="${classes.dir}/com/google/javascript/jscomp/parsing/ParserConfig.properties"
+        comment="Parser properties">
+      <entry key="compiler.date" type="date" value="now"/>
+      <entry key="compiler.version" value="${build.relVersion}"/>
+    </propertyfile>
+
+    <!-- Move runtime_type_check.js where RuntimeTypeCheck.java expects it. -->
+    <mkdir dir="${classes.dir}/com/google/javascript/jscomp/js" />
+    <copy todir="${classes.dir}/com/google/javascript/jscomp/js">
+      <fileset dir="${src.dir}/com/google/javascript/jscomp/js" />
+    </copy>
+  </target>
+
+  <target name="jar-nodeps"
+          depends="compile,pom"
+          description="package compiler as an executable jar">
+    <zip destfile="${build.dir}/externs.zip" basedir="${externs.dir}" />
+    <jar destfile="${compiler-jarfile-nodeps}" update="true">
+      <fileset dir="${classes.dir}" />
+      <fileset dir="${build.dir}" includes="externs.zip" />
+      <zipfileset src="${build.dir}/lib/rhino.jar"/>
+    </jar>
+  </target>
+
+
+  <target name="jar"
+          depends="compile"
+          description="package compiler as an executable jar">
+    <zip destfile="${build.dir}/externs.zip" basedir="${externs.dir}" includes="*.js" />
+    <jar destfile="${compiler-jarfile}" update="true">
+      <fileset dir="${classes.dir}" />
+      <fileset dir="${build.dir}" includes="externs.zip" />
+      <zipfileset src="${lib.dir}/args4j.jar"/>
+      <zipfileset src="${lib.dir}/guava.jar"/>
+      <zipfileset src="${lib.dir}/json.jar"/>
+      <zipfileset src="${lib.dir}/jsr305.jar"/>
+      <zipfileset src="${lib.dir}/protobuf-java.jar"/>
+
+      <zipfileset src="${buildlib.dir}/rhino.jar"/>
+
+      <manifest>
+        <attribute name="Main-Class"
+                   value="com.google.javascript.jscomp.CommandLineRunner" />
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="compile-tests"
+          depends="compile"
+          description="compile the JUnit tests">
+    <mkdir dir="${testClasses.dir}" />
+    <javac srcdir="${src.dir}"
+           destdir="${testClasses.dir}"
+           excludes=".svn,.git"
+           debug="on">
+      <classpath refid="allclasspath.path" />
+    </javac>
+    <javac srcdir="${test.dir}"
+           destdir="${testClasses.dir}"
+           excludes=".svn,.git"
+           debug="on">
+      <classpath refid="allclasspath.path" />
+    </javac>
+  </target>
+
+  <target name="all-classes-jar"
+          depends="compile,compile-tests"
+          description="package the compiler and its tests into one jar">
+    <jar destfile="${compiler-jarfile}" update="true">
+      <fileset dir="${testClasses.dir}" />
+      <zipgroupfileset dir="${lib.dir}" includes="*.jar"/>
+      <zipfileset src="${buildlib.dir}/rhino.jar"/>
+    </jar>
+  </target>
+
+  <target name="test"
+          depends="compile-tests"
+          description="Compile and execute the JUnit tests.">
+    <mkdir dir="build/testoutput"/>
+    <junit printsummary="on" fork="${test.fork}"
+           forkmode="once" showoutput="true"
+           failureproperty="junit.failure">
+      <classpath refid="allclasspath.path" />
+      <classpath>
+        <pathelement location="${build.dir}/test" />
+      </classpath>
+      <batchtest todir="build/testoutput">
+        <formatter type="brief" usefile="false" />
+        <formatter type="xml" />
+        <fileset dir="${build.dir}/test">
+          <include name="**/${test.class}.class" />
+        </fileset>
+      </batchtest>
+    </junit>
+    <junitreport>
+       <fileset dir="build/testoutput" includes="*.xml"/>
+       <report todir="build/testoutput"/>
+    </junitreport>
+    <fail if="junit.failure"
+          message="Unit tests failed. See build/testoutput/index.html" />
+  </target>
+
+  <target name="fuzz-test"
+          depends="all-classes-jar"
+          description="checks the compiler against a variety of js programs">
+      <exec executable="java" failonerror="true">
+        <arg value="-cp" />
+        <arg value="${compiler-jarfile}" />
+        <arg value="com.google.javascript.jscomp.regtests.CompileEachLineOfProgramOutput" />
+        <arg value="generatejs"/>
+        <arg value="--stdout"/>
+        <arg value="${num-fuzz-tests}"/>
+      </exec>
+  </target>
+
+  <target name="javadoc"
+          description="generate Javadoc"
+          depends="rhino-jarjar">
+    <mkdir dir="${javadoc.dir}" />
+    <javadoc
+         destdir="${javadoc.dir}"
+         author="false"
+         protected="true"
+         windowtitle="Closure Compiler"
+         additionalparam=" -notimestamp ">
+      <sourcepath>
+        <pathelement location="${src.dir}" />
+        <pathelement location="${gen.dir}" />
+      </sourcepath>
+      <classpath refid="allclasspath.path" />
+      <link href="http://java.sun.com/javase/6/docs/api/" />
+    </javadoc>
+  </target>
+
+  <target name="jar-javadoc" depends="javadoc">
+    <jar jarfile="${compiler-jarfile-javadoc}">
+      <fileset dir="${javadoc.dir}" />
+    </jar>
+  </target>
+
+  <target name="jar-sources" depends="javadoc">
+    <jar jarfile="${compiler-jarfile-sources}">
+      <fileset dir="${src.dir}" />
+      <fileset dir="${gen.dir}" />
+    </jar>
+  </target>
+
+  <!-- JsonML package related targets                 -->
+  <!-- set the classpath for the project              -->
+  <!-- this includes the generated source class files -->
+  <!-- and every jar in the /lib directory            -->
+  <path id="jsonml-classpath.path">
+    <pathelement location="${classes.dir}" />
+    <fileset dir="${lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${classes.dir}">
+      <include name="*.class" />
+    </fileset>
+    <fileset dir="${buildlib.dir}">
+      <include name="rhino.jar"/>
+    </fileset>
+  </path>
+
+  <target name="jsonml-compile"
+          description="compile the source code of classes from JsonML package"
+          depends="compile">
+    <mkdir dir="${jsonml-classes.dir}" />
+    <javac srcdir="${jsonml.dir}"
+           destdir="${jsonml-classes.dir}"
+           excludes=".svn,.git"
+           debug="${javac.debug}">
+      <classpath refid="jsonml-classpath.path" />
+    </javac>
+  </target>
+
+  <target name="jsonml-jar"
+          description="package the compiler and JsonML classes"
+          depends="jsonml-compile, compile">
+   <zip destfile="${build.dir}/externs.zip" basedir="${externs.dir}" includes="*.js" />
+   <jar destfile="${jsonml-jarfile}" update="true">
+     <zipgroupfileset dir="${lib.dir}" includes="*.jar"/>
+     <zipfileset src="${buildlib.dir}/rhino.jar"/>
+     <fileset dir="${classes.dir}" />
+     <fileset dir="${jsonml-classes.dir}" />
+   </jar>
+  </target>
+
+  <target name="webservice-compile"
+          description="compile the source code of classes from the webservice package"
+          depends="compile">
+    <mkdir dir="${webservice-classes.dir}" />
+    <javac srcdir="${webservice.dir}"
+           destdir="${webservice-classes.dir}"
+           excludes=".svn,.git"
+           debug="${javac.debug}">
+      <classpath refid="jsonml-classpath.path" />
+    </javac>
+  </target>
+
+  <target name="webservice-jar"
+          description="package the compiler and Webservice classes"
+          depends="webservice-compile, compile">
+   <zip destfile="${build.dir}/externs.zip" basedir="${externs.dir}" includes="*.js" />
+   <jar destfile="${webservice-jarfile}" update="true">
+     <zipgroupfileset dir="${lib.dir}" includes="*.jar"/>
+     <zipfileset src="${buildlib.dir}/rhino.jar"/>
+     <fileset dir="${classes.dir}" />
+     <fileset dir="${webservice-classes.dir}" />
+   </jar>
+  </target>
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+    Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+    Requires Ant version 1.2 or later
+
+    Compilation currently requires JDK 1.5 or later. Can cross-compile to
+    support JDK 1.4.
+-->
+
+<project name="Rhino" default="help" basedir=".">
+
+  <target name="properties">
+    <!-- Allow user to override default settings from build.properties -->
+    <property file="build.local.properties" />
+    <tstamp>
+      <!-- Specify date part of Context#getImplementationVersion() -->
+      <format property="implementation.date" pattern="yyyy MM dd"/>
+    </tstamp>
+    <property file="build.properties"/>
+
+    <property name="dist.file" value="rhino${version}.zip"/>
+    <property name="dist.source-only-zip" value="rhino${version}-sources.zip"/>
+
+    <property file="apiClasses.properties"/>
+    <property name="xmlimplsrc-build-file"
+              location="xmlimplsrc/build.xml"/>
+
+    <available property="xmlimplsrc-present?"
+               file="${xmlimplsrc-build-file}" />
+
+  </target>
+
+  <target name="init" depends="properties">
+    <mkdir dir="${build.dir}"/>
+    <mkdir dir="${classes}"/>
+    <mkdir dir="${dist.dir}"/>
+  </target>
+
+  <target name="compile" depends="init">
+    <ant antfile="src/build.xml" target="compile"/>
+    <ant antfile="toolsrc/build.xml" target="compile"/>
+    <antcall target="xmlimplsrc-compile" />
+  </target>
+
+  <target name="compile-all" depends="compile">
+    <ant antfile="deprecatedsrc/build.xml" target="compile"/>
+  </target>
+
+  <target name="graph" depends="init">
+    <ant antfile="src/build.xml" target="graph"/>
+  </target> 
+
+  <target name="shell" depends="compile">
+    <ant antfile="src/build.xml" target="shell"/>
+  </target> 
+
+  <target name="copy-source" depends="init">
+    <ant antfile="src/build.xml" target="copy-source"/>
+    <ant antfile="toolsrc/build.xml" target="copy-source"/>
+    <ant antfile="testsrc/build.xml" target="copy-source"/>
+    <antcall target="xmlimplsrc-copy-source" />
+    <ant antfile="deprecatedsrc/build.xml" target="copy-source"/>
+    <copy todir="${dist.dir}" file="build.xml"/>
+    <copy todir="${dist.dir}" file="build.properties"/>
+    <copy todir="${dist.dir}" file="apiClasses.properties"/>
+    <copy todir="${dist.dir}" file="LICENSE.txt"/>
+  </target>
+
+  <target name="xmlimplsrc-compile" if="xmlimplsrc-present?">
+    <echo>Calling ${xmlimplsrc-build-file}</echo>
+    <!-- Ignore compilation errors under JDK less then 1.4 -->
+    <property name="xmlimpl.compile.failonerror" value="no"/>
+    <ant antfile="${xmlimplsrc-build-file}" target="compile"/>
+  </target>
+
+  <target name="xmlimplsrc-copy-source" if="xmlimplsrc-present?">
+    <echo>Calling ${xmlimplsrc-build-file}</echo>
+    <ant antfile="${xmlimplsrc-build-file}" target="copy-source"/>
+  </target>
+
+  <target name="jar" depends="compile-all">
+    <copy todir="${classes}" file="LICENSE.txt"/>
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <jar jarfile="${jarfile}"
+         basedir="${classes}"
+         manifest="src/manifest"
+         compress="${jar-compression}"
+     />
+  </target>
+
+  <target name="console" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}"
+          fork="true">
+      <arg line="-version 170"/>
+    </java>
+  </target>
+
+  <target name="retrotranslator" depends="retrotranslator-check,retrotranslator-download">
+    <taskdef name="retrotranslator" classpath="build/download/Retrotranslator-1.2.8-bin/retrotranslator-transformer-1.2.8.jar"
+      classname="net.sf.retrotranslator.transformer.RetrotranslatorTask"/>
+  </target>
+
+
+  <target name="retrotranslator-check">
+    <condition property="retrotranslator.available">
+      <and>
+        <available file="build/download/Retrotranslator-1.2.8-bin/retrotranslator-transformer-1.2.8.jar"/>
+        <available file="build/download/Retrotranslator-1.2.8-bin/retrotranslator-runtime-1.2.8.jar"/>
+        <available file="build/download/Retrotranslator-1.2.8-bin/backport-util-concurrent-3.1.jar"/>
+      </and>
+    </condition>
+  </target>
+
+  <target name="retrotranslator-download" unless="retrotranslator.available">
+    <mkdir dir="build/download"/>
+    <get src="http://downloads.sourceforge.net/retrotranslator/Retrotranslator-1.2.8-bin.zip" dest="build/download/Retrotranslator-1.2.8-bin.zip" usetimestamp="true"/>
+    <unzip src="build/download/Retrotranslator-1.2.8-bin.zip" dest="build/download"/>
+  </target>
+
+  <target name="retrojar" depends="jar,retrotranslator">
+    <retrotranslator
+      srcjar="${jarfile}"
+      destjar="${dist.dir}/${rhino-14.jar}"
+      embed="org.mozilla.javascript"
+    />
+  </target>
+
+  <target name="smalljar" depends="compile">
+    <property name="smalljarfile" location="${dist.dir}/${small-rhino.jar}"/>
+    <jar basedir="${classes}" destfile="${smalljarfile}"
+         compress="${jar-compression}">
+      <include name="org/mozilla/javascript/*.class"/>
+
+      <include name="org/mozilla/javascript/debug/*.class"/>
+      <include name="org/mozilla/javascript/resources/*.properties"/>
+      <include name="org/mozilla/javascript/xml/*.class"/>
+      <include name="org/mozilla/javascript/continuations/*.class"/>
+      <include name="org/mozilla/javascript/jdk13/*.class"/>
+      <include name="org/mozilla/javascript/ast/*.class"/>
+      <include name="org/mozilla/javascript/json/*.class"/>
+      <include name="org/mozilla/javascript/annotations/*.class"/>
+      <include name="org/mozilla/javascript/v8dtoa/*.class"/>
+
+      <!-- exclude classes that uses class generation library -->
+      <exclude name="org/mozilla/javascript/JavaAdapter*.class"/>
+
+      <include name="org/mozilla/javascript/regexp/*.class"
+               unless="no-regexp"/>
+    </jar>
+
+  </target>
+
+  <target name="retrosmalljar" depends="smalljar,retrotranslator">
+    <retrotranslator
+      srcjar="${smalljarfile}"
+      destjar="${dist.dir}/${small-rhino-14.jar}"
+      embed="org.mozilla.javascript"
+    />
+  </target>
+
+  <target name="copy-examples" depends="init">
+    <mkdir dir="${dist.dir}/examples"/>
+    <copy todir="${dist.dir}/examples">
+      <fileset dir="examples" includes="**/*.java,**/*.js,**/*.html" />
+    </copy>
+  </target>
+
+  <target name="copy-misc" depends="init">
+    <filter token="datestamp" value="${TODAY}"/>
+    <copy todir="${dist.dir}" filtering="yes">
+      <fileset dir=".">
+        <patternset>
+          <include name="build-date"/>
+        </patternset>
+      </fileset>
+    </copy>
+  </target>
+
+  <target name="copy-all" depends="copy-source,copy-examples,copy-misc">
+  </target>
+
+  <target name="javadoc" depends="init">
+    <mkdir dir="${dist.dir}/javadoc"/>
+    <javadoc sourcefiles="${apiClasses}"
+             sourcepath="src"
+             destdir="${dist.dir}/javadoc"
+             version="true"
+             author="true"
+             windowtitle="${Name}" />
+  </target>
+
+  <target name="dev-javadoc" depends="init">
+    <mkdir dir="${dist.dir}/javadoc"/>
+    <javadoc sourcepath="src"
+             destdir="${dist.dir}/javadoc"
+             version="true"
+             package="true"
+             author="true"
+             windowtitle="${Name}">
+       <fileset
+         dir="."
+         includes="**/*.java"
+         excludes="**/deprecatedsrc/**/*.java,**/testsrc/**/*.java"
+       />
+    </javadoc>
+  </target>
+
+  <!--
+    Compiles and tests all sources and then creates the distribution file
+  -->
+  <target name="all" depends="deepclean,compile-all,junit-all,dist">
+  </target>
+
+  <target name="dist" depends="deepclean,jar,retrojar,copy-all,javadoc">
+    <delete file="${dist.file}" />
+    <zip destfile="${dist.file}">
+      <fileset dir="${build.dir}" includes="${dist.name}/**"/>
+    </zip>
+  </target>
+
+  <target name="source-zip" depends="copy-source,copy-examples,javadoc">
+    <delete file="${dist.source-only-zip}" />
+    <zip destfile="${dist.source-only-zip}">
+      <zipfileset prefix="${dist.name}" dir="${dist.dir}">
+        <include name="*src/**"/>
+        <include name="build.xml"/>
+        <include name="*.properties"/>
+        <include name="examples/**"/>
+      </zipfileset>
+    </zip>
+  </target>
+
+  <target name="compile-debugger">
+    <ant antfile="toolsrc/build.xml" target="compile-debugger"/>
+  </target>
+
+  <target name="clean" depends="properties">
+    <delete quiet="true" file="${dist.dir}/${rhino.jar}"/>
+    <delete quiet="true" file="${dist.dir}/${small-rhino.jar}"/>
+    <delete quiet="true" dir="${build.dir}"/>
+  </target>
+
+  <target name="deepclean" depends="properties">
+    <delete quiet="true" dir="${build.dir}"/>
+    <delete quiet="true" file="${dist.file}"/>
+    <delete quiet="true" file="${dist.source-only-zip}"/>
+  </target>
+
+  <!--
+    The next two targets run the JavaScript Test Library tests.  Note that these tests are quite extensive and take a long time
+    to run.  They are not documented in the 'help' target for now.
+  -->
+
+  <!--
+    Run the tests using JUnit.  Beware that if you are using Ant from the command-line, there are some difficulties you may
+    encounter setting this up correctly; see http://ant.apache.org/faq.html#delegating-classloader
+
+    IDEs that use Ant as the build system probably handle this fine.
+  -->
+  <target name="junit-all" depends="compile">
+    <ant antfile="testsrc/build.xml" target="junit-coveragereport"/>
+  </target>
+
+  <!--
+  Run the tests using the Java port of jsdriver.pl.  Note that running this port
+  from the command-line may be more useful running this Ant target, as running
+  from the command line allows configuration options, such as running with a
+  non-default optimization level, or running only a subset of the tests.
+  -->
+  <target name="jsdriver-run" depends="compile">
+      <ant antfile="testsrc/build.xml" target="jsdriver" />
+  </target>
+
+  <!--
+    Compile the JsDriver test driver.
+  -->
+  <target name="jsdriver" depends="compile">
+      <ant antfile="testsrc/build.xml" target="clean" />
+      <ant antfile="testsrc/build.xml" target="compile" />
+  </target>
+
+  <target name="benchmark-v8-opt-1" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt -1 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-v8-opt0" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 0 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-v8-opt9" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/v8-benchmarks-v5" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 9 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt-1" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt -1 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt0" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 0 run.js"/>
+    </java>
+  </target>
+
+  <target name="benchmark-sunspider-opt9" depends="jar">
+    <property name="jarfile" location="${dist.dir}/${rhino.jar}"/>
+    <java jar="${jarfile}" dir="testsrc/benchmarks/sunspider-0.9.1" fork="true">
+      <jvmarg value="-server"/>
+      <arg line="-opt 9 run.js"/>
+    </java>
+  </target>
+
+  <target name="help" depends="properties">
+<echo>The following targets are available with this build file:
+
+ clean       remove all compiled classes and copied property files
+
+ compile     compile classes and copy all property files
+             into ${classes} directory
+             excluding deprecated code
+
+ compile-all compile all classes and copy all property files
+             into ${classes} directory
+             including deprecated code
+
+ deepclean   remove all generated files and directories
+
+ dist        create ${dist.file} with full Rhino distribution
+
+ help        print this help
+
+ jar         create ${rhino.jar} in ${dist.dir}
+
+ smalljar    create ${small-rhino.jar} in ${dist.dir} with
+             minimalist set of Rhino classes. See footprint.html
+             from the doc directory for details.
+
+ javadoc     generate Rhino API documentation
+             in ${dist.dir}/javadoc
+
+ source-zip  create ${dist.source-only-zip} with all Rhino
+             source files necessary to recreate ${dist.file}
+</echo>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<project name="src" default="compile" basedir="..">
+
+  <property file="build.properties"/>
+
+  <target name="compile">
+    <javac srcdir="deprecatedsrc"
+           destdir="${classes}"
+           includes="org/mozilla/javascript/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+	   target="${target-jvm}"
+ 	   source="${source-level}"
+	   >
+    </javac>
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/deprecatedsrc"/>
+    <copy todir="${dist.dir}/deprecatedsrc">
+      <fileset dir="deprecatedsrc"
+               includes="**/*.java,**/*.properties,**/*.xml,manifest"/>
+    </copy>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+Requires Ant version 1.2
+-->
+<project name="src" default="compile" basedir="..">
+
+  <property file="build.properties"/>
+
+  <available property="jdk15"
+             classname="java.lang.reflect.ParameterizedType" />
+
+  <target name="compile" depends="compile-most,compile-jdk15">
+  </target>
+
+  <target name="shell" depends="compile">
+    <java classname="org.mozilla.javascript.tools.shell.Main"
+          classpath="${classes}"
+          fork="true">
+      <arg line="-version 170"/>
+    </java>
+  </target>
+
+  <target name="compile-most">
+    <javac srcdir="src"
+           destdir="${classes}"
+           includes="org/**/*.java"
+           excludes="org/**/jdk15/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+    <copy todir="${classes}">
+      <fileset dir="src" includes="org/**/*.properties" />
+      <filterset>
+      <filter token="IMPLEMENTATION.VERSION"
+              value="${implementation.version}"/>
+      </filterset>
+    </copy>
+  </target>
+
+  <target name="compile-jdk15" if="jdk15">
+    <javac srcdir="src"
+           destdir="${classes}"
+           includes="org/**/jdk15/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/src"/>
+    <copy todir="${dist.dir}/src">
+      <fileset dir="src"
+               includes="**/*.java,**/*.properties,**/*.xml,manifest"/>
+    </copy>
+  </target>
+
+  <target name="clean">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               excludes="org/mozilla/javascript/tools/**"/>
+    </delete>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<!--
+Build file for Rhino using Ant (see http://jakarta.apache.org/ant/index.html)
+Requires Ant version 1.2
+-->
+<project name="toolsrc" default="compile" basedir="..">
+
+  <target name="properties">
+    <property file="build.properties"/>
+  </target>
+
+  <target name="compile" depends="properties">
+    <javac srcdir="toolsrc"
+           destdir="${classes}"
+           includes="org/**/*.java"
+           deprecation="on"
+           debug="${debug}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}"
+    >
+    </javac>
+    <copy todir="${classes}">
+      <fileset dir="toolsrc" includes="org/**/*.properties" />
+    </copy>
+  </target>
+
+  <target name="copy-source" depends="properties">
+    <mkdir dir="${dist.dir}/toolsrc"/>
+    <copy todir="${dist.dir}/toolsrc">
+      <fileset dir="toolsrc"
+               includes="**/*.java,**/*.properties,**/*.xml" />
+    </copy>
+  </target>
+
+  <target name="clean" depends="properties">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               includes="org/mozilla/javascript/tools/**"/>
+    </delete>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+
+<project name="toolsrc" default="help" basedir=".">
+
+  <target name="properties">
+    <property name="swing-ex-url" value="http://java.sun.com/products/jfc/tsc/articles/treetable2/downloads/src.zip"/>
+    <available file="downloaded/AbstractCellEditor.java"
+               property="swing-ex-available"/>
+  </target>
+
+  <target name="get-swing-ex" unless="swing-ex-available">
+    <!-- Download source from Sun's site, unzip it, remove
+         the files we don't need, and change the package
+    -->
+    <mkdir dir="downloaded"/>
+    <get src="${swing-ex-url}" dest="downloaded/swingExSrc.zip"/>
+    <unzip src="downloaded/swingExSrc.zip" dest="downloaded/">
+      <patternset>
+          <include name="AbstractCellEditor.java"/>
+          <include name="JTreeTable.java"/>
+          <include name="TreeTableModel.java"/>
+          <include name="TreeTableModelAdapter.java"/>
+      </patternset>
+    </unzip>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.Component;</replacetoken>
+       <replacevalue>
+package org.mozilla.javascript.tools.debugger.downloaded;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.event.*;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.awt.AWTEvent;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/AbstractCellEditor.java">
+       <replacetoken>import java.io.Serializable;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>import javax.swing.*;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.*;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>class ListToTreeSelectionModelWrapper</replacetoken>
+       <replacevalue>public class ListToTreeSelectionModelWrapper</replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>ListSelectionModel getListSelectionModel</replacetoken>
+       <replacevalue>public ListSelectionModel getListSelectionModel</replacevalue>
+    </replace>
+    <replace file="downloaded/JTreeTable.java">
+       <replacetoken>import java.awt.Rectangle;</replacetoken>
+       <replacevalue></replacevalue>
+    </replace>
+    <replace file="downloaded/TreeTableModel.java">
+       <replacetoken>import javax.swing.tree.TreeModel;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.tree.TreeModel;
+       </replacevalue>
+    </replace>
+    <replace file="downloaded/TreeTableModelAdapter.java">
+       <replacetoken>import javax.swing.JTree;</replacetoken>
+       <replacevalue>
+         package org.mozilla.javascript.tools.debugger.downloaded;
+         import javax.swing.JTree;
+       </replacevalue>
+    </replace>
+    <delete file="downloaded/swingExSrc.zip"/>
+  </target>
+
+  <target name="download" depends="properties,get-swing-ex"/>
+
+  <target name="help" depends="properties">
+<echo>The following targets are available with this build file:
+
+ download    Download ${swing-ex-url}
+             and extract the necessary files from it.
+
+ help        Print this help.
+
+</echo>
+  </target>
+
+</project>
+<?xml version="1.0" encoding="utf-8"?>
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this
+   - file, You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
+<project name="xmlimplsrc" basedir=".." default="compile">
+  <!--
+    Properties which affect this build file:
+
+    no-e4x: Will cause E4X not to be built
+    no-xmlbeans: Will cause the old, XMLBeans-based implementation of E4X not to be built
+  -->
+
+  <property file="build.local.properties"/>
+  <property file="build.properties"/>
+
+  <!--
+    Provide support for the old name for skipping E4X compilation, in case someone is still using it
+  -->
+  <condition property="no-e4x">
+    <isset property="without-xmlimpl" />
+  </condition>
+
+  <path id="xmlbeans.classpath">
+    <pathelement location="${xbean.jar}"/>
+    <pathelement location="${jsr173.jar}"/>
+  </path>
+
+  <target name="compile" unless="no-e4x">
+    <antcall target="e4x-compile" />
+    <antcall target="no-e4x-compile" />
+
+    <antcall target="old-e4x" />
+  </target>
+
+  <available property="jdk1.5?" classname="java.lang.ProcessBuilder" />
+
+  <target name="e4x-compile" if="jdk1.5?">
+    <javac
+      srcdir="xmlimplsrc"
+      destdir="${classes}"
+      deprecation="on"
+      debug="${debug}"
+                        includeAntRuntime="false"
+      target="${target-jvm}"
+      source="${source-level}"
+    />
+  </target>
+
+  <target name="no-e4x-compile" unless="jdk1.5?">
+    <echo>
+      Skipping DOM E4X implementation; JDK 1.5+ currently required for compilation.
+      <!--
+        If the compiler is outfitted with DOM3 using the endorsed standards
+        override mechanism, presumably the code could be built under 1.4.
+        Not tested.
+      -->
+    </echo>
+  </target>
+
+  <target name="old-e4x" unless="no-xmlbeans">
+    <antcall target="old-e4x-compile" />
+    <antcall target="no-old-e4x-compile" />
+  </target>
+
+  <target name="old-e4x-compile" depends="xmlbeans-unzip">
+    <echo>Compiling XMLBeans E4X implementation using ${xbean.jar} and ${jsr173.jar}</echo>
+    <javac srcdir="deprecatedsrc"
+           destdir="${classes}"
+           includes="org/mozilla/javascript/xml/impl/xmlbeans/*.java"
+           deprecation="on"
+           debug="${debug}"
+           classpathref="xmlbeans.classpath"
+           failonerror="${xmlimpl.compile.failonerror}"
+           includeAntRuntime="false"
+           target="${target-jvm}"
+           source="${source-level}" />
+  </target>
+
+  <target name="no-old-e4x-compile" if="no-xmlbeans">
+    <echo>
+      Skipping compilation of XMLBeans E4X implementation due to missing XMLBeans files
+    </echo>
+  </target>
+
+  <target name="copy-source">
+    <mkdir dir="${dist.dir}/xmlimplsrc"/>
+    <copy todir="${dist.dir}/xmlimplsrc">
+      <fileset dir="xmlimplsrc"
+               includes="**/*.java,**/*.properties,**/*.xml"
+      />
+    </copy>
+  </target>
+
+  <target name="clean">
+    <delete includeEmptyDirs="true">
+      <fileset dir="${classes}"
+               includes="org/mozilla/javascript/xmlimpl/**"
+      />
+    </delete>
+  </target>
+
+  <property name="xmlbeans.tmp" location="${build.dir}/tmp-xbean" />
+  <property name="xmlbeans.zip" location="${xmlbeans.tmp}/xbean.zip" />
+
+  <condition property="xmlbeans-present?">
+    <and>
+      <available file="${xbean.jar}" />
+      <available file="${jsr173.jar}" />
+    </and>
+  </condition>
+
+  <condition property="xmlbeans-zip-present?">
+    <available file="${xmlbeans.zip}" />
+  </condition>
+
+  <target name="xmlbeans-get" unless="xmlbeans-zip-present?">
+    <property
+      name="xmlbeans.url"
+      value="http://www.apache.org/dist/xmlbeans/binaries/xmlbeans-2.5.0.zip"
+    />
+
+    <mkdir dir="${xmlbeans.tmp}" />
+    <get src="${xmlbeans.url}" dest="${xmlbeans.zip}" ignoreerrors="true" />
+  </target>
+
+  <target name="xmlbeans-unzip" unless="xmlbeans-present?">
+    <antcall target="xmlbeans-get" />
+    <unzip src="${xmlbeans.zip}" dest="${xmlbeans.tmp}" />
+    <copy tofile="${xbean.jar}" file="${xmlbeans.tmp}/xmlbeans-2.5.0/lib/xbean.jar" />
+    <copy tofile="${jsr173.jar}" file="${xmlbeans.tmp}/xmlbeans-2.5.0/lib/jsr173_1.0_api.jar" />
+    <delete dir="${xmlbeans.tmp}" />
+  </target>
+</project>
+<project name="closure-stylesheets"
+         default="jar"
+         xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+  <property name="src.dir"           value="${basedir}/src" />
+  <property name="tests.dir"         value="${basedir}/tests" />
+  <property name="lib.dir"           value="${basedir}/lib" />
+  <property name="tools.dir"         value="${basedir}/tools" />
+  <property name="build.dir"         value="${basedir}/build" />
+  <property name="genfiles.dir"      value="${build.dir}/genfiles" />
+  <property name="java-genfiles.dir" value="${genfiles.dir}/java" />
+  <property name="classes.dir"       value="${build.dir}/classes" />
+  <property name="compiler-jarfile"
+            value="${build.dir}/${ant.project.name}.jar" />
+  <property name="testClasses.dir"   value="${build.dir}/test" />
+  <property name="javadoc.dir"       value="${build.dir}/javadoc" />
+  <property name="includeDebugInfo"  value="true" />
+
+  <path id="classpath.path">
+    <fileset dir="${lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <target name="clean"
+          description="removes all generated files">
+    <delete dir="${build.dir}" />
+  </target>
+
+  <target name="javacc">
+    <mkdir dir="${java-genfiles.dir}/com/google/common/css/compiler/ast" />
+    <javacc target="${src.dir}/com/google/common/css/compiler/ast/GssParserCC.jj"
+            javacchome="${lib.dir}"
+            outputdirectory="${java-genfiles.dir}/com/google/common/css/compiler/ast" />
+  </target>
+
+  <target name="compile"
+          depends="javacc"
+          description="compiles Java files for the CSS compiler library">
+    <mkdir dir="${classes.dir}" />
+    <javac srcdir="${src.dir}:${java-genfiles.dir}"
+           destdir="${classes.dir}"
+           includeAntRuntime="false"
+           debug="${includeDebugInfo}">
+      <classpath refid="classpath.path" />
+    </javac>
+  </target>
+
+  <target name="yyyymmdd">
+    <exec outputproperty="build.yyyymmdd"
+          executable="date"
+          failonerror="true"
+          failifexecutionfails="true"
+          dir="${basedir}">
+      <arg value="+%Y%m%d" />
+    </exec>
+  </target>
+
+  <target name="jar"
+          depends="compile, yyyymmdd"
+          description="packages the class files as a jar">
+    <jar destfile="${compiler-jarfile}" update="true">
+      <fileset dir="${classes.dir}" />
+      <!--
+      Include all dependent jars so this can be run using:
+      java -jar build/closure-stylesheets.jar -o output.css input.css...
+      -->
+      <zipgroupfileset dir="${lib.dir}">
+        <include name="args4j*.jar" />
+        <include name="gson*.jar" />
+        <include name="guava*.jar" />
+        <include name="jsr305.jar" />
+      </zipgroupfileset>
+      <manifest>
+        <attribute name="Main-Class"
+                   value="com.google.common.css.compiler.commandline.ClosureCommandLineCompiler" />
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="release-jar"
+          depends="jar, yyyymmdd"
+          description="Builds a release that should be uploaded to http://code.google.com/p/closure-stylesheets/downloads/list">
+    <copy file="${compiler-jarfile}"
+          tofile="${build.dir}/closure-stylesheets-${build.yyyymmdd}.jar" />
+  </target>
+
+  <target name="compile-tests"
+          depends="compile"
+          description="compile the JUnit tests">
+    <mkdir dir="${testClasses.dir}" />
+    <javac srcdir="${tests.dir}"
+           destdir="${testClasses.dir}"
+           includeAntRuntime="false"
+           debug="${includeDebugInfo}">
+      <classpath refid="classpath.path" />
+      <classpath>
+        <pathelement location="${classes.dir}" />
+      </classpath>
+    </javac>
+  </target>
+
+  <macrodef name="testing">
+    <attribute name="printsummary" default="off" />
+    <attribute name="fork" default="off" />
+    <attribute name="forkmode" default="perTest" />
+    <sequential>
+      <antcall target="compile-tests" />
+      <junit printsummary="@{printsummary}"
+             fork="@{fork}"
+             forkmode="@{forkmode}"
+             showoutput="true">
+        <classpath refid="classpath.path" />
+        <classpath>
+          <pathelement location="${classes.dir}" />
+          <pathelement location="${testClasses.dir}" />
+        </classpath>
+        <formatter type="plain" usefile="false" />
+        <batchtest haltonfailure="true">
+          <fileset dir="${testClasses.dir}">
+            <include name="**/*Test.class" />
+            <!-- Unfortunately, JUnit does not ignore abstract classes on its own. -->
+            <exclude name="com/google/common/css/compiler/passes/AbstractCompactPrinterTest.class" />
+          </fileset>
+        </batchtest>
+      </junit>
+    </sequential>
+  </macrodef>
+
+  <target name="test"
+          description="runs all of the tests">
+    <testing printsummary="on" fork="on" forkmode="once" />
+  </target>
+
+  <target name="test-forkless"
+          description="runs all of the tests without forking the process">
+    <testing />
+  </target>
+
+  <target name="javadoc"
+          depends="javacc"
+          description="Generates Javadoc for the project's source code.">
+    <mkdir dir="${javadoc.dir}" />
+    <javadoc destdir="${javadoc.dir}"
+             author="false"
+             protected="true"
+             windowtitle="Closure Stylesheets"
+             additionalparam=" -notimestamp"
+             >
+      <sourcepath>
+        <pathelement location="${src.dir}" />
+        <pathelement location="${java-genfiles.dir}" />
+      </sourcepath>
+      <classpath refid="classpath.path" />
+      <link href="http://java.sun.com/javase/6/docs/api/" />
+    </javadoc>
+  </target>
+
+  <target name="all"
+          depends="compile,jar,compile-tests,test,javadoc"
+          description="build all deliverables for the project"
+          />
+
+  <!-- MAVEN -->
+
+  <!-- Ant tasks -->
+  <path id="maven-ant-tasks.classpath"
+        path="${tools.dir}/maven-ant-tasks-2.1.3.jar" />
+  <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+           uri="antlib:org.apache.maven.artifact.ant"
+           classpathref="maven-ant-tasks.classpath" />
+
+  <property name="mvn.build.dir" value="${build.dir}/maven" />
+
+  <!-- Generated pom.xml -->
+  <property name="pom.xml" value="${mvn.build.dir}/pom.xml" />
+
+
+  <!-- The following server is used to deploy releases to maven central via
+       Sonatypes publishing service which runs on oss.sonatype.org.
+
+       You will need to have an account on sonatype.org to push releases. You
+       can override these values if you want to deploy to a different
+       repository.
+  -->
+  <property name="maven-repository-url"
+            value="https://oss.sonatype.org/service/local/staging/deploy/maven2/" />
+  <property name="maven-repository-id" value="sonatype-nexus-staging" />
+
+  <target name="pom" depends="yyyymmdd">
+    <dirname property="pom.xml.dir" file="${pom.xml}" />
+    <mkdir dir="${pom.xml.dir}" />
+    <copy file="${basedir}/pom.template.xml"
+          tofile="${pom.xml}">
+      <filterset>
+        <filter token="build.yyyymmdd" value="${build.yyyymmdd}" />
+      </filterset>
+    </copy>
+
+    <artifact:pom id="project" file="${pom.xml}" />
+  </target>
+
+  <target name="mvn-install"
+          depends="pom, compile, javadoc">
+    <mkdir dir="${mvn.build.dir}" />
+
+    <property name="mvn-nodeps.jar"
+              value="${mvn.build.dir}/${ant.project.name}-${build.yyyymmdd}.jar"
+              />
+    <jar destfile="${mvn-nodeps.jar}" update="true">
+      <fileset dir="${classes.dir}" />
+    </jar>
+
+    <property name="mvn-sources.jar"
+              value="${mvn.build.dir}/${ant.project.name}-${build.yyyymmdd}-sources.jar"
+              />
+    <jar destfile="${mvn-sources.jar}" update="true">
+      <fileset dir="${src.dir}" />
+      <fileset dir="${java-genfiles.dir}" />
+    </jar>
+
+    <property name="mvn-javadoc.jar"
+              value="${mvn.build.dir}/${ant.project.name}-${build.yyyymmdd}-javadoc.jar"
+              />
+    <jar destfile="${mvn-javadoc.jar}" update="true">
+      <fileset dir="${javadoc.dir}" />
+    </jar>
+
+    <artifact:install file="${mvn-nodeps.jar}">
+      <pom refid="project" />
+      <attach file="${mvn-sources.jar}" classifier="sources" />
+      <attach file="${mvn-javadoc.jar}" classifier="javadoc" />
+    </artifact:install>
+  </target>
+
+  <target name="mvn-deploy"
+    depends="mvn-install"
+    description="Signs and deploys Closure Stylesheets artifacts to the central Maven repository.">
+
+    <!-- Sign and deploy the main artifact. -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${pom.xml}" />
+      <arg value="-Dfile=${mvn-nodeps.jar}" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+
+    <!-- Sign and deploy the sources artifact. -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${pom.xml}" />
+      <arg value="-Dfile=${mvn-sources.jar}" />
+      <arg value="-Dclassifier=sources" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+
+    <!-- Sign and deploy the javadoc artifact. -->
+    <artifact:mvn>
+      <arg value="org.apache.maven.plugins:maven-gpg-plugin:1.1:sign-and-deploy-file" />
+      <arg value="-Durl=${maven-repository-url}" />
+      <arg value="-DrepositoryId=${maven-repository-id}" />
+      <arg value="-DpomFile=${pom.xml}" />
+      <arg value="-Dfile=${mvn-javadoc.jar}" />
+      <arg value="-Dclassifier=javadoc" />
+      <arg value="-Pgpg" />
+    </artifact:mvn>
+  </target>
+
+</project>
+<!--
+Copyright 2009 Google Inc.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+-->
+<!--
+Author: Kai Huang
+Author: Robert Bowdidge
+Author: Neil Sanchala
+-->
+<project name="Soy" basedir="." default="jar">
+
+  <property name="java.src.dir" value="${basedir}/java/src" />
+  <property name="java.tests.dir" value="${basedir}/java/tests" />
+  <property name="java.lib.dir" value="${basedir}/java/lib" />
+
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="soy.jar.file" value="${build.dir}/soy.jar" />
+  <property name="build.classes.dir" value="${build.dir}/classes" />
+  <property name="build.testclasses.dir" value="${build.dir}/tests" />
+  <property name="build.genfiles.dir" value="${build.dir}/genfiles" />
+  <property name="includeDebugInfo" value="true" />
+
+  <property name="javadoc.lite.dir" value="${basedir}/javadoc-lite" />
+  <property name="javadoc.complete.dir" value="${basedir}/javadoc-complete" />
+
+  <!-- To release a new stable version of soy, update release.stamp to 'latest' or pass
+       -Drelease.stamp=latest when running ant. -->
+  <property name="release.dir" value="${basedir}/release" />
+  <property name="release.stamp" value="unstable" />
+
+  <path id="classpath.path">
+    <fileset dir="${java.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <!-- Target to delete the generated files. -->
+  <target name="clean"
+          description="Deletes generated files.">
+    <delete dir="${build.dir}" />
+  </target>
+
+
+  <!-- Target to compile the Java source. -->
+  <target name="compile"
+          description="Compiles the Java source.">
+
+    <mkdir dir="${build.classes.dir}" />
+    <mkdir dir="${build.genfiles.dir}" />
+    <mkdir dir="${build.genfiles.dir}/com/google/template/soy/exprparse" />
+    <mkdir dir="${build.genfiles.dir}/com/google/template/soy/soyparse" />
+
+    <!-- JavaCC compilation. Generated files go into the 'genfiles' directory. -->
+    <javacc target="${java.src.dir}/com/google/template/soy/exprparse/ExpressionParser.jj"
+            outputdirectory="${build.genfiles.dir}/com/google/template/soy/exprparse"
+            javacchome="buildtools/javacc" />
+    <javacc target = "${java.src.dir}/com/google/template/soy/soyparse/SoyFileParser.jj"
+            outputdirectory = "${build.genfiles.dir}/com/google/template/soy/soyparse"
+            javacchome = "buildtools/javacc" />
+    <javacc target = "${java.src.dir}/com/google/template/soy/soyparse/TemplateParser.jj"
+            outputdirectory = "${build.genfiles.dir}/com/google/template/soy/soyparse"
+            javacchome = "buildtools/javacc" />
+
+    <!-- Java compilation. -->
+    <javac srcdir="${java.src.dir}:${build.genfiles.dir}"
+           destdir="${build.classes.dir}"
+           source="1.7"
+           target="1.7"
+           includeAntRuntime="true"
+           debug="${includeDebugInfo}">
+      <classpath refid="classpath.path" />
+      <compilerarg value="-Werror"/>  <!-- warnings become errors -->
+      <compilerarg value="-Xlint:deprecation"/>
+    </javac>
+
+  </target>
+
+
+  <target name="generated-soyutils"
+          depends="compile"
+          description="generates soyutils.js and soyutils_usegoog.js.">
+    <!-- Load a custom ANT task. -->
+    <taskdef name="gen.escape.directives"
+             classname="com.google.template.soy.jssrc.internal.GenerateSoyUtilsEscapingDirectiveCode">
+      <classpath>
+        <fileset dir="${java.lib.dir}">
+          <include name="*.jar" />
+        </fileset>
+        <pathelement path="${build.classes.dir}" />
+      </classpath>
+    </taskdef>
+
+    <mkdir dir="${build.dir}/javascript"/>
+
+    <gen.escape.directives>
+      <input path="${basedir}/javascript/soyutils.js"/>
+      <output path="${build.dir}/javascript/soyutils.js"/>
+    </gen.escape.directives>
+
+    <gen.escape.directives>
+      <input path="${basedir}/javascript/soyutils_usegoog.js"/>
+      <output path="${build.dir}/javascript/soyutils_usegoog.js"/>
+      <jsdefined pattern="goog.string.*"/>
+      <jsdefined pattern="goog.asserts.*"/>
+    </gen.escape.directives>
+  </target>
+
+
+  <!-- Target to create a standalone jar of all Java class files and dependencies. -->
+  <target name="jar"
+          depends="compile"
+          description="Creates a standalone jar of all Java class files and dependencies.">
+    <jar destfile="${soy.jar.file}" update="true">
+      <fileset dir="${build.classes.dir}" />
+      <zipgroupfileset dir="${java.lib.dir}">
+        <include name="aopalliance.jar" />
+        <include name="args4j*.jar" />
+        <include name="guava*.jar" />
+        <include name="icu4j*.jar" />
+        <include name="javax.inject.jar" />
+        <include name="jsr305.jar" />
+      </zipgroupfileset>
+      <zipfileset src="${java.lib.dir}/guice-3.0.jar" />
+      <zipfileset src="${java.lib.dir}/guice-multibindings-3.0.jar"
+                  excludes="LICENSE,NOTICE" />
+      <zipfileset src="${java.lib.dir}/guice-assistedinject-3.0.jar"
+                  excludes="LICENSE,NOTICE" />
+    </jar>
+  </target>
+
+
+  <!-- Target to create a non-standalone jar of all Java class files, excluding dependencies. -->
+  <target name="jar-excluding-deps"
+          depends="compile"
+          description="Creates a non-standalone jar of all Java class files, excluding dependencies.">
+    <jar destfile="${build.dir}/soy-excluding-deps.jar" update="true">
+      <fileset dir="${build.classes.dir}" />
+    </jar>
+  </target>
+
+
+  <!-- Target to create a standalone executable SoyToJsSrcCompiler.jar. -->
+  <target name="SoyToJsSrcCompiler"
+          depends="jar"
+          description="Creates a standalone executable SoyToJsSrcCompiler.jar.">
+    <jar destfile="${build.dir}/SoyToJsSrcCompiler.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.SoyToJsSrcCompiler" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+    </jar>
+  </target>
+
+
+  <!-- Target to create a standalone executable SoyParseInfoGenerator.jar. -->
+  <target name="SoyParseInfoGenerator"
+          depends="jar"
+          description="Creates a standalone executable SoyParseInfoGenerator.jar.">
+    <jar destfile="${build.dir}/SoyParseInfoGenerator.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.SoyParseInfoGenerator" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+    </jar>
+  </target>
+
+
+  <!-- Target to create a standalone executable SoyMsgExtractor.jar. -->
+  <target name="SoyMsgExtractor"
+          depends="jar"
+          description="Creates a standalone executable SoyMsgExtractor.jar.">
+    <jar destfile="${build.dir}/SoyMsgExtractor.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.SoyMsgExtractor" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+    </jar>
+  </target>
+
+
+  <!-- Target to create a standalone executable SoyToJavaSrcCompilerExperimental.jar. -->
+  <target name="SoyToJavaSrcCompilerExperimental"
+          depends="jar"
+          description="Creates a standalone executable SoyToJavaSrcCompilerExperimental.jar.">
+    <jar destfile="${build.dir}/SoyToJavaSrcCompilerExperimental.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.SoyToJavaSrcCompilerExperimental" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+    </jar>
+  </target>
+
+
+  <!-- Target to generate lite javadoc (for API users). -->
+  <target name="javadoc-lite"
+          depends="compile"
+          description="Generates lite javadoc (for API users).">
+    <mkdir dir="${javadoc.lite.dir}" />
+    <javadoc destdir="${javadoc.lite.dir}"
+             additionalparam="-notimestamp"
+             author="false"
+             windowtitle="Soy Lite"
+             link="http://java.sun.com/javase/6/docs/api/">
+      <packageset dir="${java.src.dir}">
+        <include name="com/google/template/soy" />
+        <include name="com/google/template/soy/data" />
+        <include name="com/google/template/soy/javasrc" />
+        <include name="com/google/template/soy/jssrc" />
+        <include name="com/google/template/soy/msgs" />
+        <include name="com/google/template/soy/parseinfo" />
+        <include name="com/google/template/soy/shared" />
+        <include name="com/google/template/soy/tofu" />
+        <include name="com/google/template/soy/xliffmsgplugin" />
+      </packageset>
+      <fileset dir="${java.src.dir}">
+        <include name="com/google/template/soy/base/SoySyntaxException.java" />
+      </fileset>
+      <classpath>
+        <pathelement path="${java.src.dir}" />
+        <pathelement path="${build.genfiles.dir}" />
+        <fileset dir="${java.lib.dir}">
+          <include name="*.jar" />
+        </fileset>
+      </classpath>
+      <doctitle>
+        <![CDATA[
+          <h1>Closure Templates (a.k.a. Soy)</h1>
+          <h4>Lite javadoc for API users.</h4>
+          <h5><a href="../javadoc-complete/index.html" target="_blank">(Go to complete javadoc.)</a></h5>
+        ]]>
+      </doctitle>
+      <bottom>
+        <![CDATA[
+          <div id="footer">
+            <div id="footerlogo" style="float:left">
+              <img src="http://www.google.com/images/art.gif"
+                   alt="Google colored balls">
+            </div>
+            <div id="copyright" style="float:left">
+              <p>
+                &copy; 2009 Google -
+                <a href="http://www.google.com/privacy.html">Privacy Policy</a> -
+                <a href="http://www.google.com/terms_of_service.html">Terms and Conditions</a> -
+                <a href="http://www.google.com/about.html">About Google</a>
+              </p>
+            </div>
+          </div>
+        ]]>
+      </bottom>
+    </javadoc>
+  </target>
+
+
+  <!-- Target to generate complete javadoc (for developers and plugin writers). -->
+  <target name="javadoc-complete"
+          depends="compile"
+          description="Generates complete javadoc (for developers and plugin writers).">
+    <mkdir dir="${javadoc.complete.dir}" />
+    <javadoc sourcepath="${java.src.dir}:${build.genfiles.dir}"
+             packagenames="com.google.template.soy.*"
+             additionalparam="-notimestamp"
+             destdir="${javadoc.complete.dir}"
+             author="false"
+             windowtitle="Soy Complete"
+             link="http://java.sun.com/javase/6/docs/api/">
+      <classpath>
+        <fileset dir="${java.lib.dir}">
+          <include name="*.jar" />
+        </fileset>
+      </classpath>
+      <doctitle>
+        <![CDATA[
+          <h1>Closure Templates (a.k.a. Soy)</h1>
+          <h4>Complete javadoc for developers and plugin writers.</h4>
+          <h5><a href="../javadoc-lite/index.html" target="_blank">(Go to lite javadoc.)</a></h5>
+        ]]>
+      </doctitle>
+      <bottom>
+        <![CDATA[
+          <div id="footer">
+            <div id="footerlogo" style="float:left">
+              <img src="http://www.google.com/images/art.gif"
+                   alt="Google colored balls">
+            </div>
+            <div id="copyright" style="float:left">
+              <p>
+                &copy; 2009 Google -
+                <a href="http://www.google.com/privacy.html">Privacy Policy</a> -
+                <a href="http://www.google.com/terms_of_service.html">Terms and Conditions</a> -
+                <a href="http://www.google.com/about.html">About Google</a>
+              </p>
+            </div>
+          </div>
+        ]]>
+      </bottom>
+    </javadoc>
+  </target>
+
+
+  <!--*******************************************************************************************-->
+  <!-- Below are targets for the examples. -->
+
+
+  <property name="examples.dir" value="${basedir}/examples" />
+  <property name="javascript.examples.dir" value="${basedir}/javascript/examples" />
+  <property name="java.examples.dir" value="${basedir}/java/src/com/google/template/soy/examples" />
+
+  <property name="build.examples.dir" value="${build.dir}/examples" />
+
+
+  <!-- Utility macro. Fails if the specified file is not available. -->
+  <macrodef name="AssertFileExists">
+    <attribute name="filename" description="Filename to look for." />
+    <sequential>
+      <fail>
+        <condition>
+          <not>
+            <available file="@{filename}" />
+          </not>
+        </condition>
+      </fail>
+    </sequential>
+  </macrodef>
+
+
+  <!--
+  Uses SoyToJsSrcCompiler to compile simple.soy.
+  In 'build/examples', generates the following file:
+      simple_generated.js
+  Should be same as the file in 'javascript/examples'.
+  -->
+  <target name="js-simple-example"
+          depends="SoyToJsSrcCompiler"
+          description="Uses SoyToJsSrcCompiler to compile simple.soy.">
+    <mkdir dir="${build.examples.dir}" />
+    <java jar="${build.dir}/SoyToJsSrcCompiler.jar"
+          fork="true" failonerror="true">
+      <arg value="--outputPathFormat" />
+      <arg value="${build.examples.dir}/{INPUT_FILE_NAME_NO_EXT}_generated.js" />
+      <arg value="${examples.dir}/simple.soy" />
+    </java>
+
+    <AssertFileExists filename="${build.examples.dir}/simple_generated.js" />
+  </target>
+
+
+  <!--
+  Uses SoyToJsSrcCompiler to compile simple.soy and features.soy for locales en and x-zz.
+  In 'build/examples', generates the following files:
+      simple_generated_en.js
+      features_generated_en.js
+      simple_generated_x-zz.js
+      features_generated_x-zz.js
+  Should be same as the files in 'javascript/examples'.
+  -->
+  <target name="js-features-example"
+          depends="SoyToJsSrcCompiler"
+          description="Uses SoyToJsSrcCompiler to compile simple.soy and features.soy for locales en and x-zz.">
+    <mkdir dir="${build.examples.dir}" />
+    <java jar="${build.dir}/SoyToJsSrcCompiler.jar"
+          fork="true" failonerror="true">
+      <arg value="--outputPathFormat" />
+      <arg value="${build.examples.dir}/{INPUT_FILE_NAME_NO_EXT}_generated_{LOCALE}.js" />
+      <arg value="--locales" />
+      <arg value="en,x-zz" />
+      <arg value="--messageFilePathFormat" />
+      <arg value="${examples.dir}/examples_translated_{LOCALE}.xlf" />
+      <arg value="--compileTimeGlobalsFile" />
+      <arg value="${javascript.examples.dir}/features-usage_globals.txt" />
+      <arg value="--inputPrefix" />
+      <arg value="${examples.dir}/" />  <!-- note the trailing slash -->
+      <arg value="simple.soy" />
+      <arg value="features.soy" />
+    </java>
+
+    <AssertFileExists filename="${build.examples.dir}/simple_generated_en.js" />
+    <AssertFileExists filename="${build.examples.dir}/features_generated_en.js" />
+    <AssertFileExists filename="${build.examples.dir}/simple_generated_x-zz.js" />
+    <AssertFileExists filename="${build.examples.dir}/features_generated_x-zz.js" />
+  </target>
+
+
+  <!--
+  Creates an executable jar for rendering the simple examples from Java.
+  In 'build/examples', generates the following file:
+      SimpleUsage.jar
+  This can be executed to render the simple examples from Java:
+      java -jar SimpleUsage.jar
+  -->
+  <target name="java-simple-example"
+          depends="jar"
+          description="Creates an executable jar for rendering the simple examples from Java.">
+    <mkdir dir="${build.examples.dir}" />
+    <jar destfile="${build.examples.dir}/SimpleUsage.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.examples.SimpleUsage" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+      <!-- Resources. -->
+      <fileset file="${examples.dir}/simple.soy" />
+    </jar>
+
+    <AssertFileExists filename="${build.examples.dir}/SimpleUsage.jar" />
+  </target>
+
+
+  <!--
+  Uses SoyParseInfoGenerator to generate parse info for features.soy.
+  In 'build/examples', generates the following file:
+      FeaturesSoyInfo.java
+  Should be same as the file in 'java/src/com/google/template/soy/examples'.
+  -->
+  <target name="parse-info-generation-example"
+          depends="SoyParseInfoGenerator"
+          description="Uses SoyParseInfoGenerator to generate parse info for features.soy.">
+    <mkdir dir="${build.examples.dir}" />
+    <java jar="${build.dir}/SoyParseInfoGenerator.jar"
+          fork="true" failonerror="true">
+      <arg value="--outputDirectory" />
+      <arg value="${build.examples.dir}" />
+      <arg value="--javaPackage" />
+      <arg value="com.google.template.soy.examples" />
+      <arg value="--javaClassNameSource" />
+      <arg value="filename" />
+      <arg value="${examples.dir}/features.soy" />
+    </java>
+
+    <AssertFileExists filename="${build.examples.dir}/FeaturesSoyInfo.java" />
+  </target>
+
+
+  <!--
+  Creates an executable jar for rendering the features examples from Java.
+  In 'build/examples', generates the following file:
+      FeaturesUsage.jar
+  This can be executed to render the features examples from Java:
+      java -jar FeaturesUsage.jar
+      java -jar FeaturesUsage.jar -locale x-zz
+  -->
+  <target name="java-features-example"
+          depends="jar"
+          description="Creates an executable jar for rendering the features examples from Java.">
+    <mkdir dir="${build.examples.dir}" />
+    <jar destfile="${build.examples.dir}/FeaturesUsage.jar" update="true">
+      <manifest>
+        <attribute name="Main-Class" value="com.google.template.soy.examples.FeaturesUsage" />
+      </manifest>
+      <zipfileset src="${soy.jar.file}" />
+      <!-- Resources. -->
+      <fileset file="${examples.dir}/simple.soy" />
+      <fileset file="${examples.dir}/features.soy" />
+      <fileset file="${examples.dir}/examples_translated_en.xlf" />
+      <fileset file="${examples.dir}/examples_translated_x-zz.xlf" />
+      <fileset file="${java.examples.dir}/FeaturesUsage_globals.txt" />
+    </jar>
+
+    <AssertFileExists filename="${build.examples.dir}/FeaturesUsage.jar" />
+  </target>
+
+
+  <!--
+  ********************************************************************************************
+  Below are targets to generate release zip files, and to test that the generated binaries are
+  sane.
+  -->
+
+
+  <!--
+  Uses SoyMsgExtractor to extract messages from simple.soy and features.soy.
+  In 'build/examples', generates the following file:
+      examples_extracted.xlf
+  Should be same as the file in 'examples'.
+  -->
+  <target name="msg-extraction-example"
+          depends="SoyMsgExtractor"
+          description="Uses SoyMsgExtractor to extract messages from simple.soy and features.soy.">
+    <mkdir dir="${build.examples.dir}" />
+    <java jar="${build.dir}/SoyMsgExtractor.jar"
+          fork="true" failonerror="true">
+      <arg value="--outputFile" />
+      <arg value="${build.examples.dir}/examples_extracted.xlf" />
+      <arg value="--inputPrefix" />
+      <arg value="${examples.dir}/" />  <!-- note the trailing slash -->
+      <arg value="simple.soy" />
+      <arg value="features.soy" />
+    </java>
+
+    <AssertFileExists filename="${build.examples.dir}/examples_extracted.xlf" />
+  </target>
+
+
+  <!--
+  Runs the specified jar with no arguments, and asserts that the specified usage message was
+  printed.
+   -->
+  <macrodef name="RunBuiltJarAndLookForExpectedError">
+    <attribute name="jar" description="The jar to run and test"/>
+    <attribute name="expectederror" description="The error message to expect"/>
+
+    <sequential>
+      <!-- Run the jar and dump its output to ${@{jar}_output}. -->
+      <java jar="${build.dir}/@{jar}.jar"
+            fork="true"
+            failonerror="false"
+            errorproperty="@{jar}_output">
+      </java>
+
+      <!-- Look in the output for the error message we expect to see. -->
+      <fail message="The output of the specified jar does not include the expected error message.
+                     ${line.separator}Expected Error Substring : @{expectederror}
+                     ${line.separator}Actual Output            : ${@{jar}_output}">
+        <condition>
+          <not>
+            <contains string="${@{jar}_output}" substring="@{expectederror}" />
+          </not>
+        </condition>
+      </fail>
+    </sequential>
+  </macrodef>
+
+
+  <target name="test-built-jars" depends="SoyToJsSrcCompiler,
+                                          SoyParseInfoGenerator,
+                                          SoyMsgExtractor">
+    <RunBuiltJarAndLookForExpectedError
+      jar="SoyToJsSrcCompiler"
+      expectederror="Error: Option &quot;--outputPathFormat&quot; is required" />
+
+    <RunBuiltJarAndLookForExpectedError
+      jar="SoyParseInfoGenerator"
+      expectederror="Error: Option &quot;--javaClassNameSource&quot; is required" />
+
+    <RunBuiltJarAndLookForExpectedError
+      jar="SoyMsgExtractor"
+      expectederror="Error: Must provide list of source Soy files (--srcs)." />
+  </target>
+
+
+  <!-- Runs a full build, the examples, and test-built-jars to ensure that the build is sane. -->
+  <target name="verification-tests"
+          depends="compile,
+                   jar,
+                   jar-excluding-deps,
+                   SoyToJsSrcCompiler,
+                   SoyParseInfoGenerator,
+                   SoyMsgExtractor,
+                   test-built-jars,
+                   js-simple-example,
+                   js-features-example,
+                   java-simple-example,
+                   parse-info-generation-example,
+                   java-features-example,
+                   msg-extraction-example,
+                   test-forkless" />
+
+  <!--
+  Builds a set of zip files containing releaseable bundles of code. These zip files may be uploaded
+  to the project's Downloads area at Google Code.
+  -->
+  <target name="zips-for-release" depends="jar,
+                                           jar-excluding-deps,
+                                           generated-soyutils,
+                                           SoyMsgExtractor,
+                                           SoyParseInfoGenerator,
+                                           SoyToJsSrcCompiler,
+                                           javadoc-lite">
+    <mkdir dir="${release.dir}" />
+
+    <!--
+    Rename our three README files to README in appropriately-named directories so they can be
+    pulled in as just "README" in the zip files below.
+    -->
+    <copy file="for-java_jar_README.txt" tofile="${build.dir}/java/README" />
+    <copy file="for-javascript_jar_README.txt" tofile="${build.dir}/javascript/README" />
+    <copy file="msg-extractor_jar_README.txt" tofile="${build.dir}/msg_extractor/README" />
+
+    <!--
+    Zip file 1: Create a "msg-extractor" zip files.
+    Mapping:
+           COPYING                         ==> ./COPYING
+           README.msg_extractor            ==> ./README
+           build/SoyMsgExtractor.jar       ==> ./SoyMsgExtractor.jar
+    -->
+    <zip destfile="${release.dir}/closure-templates-msg-extractor-${release.stamp}.zip">
+      <fileset file="COPYING" />
+      <fileset file="${build.dir}/msg_extractor/README" />
+      <fileset file="${build.dir}/SoyMsgExtractor.jar" />
+    </zip>
+
+    <!-- Rename soy.jar and soy-excluding-deps.jar to to include a ${release.stamp} suffix.  -->
+    <copy file="${build.dir}/soy-excluding-deps.jar"
+          tofile="${build.dir}/soy-excluding-deps-${release.stamp}.jar" />
+    <copy file="${build.dir}/soy.jar"
+          tofile="${build.dir}/soy-${release.stamp}.jar" />
+
+    <!--
+    Zip file 2.1: Make soy-src-${release.stamp}.zip containing all soy src. Note that this gets
+    stored in the build directory, not the release directory, because this is only released as part
+    of the for-java zip.
+    Mapping:
+           java/src/** ==> ./**
+    -->
+    <zip destfile="${build.dir}/soy-src-${release.stamp}.zip"
+         basedir="java/src" />
+
+    <!--
+    Zip file 2.2: Create "for-java" zip file.
+    Mapping:
+           COPYING                            ==> ./COPYING
+           README.java                        ==> ./README
+           build/soy.jar                      ==> ./soy-${release.stamp}.jar
+           build/SoyParseInfoGenerator.jar    ==> ./SoyParseInfoGenerator.jar
+           java/lib/**                        ==> ./separate-jars/lib/**
+           javadoc-lite/**                    ==> ./separate-jars/javadoc/**
+           build/soy-excluding-deps.jar       ==> ./separate-jars/soy-excluding-deps-${release.stamp}.jar
+           build/soy-src-${release.stamp}.zip ==> ./separate-jars/soy-src-${release.stamp}.zip
+    -->
+    <zip destfile="${release.dir}/closure-templates-for-java-${release.stamp}.zip">
+      <fileset file="COPYING" />
+      <fileset file="${build.dir}/java/README" />
+      <fileset file="${build.dir}/SoyParseInfoGenerator.jar" />
+      <fileset file="${build.dir}/soy-${release.stamp}.jar" />
+      <zipfileset dir="${build.dir}"
+                  includes="soy-src-${release.stamp}.zip"
+                  prefix="separate-jars" />
+      <zipfileset dir="${build.dir}"
+                  includes="soy-excluding-deps-${release.stamp}.jar"
+                  prefix="separate-jars" />
+      <zipfileset dir="java/lib" prefix="separate-jars/lib" />
+      <zipfileset dir="javadoc-lite" prefix="separate-jars/javadoc" />
+    </zip>
+
+    <!--
+    Zip file 3: Create "for-javascript" zip file.
+    Mapping:
+           COPYING                         ==> ./COPYING
+           README.javascript               ==> ./README
+           build/SoyToJsSrcCompiler.jar    ==> ./SoyToJsSrcCompiler.jar
+           build/javascript/*.js           ==> ./soyutils{,_usegoog}.js
+    -->
+    <zip destfile="${release.dir}/closure-templates-for-javascript-${release.stamp}.zip">
+      <fileset file="COPYING" />
+      <fileset file="${build.dir}/javascript/README" />
+      <fileset file="${build.dir}/SoyToJsSrcCompiler.jar" />
+      <fileset dir="${build.dir}/javascript" includes="soyutils.js,soyutils_usegoog.js" />
+    </zip>
+  </target>
+
+
+  <target name="compile-tests"
+          depends="compile"
+          description="Compiles the tests.">
+    <mkdir dir="${build.testclasses.dir}" />
+    <javac srcdir="${java.tests.dir}"
+           destdir="${build.testclasses.dir}"
+           source="1.7"
+           target="1.7"
+           includeAntRuntime="false"
+           debug="${includeDebugInfo}">
+      <classpath refid="classpath.path" />
+      <classpath>
+        <pathelement location="${build.classes.dir}" />
+      </classpath>
+    </javac>
+  </target>
+
+
+  <macrodef name="testing">
+    <attribute name="printsummary" default="off" />
+    <attribute name="fork" default="off" />
+    <attribute name="forkmode" default="perTest" />
+    <sequential>
+      <antcall target="compile-tests" />
+      <junit printsummary="@{printsummary}"
+             fork="@{fork}"
+             forkmode="@{forkmode}"
+             showoutput="true">
+        <classpath refid="classpath.path" />
+        <classpath>
+          <pathelement location="${build.classes.dir}" />
+          <pathelement location="${build.testclasses.dir}" />
+          <!--
+            Include the test directory on the classpath so that static resources loaded via
+            Resources.getResource() do not need to be copied to ${build.testclasses.dir}.
+          -->
+          <pathelement location="${java.tests.dir}" />
+        </classpath>
+        <formatter type="plain" usefile="false" />
+        <batchtest haltonfailure="true">
+          <fileset dir="${build.testclasses.dir}">
+            <include name="**/*Test.class" />
+          </fileset>
+        </batchtest>
+      </junit>
+    </sequential>
+  </macrodef>
+
+
+  <target name="test"
+          description="Runs all of the tests.">
+    <testing printsummary="on" fork="on" forkmode="once" />
+  </target>
+
+
+  <target name="test-forkless"
+          description="Runs all of the tests without forking the process.">
+    <testing />
+  </target>
+
+</project>
+<project name="testdata" default="build">
+
+  <dirname property="testdata.dir" file="${ant.file.testdata}"/>
+
+  <property name="plovr.jar" value="${testdata.dir}/../build/plovr.jar" />
+  <property name="chrome_extension.dir"
+            value="${testdata.dir}/chrome_extension" />
+
+  <available file="${plovr.jar}" property="plovr.jar.built" />
+  <fail unless="plovr.jar.built" />
+
+  <target name="chrome"
+          description="make sure a chrome extension compiles when built-in externs are used">
+    <java jar="${plovr.jar}"
+          fork="true"
+          failonerror="true"
+          logerror="true"
+          >
+      <arg value="build" />
+      <arg value="${chrome_extension.dir}/config.js" />
+    </java>
+  </target>
+
+  <target name="build"
+          description="make sure all the configs in this directory build cleanly"
+          depends="chrome"
+          />
+
+</project>

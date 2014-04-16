@@ -1,0 +1,377 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="FBReaderJ" default="help">
+	<loadproperties srcFile="local.properties" />
+	<property file="ant.properties" />
+	<loadproperties srcFile="project.properties" />
+
+	<!-- quick check on sdk.dir -->
+	<fail
+		message="sdk.dir is missing. Make sure to generate local.properties using 'android update project'"
+		unless="sdk.dir"
+	/>
+
+	<target name="init" description="Initialization...">
+		<fail message="Ant 1.7.0 or higher is required. Please upgrade your ant.">
+			<condition>
+				<not>
+					<antversion property="ant.version" atleast="1.7.0"/>
+				</not>
+			</condition>
+		</fail>
+	</target>
+
+	<target name="native" unless="native.libraries.are.uptodate">
+		<fail message="Native libraries are not up-to-date. Please run ndk-build manually.">
+			<condition>
+				<os family="windows" />
+			</condition>
+		</fail>
+		<echo message="Building native libraries..."/>
+		<exec executable="${ndk.dir}/ndk-build" />
+		<echo message="DONE (Building native libraries)"/>
+	</target>
+
+	<target name="check.native.libraries" depends="init">
+		<echo message="Checking if native libraries are up-to-date..."/>
+		<condition property="native.libraries.are.uptodate" value="true">
+			<and>
+				<!-- Check if libDeflatingDecompressor exists and is up to date -->
+				<available file="./libs/armeabi/libDeflatingDecompressor-v3.so" />
+				<uptodate targetfile="libs/armeabi/libDeflatingDecompressor-v3.so">
+					<srcfiles dir="jni/DeflatingDecompressor" includes="**/*.cpp"/>
+				</uptodate>
+				<!-- Check if libLineBreak exists and is up to date -->
+				<available file="./libs/armeabi/libLineBreak-v2.so" />
+				<uptodate property="libLineBreak-build-is-not-required" targetfile="libs/armeabi/libLineBreak-v2.so">
+					<srcfiles dir="jni/LineBreak" includes="**/*.cpp,**/*.c,**/*.h"/>
+				</uptodate>
+				<!-- Check if libNativeFormats exists and is up to date -->
+				<available file="./libs/armeabi/libNativeFormats-v4.so" />
+				<uptodate property="libNativeFormats-build-is-not-required" targetfile="libs/armeabi/libNativeFormats-v4.so">
+					<srcfiles dir="jni/NativeFormats" includes="**/*.cpp,**/*.c,**/*.h"/>
+				</uptodate>
+			</and>
+		</condition>
+		<echo message="DONE (Checking if native libraries are up-to-date)"/>
+	</target>
+
+	<target name="-pre-build" depends="init, native">
+	</target>
+<!--
+	<target name="-pre-compile">
+	</target>
+
+	<target name="-post-compile">
+	</target>
+-->
+	<target name="clean">
+		<echo message="Deleting temporary files..." />
+		<delete dir="gen" />
+		<delete dir="bin" />
+		<delete dir="out" />
+		<echo message="DONE (Deleting temporary files)" />
+	</target>
+
+	<target name="distclean" depends="clean">
+		<echo message="Deleting native libraries..." />
+		<delete dir="obj" />
+		<delete dir="libs/armeabi" />
+		<delete dir="libs/armeabi-v7a" />
+		<delete dir="libs/x86" />
+		<delete dir="libs/mips" />
+		<delete dir="libs/mips-r2" />
+		<delete dir="libs/mips-r2-sf" />
+		<echo message="DONE (Deleting native libraries)" />
+	</target>
+
+	<import file="${sdk.dir}/tools/ant/build.xml" />
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project basedir="." default="buildJar" name="fbreader">
+	<property name="src.path" value="src:platform/swing/src"/>
+	<property name="bin.dir" value="bin"/>
+	<property name="cache.dir" value="depcache"/>
+	<property name="icons.dir" value="icons"/>
+	<property name="data.dir" value="data"/>
+	<property name="test.dir" value="test"/>
+	<property name="manifest.file" value="manifest.mf"/>
+	<property name="main.jar" value="FBReaderJ.jar"/>
+
+	<target name="prepare">
+		<mkdir dir="${bin.dir}" />
+	</target>
+
+	<target name="depend" depends="prepare">
+		<depend srcdir="${src.path}" destdir="${bin.dir}" cache="${cache.dir}" closure="yes" />
+	</target>
+
+	<target name="compile" depends="depend">
+		<javac srcdir="${src.path}" destdir="${bin.dir}" />
+	</target>
+
+	<target name="buildJar" depends="compile">
+		<jar destfile="${main.jar}" manifest="${manifest.file}">
+			<fileset dir="${bin.dir}" includes="**/*.class"/>
+			<fileset dir="." includes="${icons.dir}/**/*.png"/>
+			<fileset dir="." includes="${data.dir}/**"/>
+			<fileset dir="platform/swing" includes="${icons.dir}/**/*.png"/>
+			<fileset dir="platform/swing" includes="${data.dir}/**"/>
+		</jar>
+	</target>
+
+	<target name="test" depends="compile">
+		<javac srcdir="${test.dir}" destdir="${bin.dir}">
+			<classpath>
+				<pathelement location="lib/junit.jar"/>
+			</classpath>
+		</javac>
+	</target>
+
+	<target name="runtests" depends="test">
+		<junit printsummary="yes" showoutput="yes">
+			<classpath>
+				<pathelement location="lib/junit.jar"/>
+				<pathelement location="${bin.dir}"/>
+			</classpath>
+			<test name="org.test.zlibrary.model.TestAll"/>
+			<test name="org.test.zlibrary.options.TestAll"/>
+			<test name="org.test.zlibrary.core.resources.AllTests"/>
+			<test name="org.test.fbreader.formats.fb2.AllTests"/>
+			<test name="org.test.zlibrary.filesystem.TestALL"/>
+			<test name="org.test.fbreader.collection.AllTests"/>
+			<test name="org.test.zlibrary.description.AllTests"/>
+			<test name="org.test.zlibrary.hyphenation.TestAll"/>
+		</junit>
+	</target>
+
+	<target name="clean">
+		<delete dir="${bin.dir}"/>
+		<delete dir="${cache.dir}"/>
+		<delete file="${main.jar}"/>
+		<delete file="FBReaderJ.jad"/>
+		<delete dir="platform/android/res/raw"/>
+		<delete dir="platform/android/res/drawable"/>
+		<delete file="platform/android/src/org/geometerplus/zlibrary/ui/android/R.java"/>
+	</target>
+</project>
+<?xml version="1.0"?>
+<project name="FBReaderJ" default="package">
+	<property name="project.dir" value="/home/geometer/src/projects/FBReaderJ" />
+	<property name="wtk.home" value="/home/geometer/WTK2.5.2" />
+
+<!--	
+	<property name="project.dir" value="C:/Documents and Settings/465/workspace/FBReaderJ" />
+	<property name="wtk.home" value="C:/WTK2.5.2" />
+-->
+
+<!--
+	<property name="project.dir" value="/home/grigory/programming/amse/fbreader/java/trunk"/>
+	<property name="wtk.home" value="/home/grigory/soft/WTK2.5.2"/>
+-->
+	
+
+	<taskdef resource="antenna.properties" classpath="${project.dir}/lib/antenna-bin-1.0.0.jar"/>
+	<property name="wtk.cldc.version" value="1.1" />
+	<property name="wtk.midp.version" value="2.0" />
+	<property name="wtk.optionalpda.enabled" value="true" />
+	<property name="wtk.proguard.home" value="${project.dir}"/>
+	<property name="platform.dir" value="${project.dir}/platform/j2me" />
+	<property name="bin.dir" value="${project.dir}/bin" />
+	<property name="src.path" value="${project.dir}/src:${platform.dir}/src" />
+	<property name="main.jar" value="${project.dir}/FBReaderJ.jar"/>
+	<property name="main.jad" value="${project.dir}/FBReaderJ.jad"/>
+	<property name="main.jad.copy" value="${platform.dir}/FBReaderJ.jad"/>
+
+	<target name="prepare">
+		<mkdir dir="${bin.dir}"/>
+		<copy file="${main.jad.copy}" todir="${project.dir}"/>
+	</target>
+
+	<target name="compile" depends="prepare">
+		<wtkbuild srcdir="${src.path}" destdir="${bin.dir}" />
+	</target>
+
+	<target name="package" depends="compile">
+		<wtkpackage jarfile="${main.jar}" jadfile="${main.jad}" preverify="yes" obfuscate="yes">
+			<fileset dir="${bin.dir}" includes="**/*.class"/>
+			<fileset dir="${project.dir}" includes="data/**"/>
+			<fileset dir="${platform.dir}" includes="data/**"/>
+			<preserve class="org.geometerplus.fbreader.fbreader.FBReader"/>
+		</wtkpackage>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="AmbilWarna" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- if sdk.dir was not set from one of the property file, then
+         get it from the ANDROID_HOME env var.
+         This must be done before we load project.properties since
+         the proguard config can use sdk.dir -->
+    <property environment="env" />
+    <condition property="sdk.dir" value="${env.ANDROID_HOME}">
+        <isset property="env.ANDROID_HOME" />
+    </condition>
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through the ANDROID_HOME environment variable."
+            unless="sdk.dir"
+    />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true" />
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="DragSortListView" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through an env var"
+            unless="sdk.dir"
+    />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true" />
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+</project>

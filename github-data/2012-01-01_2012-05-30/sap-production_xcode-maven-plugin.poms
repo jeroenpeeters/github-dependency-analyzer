@@ -1,0 +1,2599 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>it-xcode-maven-plugin-verification-checks</artifactId>
+  <packaging>jar</packaging>
+  <parent>
+    <groupId>com.sap.prd.mobile.ios.mios</groupId>
+    <artifactId>parent</artifactId>
+    <version>1.14.1-SNAPSHOT</version>
+    <relativePath>../../../parent</relativePath>
+  </parent>
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <license.roots>src/main,src/test/java,src/test/projects</license.roots> <!--  skip src/test/resources as these files are used for file comparison and must not be changed-->
+  </properties>
+  <dependencies>
+    <dependency>
+      <!-- 
+        This dependency has been added in order to test the setup of the class loader used for loading the verification checks.
+        This dependency must be ommited inside the class loader.
+      -->
+      <groupId>org.sonatype.sisu</groupId>
+      <artifactId>sisu-guice</artifactId>
+      <version>2.9.1</version>
+    </dependency>
+    <dependency>
+
+      <!-- 
+        This dependency has been added in order to test the setup of the class loader used for loading the verification checks.
+        This dependency must be contained inside the class loader.
+      -->
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+      <scope>compile</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.sap.prd.mobile.ios.mios</groupId>
+      <artifactId>verification-check-api</artifactId>
+      <version>1.0.0</version>
+    </dependency>
+  </dependencies>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <artifactId>it-xcode-maven-plugin</artifactId>
+  <packaging>jar</packaging>
+  <parent>
+    <groupId>com.sap.prd.mobile.ios.mios</groupId>
+    <artifactId>parent</artifactId>
+    <version>1.14.1-SNAPSHOT</version>
+    <relativePath>../../../parent</relativePath>
+  </parent>
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+    <license.roots>src/main,src/test/java,src/test/projects</license.roots> <!--  skip src/test/resources as these files are used for file comparison and must not be changed-->
+  </properties>
+  <build>
+    <plugins>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <!-- Q: What is the reason for that configuration here?
+               A: The JUnit tests controlled by surefire runs in a forked VM.
+                  In the JUnit tests in turn we fork a new VM executing maven projects
+                  via the maven verifier. The properties listed below needs to be the same
+                  in the mvn session surrounding the JUnit integration tests and in the
+                  fork controlled by JUnit.
+                  With the configuration below the properties are passed into the VM executing
+                  the JUnit tests.
+                  Since the base directory of the surrounding maven session and of the maven session
+                  triggered by the JUnit tests are different both file pathes needs to be absolute.
+                  Both properties are evaluated by class "XCodeTest".
+                  
+                  Property "com.sap.maven.integration-tests.user-settings" must be provided to the call for the surrounding maven session.
+                  The value must be the same than the value provided to maven with the -s/-settings property. In maven 2 we had property
+                  "org.apache.maven.user-settings". With that setting it would be not required to duplicate the path to the user settings file.
+                  With maven 3 that property has been removed. In case that property revive in future releases we should switch to that property or
+                  its successor.
+
+                 Property "com.sap.maven.integration-tests.active-profiles" must be provided to the call for the surrounding maven session.
+                 The value must be the same than the value provided to maven with the "-P" property. The property here does only propagate the
+                 profiles provided this way, other profiles activated by other activators are not propagated.
+           -->
+          <configuration>
+            <systemPropertyVariables>
+              <com.sap.maven.integration-tests.local-repo>${maven.repo.local}</com.sap.maven.integration-tests.local-repo>
+              <com.sap.maven.integration-tests.user-settings>${com.sap.maven.integration-tests.user-settings}</com.sap.maven.integration-tests.user-settings>
+              <com.sap.maven.integration-tests.active-profiles>${com.sap.maven.integration-tests.active-profiles}</com.sap.maven.integration-tests.active-profiles>
+            </systemPropertyVariables>
+          </configuration>
+        </plugin>
+    </plugins>
+  </build>
+  <dependencies>
+     <dependency>
+       <!-- This dependency is required in order to ensure that this project is built first.
+            The jar correpsonding to this project is loaded dynamically during tests for the verification infrastructure. -->
+       <groupId>com.sap.prd.mobile.ios.mios</groupId>
+       <artifactId>it-xcode-maven-plugin-verification-checks</artifactId>
+       <version>${project.version}</version>
+     </dependency>
+     <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-project-java-api</artifactId>
+    </dependency>
+    <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+    </dependency>
+  	<dependency>
+  		<groupId>junit</groupId>
+  		<artifactId>junit</artifactId>
+  	</dependency>
+  	<dependency>
+  		<groupId>org.apache.maven.shared</groupId>
+  		<artifactId>maven-verifier</artifactId>
+  	</dependency>
+  	<dependency>
+  		<groupId>plexus</groupId>
+  		<artifactId>plexus-archiver</artifactId>
+  	</dependency>
+  </dependencies>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                  <additionalArchivePaths>
+                    <param>src/docs</param>
+                    <param>target/versions.xml</param>
+                  </additionalArchivePaths>
+                  <excludes>
+                    <param>*.tmp</param>
+                    <param>*/tmp/*</param>
+                    <param>src/xcode/packageExcludeTest/excludeDir/*</param>
+                    <param>src/xcode/packageExcludeTest/doNotPackage.txt</param>
+                  </excludes>
+                </configuration>
+                <executions>
+                  <execution>
+                    <id>package-xcode-project</id>
+                    <phase>package</phase>
+                    <goals>
+                      <goal>package-xcodeproj</goal>
+                    </goals>
+                  </execution>
+                </executions>  
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibraryA</artifactId>
+      <version>${dynamicVersion}</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibraryA</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                  <execution>
+                    <id>package-xcode-project</id>
+                    <phase>package</phase>
+                    <goals>
+                      <goal>package-xcodeproj</goal>
+                    </goals>
+                  </execution>
+                </executions>  
+            </plugin>
+        </plugins>
+    </build>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibraryB</artifactId>
+      <version>${dynamicVersion}</version>
+      <type>xcode-lib</type>
+    </dependency>
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibraryB</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+       http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>1.0.0</version>
+  <packaging>xcode-app</packaging>
+  <dependencies>
+      <dependency>
+          <groupId>com.sap.ondevice.production.ios.tests</groupId>
+          <artifactId>MyLibrary</artifactId>
+          <version>${dynamicVersion}</version>
+          <type>xcode-lib</type>
+      </dependency>
+      <dependency>
+          <groupId>com.sap.ondevice.production.ios.tests</groupId>
+          <artifactId>MyFramework</artifactId>
+          <version>1.0.0</version>
+          <type>xcode-framework</type>
+      </dependency>
+  </dependencies>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <configuration>
+                    <excludes>
+                        <param>src/xcode/**/*.m</param>
+                    </excludes>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>package-xcode-project</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>package-xcodeproj</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    
+<repositories>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>remoteRepo</id>
+        <name>Remote repository</name>
+        <url>file:${deployrepo.directory}</url>
+        <layout>default</layout>
+    </repository>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>frameworkRepo</id>
+        <name>frameworkRepo</name>
+        <url>file:${frwkrepo.directory}</url>
+        <layout>default</layout>
+    </repository>
+</repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                  <artifactId>xcode-maven-plugin</artifactId>
+                  <version>${xcode.maven.plugin.version}</version>
+                  <extensions>true</extensions>
+              </plugin>
+          </plugins>
+      </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+                <executions>
+                  <execution>
+                    <id>package-xcode-project</id>
+                    <phase>package</phase>
+                    <goals>
+                      <goal>package-xcodeproj</goal>
+                    </goals>
+                  </execution>
+                </executions>  
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+        <groupId>com.sap.ondevice.production.ios.tests</groupId>
+        <artifactId>MyFramework</artifactId>
+        <version>${frameworkVersion}</version>
+        <type>xcode-framework</type>
+    </dependency> 
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>frameworkRepo</id>
+        <name>frameworkRepo</name>
+        <url>file:${frwkrepo.directory}</url>
+        <layout>default</layout>
+      </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyFakeFramework</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-framework</packaging>
+  <build>
+      <plugins>
+          <plugin>
+              <groupId>com.sap.prd.mobile.ios.mios</groupId>
+              <artifactId>xcode-maven-plugin</artifactId>
+              <version>${xcode.maven.plugin.version}</version>
+              <extensions>true</extensions>
+          </plugin>
+      </plugins>
+  </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>frameworkRepo</id>
+        <name>frameworkRepo</name>
+        <url>file:${frwkrepo.directory}</url>
+        <layout>default</layout>
+      </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-framework</packaging>
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                  <artifactId>xcode-maven-plugin</artifactId>
+                  <version>${xcode.maven.plugin.version}</version>
+                  <extensions>true</extensions>
+              </plugin>
+          </plugins>
+      </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyRealFramework</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-framework</packaging>
+  <build>
+      <plugins>
+          <plugin>
+              <groupId>com.sap.prd.mobile.ios.mios</groupId>
+              <artifactId>xcode-maven-plugin</artifactId>
+              <version>${xcode.maven.plugin.version}</version>
+              <extensions>true</extensions>
+          </plugin>
+      </plugins>
+  </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>frameworkRepo</id>
+        <name>frameworkRepo</name>
+        <url>file:${frwkrepo.directory}</url>
+        <layout>default</layout>
+      </repository>
+  </repositories>
+</project>
+
+<!--
+ #%L
+ it-xcode-maven-plugin
+ %%
+ Copyright (C) 2012 SAP AG
+ %%
+ Licensed under the Apache License, Version 2.0 (the "License");
+ you may not use this file except in compliance with the License.
+ You may obtain a copy of the License at
+ 
+ http://www.apache.org/licenses/LICENSE-2.0
+ 
+ Unless required by applicable law or agreed to in writing, software
+ distributed under the License is distributed on an "AS IS" BASIS,
+ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ See the License for the specific language governing permissions and
+ limitations under the License.
+ #L%
+ -->
+
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>TestFramework</artifactId>
+    <version>${dynamicVersion}</version>
+    <packaging>xcode-framework</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+    <distributionManagement>
+        <repository>
+            <uniqueVersion>false</uniqueVersion>
+            <id>myRepo</id>
+            <name>My Repository</name>
+            <url>file:${deployrepo.directory}</url>
+            <layout>default</layout>
+        </repository>
+        <snapshotRepository>
+            <uniqueVersion>true</uniqueVersion>
+            <id>mySnapshotRepo</id>
+            <name>My Snapshot Repository</name>
+            <url>file:${deployrepo.directory}</url>
+            <layout>default</layout>
+        </snapshotRepository>
+    </distributionManagement>
+    <repositories>
+        <repository>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+                <checksumPolicy>warn</checksumPolicy>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>never</updatePolicy>
+                <checksumPolicy>fail</checksumPolicy>
+            </snapshots>
+            <id>myRepo</id>
+            <name>myRepo</name>
+            <url>file:${deployrepo.directory}</url>
+            <layout>default</layout>
+        </repository>
+        <repository>
+            <releases>
+                <enabled>true</enabled>
+                <updatePolicy>always</updatePolicy>
+                <checksumPolicy>warn</checksumPolicy>
+            </releases>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>never</updatePolicy>
+                <checksumPolicy>fail</checksumPolicy>
+            </snapshots>
+            <id>frameworkRepo</id>
+            <name>frameworkRepo</name>
+            <url>file:${frwkrepo.directory}</url>
+            <layout>default</layout>
+        </repository>
+    </repositories>
+</project><!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>1.0.0</version>
+  <packaging>xcode-app</packaging>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+        <version>${xcode.maven.plugin.version}</version>
+        <extensions>true</extensions>
+        <configuration>
+          <preferFatLibs>false</preferFatLibs>
+          <sdks>
+            <sdk>iphoneos</sdk>
+          </sdks>
+          <configurations>
+            <configuration>Release</configuration>
+          </configurations>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+  <parent>
+    <groupId>com.sap.ondevice.production.ios.tests</groupId>
+    <artifactId>aggregator</artifactId>
+    <version>${dynamicVersion}</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibrary</artifactId>
+      <version>1.0.1</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>1.0.1</version>
+  <packaging>xcode-lib</packaging>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+        <version>${xcode.maven.plugin.version}</version>
+        <extensions>true</extensions>
+        <configuration>
+          <sdks>
+            <sdk>iphoneos</sdk>
+          </sdks>
+          <configurations>
+            <configuration>Release</configuration>
+          </configurations>
+	</configuration>
+      </plugin>
+    </plugins>
+  </build>
+
+
+  <parent>
+    <groupId>com.sap.ondevice.production.ios.tests</groupId>
+    <artifactId>aggregator</artifactId>
+    <version>${dynamicVersion}</version>
+    <relativePath>../pom.xml</relativePath>
+  </parent>
+
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project>
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>aggregator</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>pom</packaging>
+  <modules>
+    <module>MyLibrary/pom.xml</module>
+    <module>MyApp/pom.xml</module>
+  </modules>
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+        <configuration>
+          <preferFatLibs>false</preferFatLibs>
+          <sdks>
+            <sdk>iphoneos</sdk>
+          </sdks>
+          <configurations>
+            <configuration>Release</configuration>
+          </configurations>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MultipleTargets</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                  <artifactId>xcode-maven-plugin</artifactId>
+                  <version>${xcode.maven.plugin.version}</version>
+                  <extensions>true</extensions>
+                  <configuration>
+                    <settings>
+                      <TEST>abc</TEST>
+                    </settings>
+                    <options>
+                      <verbose />
+                    </options>
+                  </configuration>
+              </plugin>
+          </plugins>
+      </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+  <description>A simple app without any dependencies to other libs</description>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <configuration>
+                    <additionalPackagingTypes>
+                        <html5>*****</html5>
+                    </additionalPackagingTypes>
+                </configuration>
+                <extensions>true</extensions>
+            </plugin>
+            <plugin>
+                <groupId>com.sap.prd.types</groupId>
+                <artifactId>types-maven-plugin</artifactId>
+                <version>0.0.1</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+    <dependencies>
+        <dependency>
+            <groupId>com.sap.ondevice.production.ios.tests</groupId>
+            <artifactId>MyZipWithDep</artifactId>
+            <version>1.0.0</version>
+            <type>html5</type>
+        </dependency>
+    </dependencies>
+  <repositories>
+    <repository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>zipRepo</id>
+        <name>zipRepo</name>
+        <url>file:${ziprepo.directory}</url>
+        <layout>default</layout>
+      </repository>
+  </repositories>
+  <pluginRepositories>
+    <pluginRepository>
+        <releases>
+            <enabled>true</enabled>
+            <updatePolicy>always</updatePolicy>
+            <checksumPolicy>warn</checksumPolicy>
+        </releases>
+        <snapshots>
+            <enabled>true</enabled>
+            <updatePolicy>never</updatePolicy>
+            <checksumPolicy>fail</checksumPolicy>
+        </snapshots>
+        <id>zipRepo-plugin</id>
+        <name>zipRepo-plugin</name>
+        <url>file:${ziprepo.directory}</url>
+        <layout>default</layout>
+      </pluginRepository>
+  </pluginRepositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibrary</artifactId>
+      <version>${dynamicVersion}</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency> 
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                  <artifactId>xcode-maven-plugin</artifactId>
+                  <version>${xcode.maven.plugin.version}</version>
+                  <extensions>true</extensions>
+                  <configuration>
+                    <bundles>
+                      <bundle>MyLibrary.raw</bundle>
+                      <bundle>Resources/Another</bundle>
+                    </bundles>
+                  </configuration>
+              </plugin>
+          </plugins>
+      </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibrary</artifactId>
+      <version>${dynamicVersion}</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  it-xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>${dynamicVersion}</version>
+  <packaging>xcode-lib</packaging>
+      <build>
+          <plugins>
+              <plugin>
+                  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                  <artifactId>xcode-maven-plugin</artifactId>
+                  <version>${xcode.maven.plugin.version}</version>
+                  <extensions>true</extensions>
+              </plugin>
+          </plugins>
+      </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+  <artifactId>integration-test-aggregator</artifactId>
+  <version>1.14.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
+  <profiles>		
+    <profile>		
+      <id>continuous-integration</id>		
+      <modules>		
+
+        <module>it-xcode-maven-plugin</module>		
+        <module>it-xcode-maven-plugin-verification-checks</module>		
+      </modules>		
+    </profile>		
+  </profiles>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>com.sap.prd.mobile.ios.mios</groupId>
+    <artifactId>parent</artifactId>
+    <version>1.14.1-SNAPSHOT</version>
+    <relativePath>../../parent</relativePath>
+  </parent>
+  <artifactId>xcode-maven-plugin</artifactId>
+  <packaging>maven-plugin</packaging>
+  <name>Xcode Maven Plugin</name>
+  <description>
+    This plugin is used to run iOS Xcode builds with Maven. It also uses the Maven integration with a
+    central artifact repository and the dependency resolution.
+  </description>
+  <prerequisites>
+    <maven>3.0</maven>
+  </prerequisites>
+    
+  <properties>
+    <license.roots>src/main,src/site,src/test/java,src/test/projects</license.roots>  <!--  skip src/test/resources as these files are used for file comparison and must not be changed-->
+    <jaxb.verification.checks.1_0_0.sources>${project.build.directory}/generated-sources/jaxb/verification-checks/1.0.0</jaxb.verification.checks.1_0_0.sources>
+    <verification.api.groupId>${project.groupId}</verification.api.groupId>
+    <verification.api.artifactId>verification-check-api</verification.api.artifactId>
+    <verification.api.version>1.0.0</verification.api.version>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <configuration>
+          <source>1.6</source>
+          <target>1.6</target>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-source-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>attach-sources</id>
+            <goals>
+              <goal>jar</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <artifactId>maven-site-plugin</artifactId>
+      </plugin>
+
+     <plugin>
+       <groupId>org.codehaus.mojo</groupId>
+       <artifactId>jaxb2-maven-plugin</artifactId>
+       <executions>
+         <execution>
+           <id>verifiction-checks</id>
+           <phase>generate-sources</phase>
+           <goals>
+             <goal>xjc</goal>
+           </goals>
+           <configuration>
+             <outputDirectory>${jaxb.verification.checks.1_0_0.sources}</outputDirectory>
+             <schemaDirectory>${basedir}/src/main/xsd/verification-checks/1.0.0</schemaDirectory>
+             <packageName>com.sap.prd.mobile.ios.mios.verificationchecks.v_1_0_0</packageName>
+           </configuration>
+         </execution>
+       </executions>
+     </plugin>
+     
+     <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>build-helper-maven-plugin</artifactId>
+        <executions>
+          <execution>
+            <id>add-source</id>
+            <phase>generate-sources</phase>
+            <goals>
+              <goal>add-source</goal>
+            </goals>
+            <configuration>
+              <sources>
+                <source>${jaxb.verification.checks.1_0_0.sources}</source>
+              </sources>
+            </configuration>
+          </execution>
+        </executions>
+      </plugin>
+
+      <plugin>
+        <groupId>org.jacoco</groupId>
+        <artifactId>jacoco-maven-plugin</artifactId>
+     </plugin>
+
+    </plugins>
+      
+    <resources>
+      <resource>
+        <directory>src/main/resources</directory>
+        <filtering>true</filtering>
+      </resource>
+    </resources>
+
+  </build>
+  <dependencies>
+    <dependency>
+      <groupId>${verification.api.groupId}</groupId>
+      <artifactId>${verification.api.artifactId}</artifactId>
+      <version>${verification.api.version}</version>
+    </dependency>
+   <dependency>
+      <groupId>com.sap.prd.mobile.ios.mios</groupId>
+      <artifactId>xcode-maven-plugin-utils</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.httpcomponents</groupId>
+      <artifactId>httpclient</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.sap.prd.mobile.ios.mios</groupId>
+      <artifactId>versionschema</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>com.sap.prd.mobile.ios.ota</groupId>
+      <artifactId>com.sap.prd.mobile.ios.ota.library</artifactId>
+    </dependency>
+      <dependency>
+      <groupId>commons-lang</groupId>
+      <artifactId>commons-lang</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-plugin-api</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-utils</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.codehaus.plexus</groupId>
+      <artifactId>plexus-archiver</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.commons</groupId>
+      <artifactId>commons-io</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-aether-provider</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>junit</groupId>
+      <artifactId>junit</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.shared</groupId>
+      <artifactId>maven-verifier</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.easymock</groupId>
+      <artifactId>easymock</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-core</artifactId>
+    </dependency>
+  </dependencies>
+  
+  <profiles>
+    <profile>
+      <id>continuous-integration</id>
+      <build>
+        <plugins>
+          <plugin>
+            <artifactId>maven-javadoc-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>attach-javadocs</id>
+                <goals>
+                  <goal>jar</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+
+  <reporting>
+    <plugins>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-project-info-reports-plugin</artifactId>
+        <version>2.4</version>
+        <reportSets>
+          <reportSet>
+            <reports>
+              <report>dependencies</report>
+              <report>project-team</report>
+              <report>mailing-list</report>
+              <!-- <report>cim</report> -->
+              <report>issue-tracking</report>
+              <report>license</report>
+              <!-- <report>scm</report> -->
+            </reports>
+          </reportSet>
+        </reportSets>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-plugin-plugin</artifactId>
+        <version>2.9</version>
+      </plugin>
+      
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>license-maven-plugin</artifactId>
+        <version>1.1</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-jxr-plugin</artifactId>
+        <version>2.3</version>
+      </plugin>
+
+      <plugin>
+        <groupId>org.codehaus.mojo</groupId>
+        <artifactId>findbugs-maven-plugin</artifactId>
+        <configuration>
+          <excludeFilterFile>findbugs-exclude.xml</excludeFilterFile>
+        </configuration>
+      </plugin>
+
+    </plugins>
+  </reporting>
+
+</project>
+<!--
+  #%L
+  xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>1.0.0</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibrary</artifactId>
+      <version>1.0.1</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyApp</artifactId>
+  <version>1.0.0</version>
+  <packaging>xcode-app</packaging>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>com.sap.prd.mobile.ios.mios</groupId>
+                <artifactId>xcode-maven-plugin</artifactId>
+                <version>${xcode.maven.plugin.version}</version>
+                <extensions>true</extensions>
+            </plugin>
+        </plugins>
+    </build>
+  <dependencies>
+    <dependency>
+      <groupId>com.sap.ondevice.production.ios.tests</groupId>
+      <artifactId>MyLibrary</artifactId>
+      <version>1.0.1</version>
+      <type>xcode-lib</type>
+      <scope>compile</scope>
+    </dependency>
+  </dependencies>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+  <repositories>
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+        <updatePolicy>always</updatePolicy>
+        <checksumPolicy>warn</checksumPolicy>
+      </releases>
+      <snapshots>
+        <enabled>true</enabled>
+        <updatePolicy>never</updatePolicy>
+        <checksumPolicy>fail</checksumPolicy>
+      </snapshots>
+      <id>myRepo</id>
+      <name>myRepo</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+  </repositories>
+</project>
+
+<!--
+  #%L
+  xcode-maven-plugin
+  %%
+  Copyright (C) 2012 SAP AG
+  %%
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+  
+       http://www.apache.org/licenses/LICENSE-2.0
+  
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+  #L%
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0
+                      http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.sap.ondevice.production.ios.tests</groupId>
+  <artifactId>MyLibrary</artifactId>
+  <version>1.0.1</version>
+  <packaging>xcode-lib</packaging>
+  <build>
+    <plugins>
+     <plugin>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+        <version>${xcode.maven.plugin.version}</version>
+         <extensions>true</extensions>
+        <executions>
+          <execution>
+            <id>fat-lib</id>
+            <goals>
+              <goal>package-fat-lib</goal>
+            </goals>
+            <phase>package</phase>
+            <inherited>false</inherited>
+            <configuration />
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+  <distributionManagement>
+    <repository>
+      <uniqueVersion>false</uniqueVersion>
+      <id>myRepo</id>
+      <name>My Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </repository>
+    <snapshotRepository>
+      <uniqueVersion>true</uniqueVersion>
+      <id>mySnapshotRepo</id>
+      <name>My Snapshot Repository</name>
+      <url>file:${deployrepo.directory}</url>
+      <layout>default</layout>
+    </snapshotRepository>
+  </distributionManagement>
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <parent> 
+    <groupId>com.sap.prd.mobile.ios.mios</groupId>
+    <artifactId>quality-check-parent</artifactId> 
+    <version>1.0.0</version> 
+    <relativePath />
+  </parent>
+
+  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+  <artifactId>parent</artifactId>
+  <version>1.14.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+  <name>Xcode Maven Plugin Parent</name>
+  <description>The parent POM for the xcode-maven-plugin</description>
+    
+  <inceptionYear>2012</inceptionYear>
+  <organization>
+    <name>SAP AG</name>
+  </organization>
+    
+  <licenses>
+    <license>
+      <name>The Apache Software License, Version 2.0</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.txt</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+  
+  <url>https://github.com/sap-production/xcode-maven-plugin</url>
+
+  <properties>
+    <project.build.sourceEncoding>MacRoman</project.build.sourceEncoding>
+  </properties>
+  
+  <scm>
+    <connection>scm:git:https://github.com/sap-production/xcode-maven-plugin.git</connection>
+    <developerConnection>scm:git:https://github.com/sap-production/xcode-maven-plugin.git</developerConnection>
+    <url>https://github.com/sap-production/xcode-maven-plugin</url>
+  </scm>
+  
+  <mailingLists>
+    <mailingList>
+      <name>User List</name>
+      <subscribe>maven4ios-request@freelists.org?subject=subscribe</subscribe>
+      <unsubscribe>maven4ios-request@freelists.org?subject=unsubscribe</unsubscribe>
+      <post>maven4ios@freelists.org</post>
+      <archive>http://www.freelists.org/archive/maven4ios/</archive>
+    </mailingList>
+  </mailingLists>
+  
+  <issueManagement>
+    <system>GitHub</system>
+    <url>https://github.com/sap-production/xcode-maven-plugin/issues/</url>
+  </issueManagement>
+  
+  <developers>
+        <developer>
+            <name>Irina Kirilova</name>
+            <email>irina.kirilova@sap.com</email>
+        </developer>
+        <developer>
+            <name>Marcus Holl</name>
+            <email>marcus.holl@sap.com</email>
+        </developer>
+        <developer>
+            <name>Alexander Link</name>
+            <email>alexander.link@sap.com</email>
+        </developer>
+        <developer>
+            <name>Joern Gebhardt</name>
+            <email>joern.gebhardt@sap.com</email>
+        </developer>
+    </developers>
+  
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin</artifactId>
+        <version>${project.version}</version>
+    </dependency>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-project-java-api</artifactId>
+        <version>1.1.0</version>  
+      </dependency>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>xcode-maven-plugin-utils</artifactId>
+        <version>1.0.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>verification-check-api</artifactId>
+        <version>1.0.0</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.mios</groupId>
+        <artifactId>versionschema</artifactId>
+        <version>1.2.3</version>
+      </dependency>
+      <dependency>
+        <groupId>com.sap.prd.mobile.ios.ota</groupId>
+        <artifactId>com.sap.prd.mobile.ios.ota.library</artifactId>
+          <version>1.0.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-plugin-api</artifactId>
+        <version>3.0.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-utils</artifactId>
+        <version>3.0.7</version>
+      </dependency>
+      <dependency>
+        <groupId>org.codehaus.plexus</groupId>
+        <artifactId>plexus-archiver</artifactId>
+        <version>1.2</version>
+      </dependency>
+      <dependency>
+        <groupId>xerces</groupId>
+        <artifactId>xercesImpl</artifactId>
+        <version>2.4.0</version>
+      </dependency>
+      <dependency>
+        <groupId>plexus</groupId>
+        <artifactId>plexus-archiver</artifactId>
+        <version>1.0-alpha-2</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.commons</groupId>
+        <artifactId>commons-io</artifactId>
+        <version>1.3.2</version>
+      </dependency>
+      <dependency>
+        <groupId>commons-lang</groupId>
+        <artifactId>commons-lang</artifactId>
+        <version>2.4</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-aether-provider</artifactId>
+        <version>3.0.2</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven</groupId>
+        <artifactId>maven-core</artifactId>
+        <version>3.0.3</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.httpcomponents</groupId>
+        <artifactId>httpclient</artifactId>
+        <version>4.2.5</version>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.velocity</groupId>
+        <artifactId>velocity</artifactId>
+        <version>1.7</version>
+      </dependency>
+      <dependency>
+        <groupId>junit</groupId>
+        <artifactId>junit</artifactId>
+        <version>4.8.2</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.apache.maven.shared</groupId>
+        <artifactId>maven-verifier</artifactId>
+        <version>1.2</version>
+        <scope>test</scope>
+      </dependency>
+      <dependency>
+        <groupId>org.easymock</groupId>
+        <artifactId>easymock</artifactId>
+        <version>3.0</version>
+        <scope>test</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <build>
+    <!-- define the plugin version to be used in the submodules here -->
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>build-helper-maven-plugin</artifactId>
+          <version>1.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>jaxb2-maven-plugin</artifactId>
+          <version>1.5</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>2.3.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-source-plugin</artifactId>
+          <version>2.1.2</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-site-plugin</artifactId>
+          <version>3.1</version>
+          <dependencies>
+            <dependency>
+              <groupId>org.apache.maven.doxia</groupId>
+              <artifactId>doxia-module-xhtml</artifactId>
+              <version>1.3</version>
+            </dependency>
+          </dependencies>
+        </plugin>
+        <plugin>
+          <artifactId>maven-javadoc-plugin</artifactId>
+          <version>2.8.1</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-surefire-plugin</artifactId>
+          <version>2.12.3</version>
+        </plugin>
+        <plugin>
+          <groupId>org.apache.maven.plugins</groupId>
+          <artifactId>maven-gpg-plugin</artifactId>
+          <version>1.4</version>
+          <executions>
+            <execution>
+              <id>gpg</id>
+              <goals>
+                <goal>sign</goal>
+              </goals>
+              <phase>verify</phase>
+            </execution>
+          </executions>
+        </plugin>
+        <plugin>
+          <groupId>org.codehaus.mojo</groupId>
+          <artifactId>license-maven-plugin</artifactId>
+          <version>1.3</version>
+          <configuration>
+            <licenseName>apache_v2</licenseName>
+            <extraExtensions>
+              <m>java</m> <!-- objective C source files (*.m) shall get the headers in teh Java syntax -->
+            </extraExtensions>
+            <failOnMissingHeader>true</failOnMissingHeader>
+          </configuration>
+        </plugin> 
+       </plugins>
+    </pluginManagement>
+  </build>
+
+  <profiles>
+    <profile>
+      <id>continuous-integration</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.codehaus.mojo</groupId>
+            <artifactId>license-maven-plugin</artifactId>
+            <executions>
+              <execution>
+                <id>check</id>
+                <phase>validate</phase>
+                <goals>
+                  <goal>check-file-header</goal>
+                </goals>
+              </execution>
+            </executions>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>  
+    <profile>
+      <id>gpg</id>
+      <build>
+        <plugins>
+          <plugin>
+            <groupId>org.apache.maven.plugins</groupId>
+            <artifactId>maven-gpg-plugin</artifactId>
+          </plugin>
+        </plugins>
+      </build>
+    </profile>
+  </profiles>
+
+</project>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>com.sap.prd.mobile.ios.mios</groupId>
+  <artifactId>component</artifactId>
+  <version>1.14.1-SNAPSHOT</version>
+  <packaging>pom</packaging>
+
+  <properties>
+    <maven.deploy.skip>true</maven.deploy.skip>
+  </properties>
+
+  <scm>
+    <connection>scm:git:.git</connection>
+  </scm>
+
+  <modules>
+    <module>parent</module>
+    <module>modules/xcode-maven-plugin</module>
+  </modules>
+  <profiles>		
+    <profile>		
+      <id>continuous-integration</id>		
+      <modules>		
+        <module>modules/integration-tests</module>		
+      </modules>		
+    </profile>		
+  </profiles>
+</project>

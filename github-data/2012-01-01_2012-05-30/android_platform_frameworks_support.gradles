@@ -1,0 +1,391 @@
+buildscript {
+    repositories {
+        maven { url '../../prebuilts/gradle-plugin' }
+        maven { url '../../prebuilts/tools/common/m2/repository' }
+        maven { url '../../prebuilts/tools/common/m2/internal' }
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.5.7'
+    }
+}
+
+ext.version = '18.0.1'
+
+// ext.androidHostOut is shared by all tools/{base,build,swt} gradle projects/
+ext.androidHostOut = file("$rootDir/../../out")
+
+// rootProject.buildDir is specific to this gradle build.
+buildDir = new File(ext.androidHostOut, "host/gradle/frameworks/support/build")
+
+ext.androidRepoOut = new File(ext.androidHostOut, "host/support_repo/")
+
+task release(type: Copy) {
+    from "$rootDir/../../prebuilts/maven_repo/android"
+    into project.ext.androidRepoOut
+}
+
+subprojects {
+    // Change buildDir first so that all plugins pick up the new value.
+    project.buildDir = project.file("$project.parent.buildDir/../$project.name")
+
+    apply plugin: 'maven'
+
+    version = rootProject.ext.version
+    group = 'com.android.support'
+
+    task release(type: Upload) {
+        configuration = configurations.archives
+        repositories {
+            mavenDeployer {
+                repository(url: uri("$rootProject.ext.androidRepoOut"))
+            }
+        }
+    }
+    release.dependsOn rootProject.tasks.release
+}
+
+FileCollection getAndroidPrebuilt(String apiLevel) {
+    files("$rootDir/../../prebuilts/sdk/$apiLevel/android.jar")
+}
+apply plugin: 'java'
+
+archivesBaseName = 'support-v13'
+
+sourceSets {
+    main.java.srcDir 'java'
+    ics.java.srcDir 'ics'
+    icsmr1.java.srcDir 'ics-mr1'
+    k.java.srcDir 'k'
+}
+
+dependencies {
+    icsCompile getAndroidPrebuilt('14')
+
+    icsmr1Compile getAndroidPrebuilt('15')
+
+    kCompile getAndroidPrebuilt('current')
+
+    // order is important as we need the API 13 before the API 4 so that it uses the latest one.
+    compile getAndroidPrebuilt('13')
+    compile project(':v4')
+    compile sourceSets.ics.output
+    compile sourceSets.icsmr1.output
+    compile sourceSets.k.output
+}
+
+jar {
+    from sourceSets.ics.output
+    from sourceSets.icsmr1.output
+    from sourceSets.k.output
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+
+            repository(url: uri(project.parent.ext.androidRepoOut)) {
+            }
+
+            pom.project {
+                name 'Android Support Library v13'
+                description "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 13 or later."
+                url 'http://developer.android.com/tools/extras/support-library.html'
+                inceptionYear '2011'
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution 'repo'
+                    }
+                }
+
+                scm {
+                    url "http://source.android.com"
+                    connection "scm:git:https://android.googlesource.com/platform/frameworks/support"
+                }
+                developers {
+                    developer {
+                        name 'The Android Open Source Project'
+                    }
+                }
+            }
+        }
+    }
+}
+
+// configuration for the javadoc to include all source sets.
+javadoc {
+    source    sourceSets.main.allJava
+    source    sourceSets.ics.allJava
+    source    sourceSets.icsmr1.allJava
+    source    sourceSets.k.allJava
+}
+
+// custom tasks for creating source/javadoc jars
+task sourcesJar(type: Jar, dependsOn:classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+    from sourceSets.ics.allSource
+    from sourceSets.icsmr1.allSource
+    from sourceSets.k.allSource
+}
+
+task javadocJar(type: Jar, dependsOn:javadoc) {
+    classifier         'javadoc'
+    from               javadoc.destinationDir
+}
+
+// add javadoc/source jar tasks as artifacts
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+}
+apply plugin: 'java'
+
+archivesBaseName = 'support-v4'
+
+sourceSets {
+    main.java.srcDir 'java'
+    eclair.java.srcDir 'eclair'
+    froyo.java.srcDir 'froyo'
+    gingerbread.java.srcDir 'gingerbread'
+    honeycomb.java.srcDir 'honeycomb'
+    honeycombmr2.java.srcDir 'honeycomb_mr2'
+    ics.java.srcDir 'ics'
+    icsmr1.java.srcDir 'ics-mr1'
+    jellybean.java.srcDir 'jellybean'
+    jellybeanmr1.java.srcDir 'jellybean-mr1'
+    jellybeanmr2.java.srcDir 'jellybean-mr2'
+    kitkat.java.srcDir 'kitkat'
+}
+
+dependencies {
+    eclairCompile getAndroidPrebuilt('5')
+    froyoCompile getAndroidPrebuilt('8')
+    gingerbreadCompile getAndroidPrebuilt('9')
+    honeycombCompile getAndroidPrebuilt('11')
+    honeycombmr2Compile getAndroidPrebuilt('13')
+    icsCompile getAndroidPrebuilt('14')
+    icsmr1Compile getAndroidPrebuilt('15')
+    jellybeanCompile getAndroidPrebuilt('16')
+    jellybeanmr1Compile getAndroidPrebuilt('17')
+    jellybeanmr2Compile getAndroidPrebuilt('18')
+    kitkatCompile getAndroidPrebuilt('current')
+
+    compile getAndroidPrebuilt('4')
+    compile sourceSets.eclair.output
+    compile sourceSets.froyo.output
+    compile sourceSets.gingerbread.output
+    compile sourceSets.honeycomb.output
+    compile sourceSets.honeycombmr2.output
+    compile sourceSets.ics.output
+    compile sourceSets.icsmr1.output
+    compile sourceSets.jellybean.output
+    compile sourceSets.jellybeanmr1.output
+    compile sourceSets.jellybeanmr2.output
+    compile sourceSets.kitkat.output
+}
+
+
+jar {
+    from sourceSets.eclair.output
+    from sourceSets.froyo.output
+    from sourceSets.gingerbread.output
+    from sourceSets.honeycomb.output
+    from sourceSets.honeycombmr2.output
+    from sourceSets.ics.output
+    from sourceSets.icsmr1.output
+    from sourceSets.jellybean.output
+    from sourceSets.jellybeanmr1.output
+    from sourceSets.jellybeanmr2.output
+    from sourceSets.kitkat.output
+}
+
+uploadArchives {
+    repositories {
+        mavenDeployer {
+            repository(url: uri(project.parent.ext.androidRepoOut)) {
+            }
+
+            pom.project {
+                name 'Android Support Library v4'
+                description "The Support Library is a static library that you can add to your Android application in order to use APIs that are either not available for older platform versions or utility APIs that aren't a part of the framework APIs. Compatible on devices running API 4 or later."
+                url 'http://developer.android.com/tools/extras/support-library.html'
+                inceptionYear '2011'
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution 'repo'
+                    }
+                }
+
+                scm {
+                    url "http://source.android.com"
+                    connection "scm:git:https://android.googlesource.com/platform/frameworks/support"
+                }
+                developers {
+                    developer {
+                        name 'The Android Open Source Project'
+                    }
+                }
+            }
+        }
+    }
+}
+
+// configuration for the javadoc to include all source sets.
+javadoc {
+    source    sourceSets.main.allJava
+    source    sourceSets.eclair.allJava
+    source    sourceSets.froyo.allJava
+    source    sourceSets.gingerbread.allJava
+    source    sourceSets.honeycomb.allJava
+    source    sourceSets.honeycombmr2.allJava
+    source    sourceSets.ics.allJava
+    source    sourceSets.icsmr1.allJava
+    source    sourceSets.jellybean.allJava
+    source    sourceSets.jellybeanmr1.allJava
+    source    sourceSets.jellybeanmr2.allJava
+    source    sourceSets.kitkat.allJava
+}
+
+// custom tasks for creating source/javadoc jars
+task sourcesJar(type: Jar, dependsOn:classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+    from sourceSets.eclair.allSource
+    from sourceSets.froyo.allSource
+    from sourceSets.gingerbread.allSource
+    from sourceSets.honeycomb.allSource
+    from sourceSets.honeycombmr2.allSource
+    from sourceSets.ics.allSource
+    from sourceSets.icsmr1.allSource
+    from sourceSets.jellybean.allSource
+    from sourceSets.jellybeanmr1.allSource
+    from sourceSets.jellybeanmr2.allSource
+    from sourceSets.kitkat.allSource
+}
+
+task javadocJar(type: Jar, dependsOn:javadoc) {
+    classifier         'javadoc'
+    from               javadoc.destinationDir
+}
+
+// add javadoc/source jar tasks as artifacts
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+}
+apply plugin: 'android-library'
+
+archivesBaseName = 'appcompat-v7'
+
+dependencies {
+    compile project(':v4')
+}
+
+android {
+    compileSdkVersion "current"
+    buildToolsVersion "17"
+
+    sourceSets {
+        main.manifest.srcFile 'AndroidManifest.xml'
+        main.java.srcDir 'src'
+        main.res.srcDir 'res'
+        main.assets.srcDir 'assets'
+        main.resources.srcDir 'src'
+        instrumentTest.java.srcDir 'tests/src'
+
+        // this moves src/instrumentTest to tests so all folders follow:
+        // tests/java, tests/res, tests/assets, ...
+        // This is a *reset* so it replaces the default paths
+        instrumentTest.setRoot('tests')
+    }
+}apply plugin: 'android-library'
+
+archivesBaseName = 'gridlayout-v7'
+
+android {
+    compileSdkVersion "unstubbed"
+    buildToolsVersion "17"
+
+    sourceSets {
+        main.manifest.srcFile 'AndroidManifest.xml'
+        main.java.srcDir 'src'
+        main.res.srcDir 'res'
+        main.assets.srcDir 'assets'
+        main.resources.srcDir 'src'
+        instrumentTest.java.srcDir 'tests/src'
+
+        // this moves src/instrumentTest to tests so all folders follow:
+        // tests/java, tests/res, tests/assets, ...
+        // This is a *reset* so it replaces the default paths
+        instrumentTest.setRoot('tests')
+    }
+}apply plugin: 'android-library'
+
+archivesBaseName = 'mediarouter-v7'
+
+dependencies {
+    compile project(':v7:appcompat')
+}
+
+// some of the source requires compiling against a newer API.
+// Right now, use normal Java source sets to compile those into a jar and 
+// package it as a local dependencies inside the library aar.
+
+sourceSets {
+    jellybean.java.srcDir 'jellybean'
+    jellybeanmr1.java.srcDir 'jellybean-mr1'
+    jellybeanmr2.java.srcDir 'jellybean-mr2'
+}
+
+// create a jar task for the code above
+tasks.create(name: "jar", type: Jar) {
+    from sourceSets.jellybean.output
+    from sourceSets.jellybeanmr1.output
+    from sourceSets.jellybeanmr2.output
+    baseName "internal_impl"
+}
+
+
+dependencies {
+    jellybeanCompile getAndroidPrebuilt('16')
+
+    jellybeanmr1Compile getAndroidPrebuilt('17')
+    jellybeanmr1Compile sourceSets.jellybean.output
+
+    jellybeanmr2Compile getAndroidPrebuilt('current')
+    jellybeanmr2Compile sourceSets.jellybean.output
+    jellybeanmr2Compile sourceSets.jellybeanmr1.output
+
+    compile files(jar.archivePath)
+}
+
+android {
+    compileSdkVersion "current"
+    buildToolsVersion "17"
+
+    sourceSets {
+        main.manifest.srcFile 'AndroidManifest.xml'
+        main.java.srcDir 'src'
+        main.res.srcDir 'res'
+        main.assets.srcDir 'assets'
+        main.resources.srcDir 'src'
+        instrumentTest.java.srcDir 'tests/src'
+
+        // this moves src/instrumentTest to tests so all folders follow:
+        // tests/java, tests/res, tests/assets, ...
+        // This is a *reset* so it replaces the default paths
+        instrumentTest.setRoot('tests')
+    }
+}
+
+android.libraryVariants.all { variant ->
+    variant.javaCompile.dependsOn jar
+}

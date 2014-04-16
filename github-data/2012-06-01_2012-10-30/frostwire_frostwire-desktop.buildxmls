@@ -1,0 +1,1295 @@
+<!-- top level ant file -->
+<project name="limewire" default="compile-src" basedir=".">
+
+    <property name="limewire.home" location="${basedir}"/>
+
+    <import file="components/build.xml"/>
+	
+	<property name="gettexttasks.jar" value="${limewire.lib.jars}/gettext-commons.jar"/>
+
+    <import file="core/build.xml"/>
+    <import file="gui/build.xml" />
+    <!-- Builds EVERYTHING from Scratch, including 3rd party jars from sources (lib/jars-src) -->
+    <target name="everything">
+      <touch file="lib/jars/COMPILE"/>
+      <ant dir="lib/jars-src"/>
+      <ant target="jar"/>
+    </target>
+	
+    <target name="clean-jars">
+	<ant dir="lib/jars-src" target="clean"/>
+    </target>
+    
+    <target name="initialize" depends="lw-core.initialize, lw-gui.initialize,  lw-components.initialize" unless="initialized.limewire">
+        <property name="limewire.components.limewire.home"
+                  location="${limewire.home}"/>
+        <do.setup-properties component="limewire"/>
+    </target>
+    
+    <target name="compile"
+            description="Compiles all code."
+            depends="initialize, lw-components.compile-core-src, lw-components.compile-ui-src, lw-core.compile-core, lw-gui.compile-gui"/>
+    
+    <target name="compile-src"
+            description="Compiles all source code (not tests)."
+            depends="initialize, lw-components.compile-core-src, lw-components.compile-ui-src, lw-core.compile-core, lw-gui.compile-gui"/>
+    
+    <target name="clean" 
+            description="Cleans everything."
+            depends="initialize, lw-components.clean, clean-core, clean-gui">
+        <do.clean component="limewire"/>
+    	<delete dir="${limewire.components.limewire.home}/unused"/>
+    </target>
+	
+	<target name="clean-src"
+	        description="Cleans artifacts from compiling src."
+            depends="initialize, lw-components.clean-src, clean-core, clean-gui"/>
+    
+       
+    
+	<target name="jar" depends="compile-src">
+
+      <ant dir="components" target="jar"/>
+
+      <!-- echo message="GUBA: root main.xml (jar) - Remember to invoke components/build.xml jar first than this manually"/-->
+	  <!-- get the list of jars in a space separated list without dirnames -->
+	  <fileset dir="${limewire.lib.jars}" includes="**/*.jar" id="alljars"/>
+	  <pathconvert property="classpath" refid="alljars" pathsep=" ">
+	    <mapper type = "flatten" />
+	  </pathconvert>
+	  
+	  <mkdir dir="${limewire.home}/dist"/>
+	  
+	  <!-- build FrostWire's main jar -->
+	  <delete file="${limewire.home}/dist/frostwire.jar"/>
+	  <jar jarfile="${limewire.home}/dist/frostwire.jar" compress="true" level="9">
+	    <fileset dir="${build.limewire.gui.classes}" includes="**/*.class" excludes="**/*.java"/>
+        <fileset dir="${build.limewire.core.classes}" includes="**/*.class" excludes="irc/**/*.java"/>
+	    <fileset dir="${limewire.home}/gui" includes="irc/**/*" excludes="irc/**/*.java"/>
+	    <fileset dir="${limewire.home}/gui" includes="org/**/*" excludes="org/**/*.java"/>
+	    <fileset dir="${limewire.home}/gui" includes="net/**/*" excludes="org/**/*.java"/>
+	    	<fileset dir="${limewire.home}/common/vuze/azureus2/src" includes="**/*.properties" excludes="**/*.java"/>
+		<manifest>
+	      <attribute name="Main-Class" value="com.limegroup.gnutella.gui.Main" />
+	      <attribute name="Class-Path" value=". ${classpath} lw-alexandria.jar lw-common.jar lw-resources.jar lw-setting.jar lw-jdownloader.jar fwtips.jar h2-1.3.164.jar gson-1.4.jar"/>
+	    </manifest>
+	  </jar>
+	</target>
+    
+    <!-- TODO: implement -->
+    <target name="clean-dist"/>
+
+    <property name="translation.cutoff" value="35"/>
+	
+	<target name="init.gettext" description="Loads the Ant gettext tasks">
+	  <taskdef name="gettext-extract" classname="org.xnap.commons.ant.gettext.GettextExtractKeysTask" classpath="${gettexttasks.jar}"/>
+	  <taskdef name="gettext-merge" classname="org.xnap.commons.ant.gettext.GettextMergeKeysTask" classpath="${gettexttasks.jar}"/>
+	  <taskdef name="gettext-generate-default" classname="org.xnap.commons.ant.gettext.GenerateDefaultBundleTask" classpath="${gettexttasks.jar}"/>
+	  <taskdef name="gettext-dist" classname="org.xnap.commons.ant.gettext.GettextDistTask" classpath="${gettexttasks.jar}"/>
+	</target>
+
+    <target name="gettext-extract" description="Extracts message keys from the source code" depends="init.gettext">
+	    <gettext-extract keysFile="frostwire.pot" poDirectory="lib/messagebundles" keywords="-kgetStringResource -kgetFormattedStringResource -ktrc -ktr -kmarktr -ktrn:1,2 -ktrl">
+			<fileset dir="components" includes="**/*.java" excludes="azureus/**"/>
+			<fileset dir="core" includes="**/*.java"/>
+			<fileset dir="gui" includes="**/*.java"/>
+	    </gettext-extract>
+
+	    <gettext-merge keysFile="frostwire.pot" poDirectory="lib/messagebundles"/>
+    </target>
+
+    <!-- generate one jar with almost complete translations -->
+    <target name="gettext-bundle" description="Rebuilds messages and bundles them" depends="init.gettext">
+
+	    <!-- clean up -->
+	    <delete dir="lib/messagebundles/org"/>
+	
+	    <!-- generate default bundle for complete messages -->
+	    <gettext-generate-default targetBundle="org.limewire.i18n.Messages"
+	    			      outputDirectory="lib/messagebundles" 
+	    			      potfile="lib/messagebundles/frostwire.pot"/>
+	
+	    <!-- generate complete bundles -->
+	    <gettext-dist targetBundle="org.limewire.i18n.Messages"
+	   		  poDirectory="lib/messagebundles"
+	    		  outputDirectory="lib/messagebundles"
+	   		  percentage="${translation.cutoff}"/>
+	
+	    <!-- generate the empty en.po file without percentage  -->
+	    <gettext-dist targetBundle="org.limewire.i18n.Messages"
+			  outputDirectory="lib/messagebundles">
+	      <fileset dir="lib/messagebundles" includes="en.po"/>
+	    </gettext-dist>
+	    
+	    <!-- jar them -->
+	    <jar destfile="lib/jars/messages.jar" 
+	    	 basedir="lib/messagebundles"
+	    	 includes="org/**"/>
+	    	
+	    <!-- clean up -->
+	    <delete dir="lib/messagebundles/org"/>
+    </target>
+
+    <!-- mask imported targets -->
+    <target name="test"/>
+    <target name="test-package"/>
+    <target name="compile-core"/>
+    <target name="compile-core-src"/>
+    <target name="compile-ui-src"/>
+    <target name="compile-gui"/>
+
+</project>
+<?xml version="1.0" encoding="UTF-8" ?>
+
+<!-- TODO
+extract messagebundles
+-->
+
+<project basedir="." default="package" name="VuzeClient">
+
+	<!-- Load vars from external properties file -->
+	<condition property="using.ext.props" > <isset property="build.props.file" /> </condition>
+	<property name="build.properties" value="${build.props.file}"/>
+	<property file="${build.properties}" />	
+	<echo message="using.ext.props = ${using.ext.props}" />
+	
+	
+	<!-- Default variables -->
+	<property name="major.ver"  value="0000"/>
+	<property name="minor.ver"  value="00"/>
+	<property name="build.ver"  value="${major.ver}-${minor.ver}"/>
+	<property name="build.name" value="Vuze_${build.ver}" />
+	
+	<property name="azureus2.dir" value="azureus2"/>
+	<property name="azureus3.dir" value="azureus3"/>
+	<property name="uis.dir" value="uis"/>
+	<property name="docs.dir" value="docs"/>
+			
+	
+	<property name="build.dir" value="build"/>
+	<property name="dist.dir" value="dist"/>
+	
+	
+	<!-- REUSABLE REFERENCES -->
+	
+	<path id="build.classpath">
+		<fileset dir="${azureus2.dir}/lib" includes="*.jar" excludes="swt-carbon.jar"/>
+		<fileset dir="${azureus3.dir}/lib" includes="*.jar" />
+		<fileset dir="${uis.dir}/lib" includes="*.jar" />
+	</path>
+	
+	<patternset id="pluginapi.inc">
+		<include name="org/gudy/azureus2/plugins/**" />
+		<include name="org/gudy/azureus2/ui/swt/plugins/**" />
+		<include name="org/gudy/azureus2/ui/swt/views/*IView*" />
+		<include name="org/gudy/azureus2/ui/swt/IconBarEnabler*" />
+	</patternset>	
+	
+	<patternset id="sourcecode.exc">
+		 <exclude name="**/*.java"/>				
+		 <exclude name="**/*.jardesc"/>
+	</patternset>	
+	
+
+	<!-- METHODS -->
+
+	<target name="run" depends="clean,preprocess,package,docs,postprocess" description="For automated builds">
+		<echo message="Build DONE."/>
+	</target>
+	
+	
+	<target name="clean">
+		 <delete dir="${build.dir}"/>
+		 <delete dir="${dist.dir}"/>
+	</target>
+	
+	
+	<target name="init">
+		 <echo message="BUILDING: ${ant.project.name} [${ant.file}] [${build.props.file}]"/>
+		 <mkdir dir="${build.dir}"/>
+	 	 <mkdir dir="${dist.dir}"/>
+	</target>
+	   
+	
+	<target name="preprocess" if="using.ext.props" >	
+		 <!-- Tag source with version info -->
+		 <property name="constants.file" value="${azureus2.dir}/src/org/gudy/azureus2/core3/util/Constants.java"/>
+		 <replace file="${constants.file}" token="_CVS&quot;" value="_B${minor.ver}&quot;" summary="true" />
+		 <replace file="${constants.file}" token="@build.version@" value="${build.ver}" summary="true" />
+	</target>
+	
+	
+	<target name="build" depends="init" description="Make (class) build files">
+		<!-- Grab non-compileable assets -->
+		<copy includeemptydirs="false" todir="${build.dir}">
+			<fileset dir="${azureus2.dir}/src"> <patternset refid="sourcecode.exc"/> </fileset>
+		   <fileset dir="${azureus3.dir}/src"> <patternset refid="sourcecode.exc"/> </fileset>
+			<fileset dir="${uis.dir}/src"> 		<patternset refid="sourcecode.exc"/> </fileset>
+		</copy>
+		
+		<!-- Compile source code -->
+		<javac encoding="8859_1" includeAntRuntime="no" debug="true" debuglevel="source,lines,vars" destdir="${build.dir}" source="1.5" target="1.5" fork="yes" memoryMaximumSize="256m" >
+			<src path="${azureus2.dir}/src"/>
+			<src path="${azureus3.dir}/src"/>
+			<src path="${uis.dir}/src"/>
+			<classpath refid="build.classpath"/>
+		</javac>
+	</target>
+	
+
+	<target name="package" depends="build" description="Make jar and zip bundles">	
+		<!-- Package client core jar -->
+	 	<jar destfile="${dist.dir}/${build.name}.jar" basedir="${build.dir}" level="9" >
+	       <manifest>
+	          <attribute name="Main-Class" value="org.gudy.azureus2.ui.common.Main" />
+	          <attribute name="Class-Path" value="swt.jar commons-cli.jar log4j.jar junit.jar" />
+	       	 <attribute name="Built-By" value="VZCB:${ant.project.name}:build.xml"/>
+	       	 <attribute name="Build-Version" value="${build.ver}"/>
+	       </manifest>
+	   </jar>
+		
+		<!-- Repack core jar for max compatibility and compression -->
+		<echo message="Pack200 repacking core jar [${build.name}.jar]." />
+		<exec executable="pack200" dir="." resolveexecutable="true" failonerror="false" failifexecutionfails="false" >
+			 <arg value="--repack" />
+			 <arg value="${dist.dir}/${build.name}.jar" />
+		</exec>
+		  
+		<!-- Package linkable plugin api jar, with embedded sources -->
+		<jar destfile="${dist.dir}/${build.name}_pluginapi.jar" level="9" >
+			<fileset dir="${build.dir}">        <patternset refid="pluginapi.inc"/> </fileset>
+			<fileset dir="${azureus2.dir}/src"> <patternset refid="pluginapi.inc"/> </fileset>
+		</jar>
+	 		
+		<!-- Package source assets -->
+		<zip destfile="${dist.dir}/${build.name}_source.zip" level="9" >
+			<fileset dir="${azureus2.dir}/src" />
+			<fileset dir="${azureus3.dir}/src" />
+			<fileset dir="${uis.dir}/src" />
+		</zip>		
+	</target>
+	
+	
+	<target name="docs" depends="init" description="Make javadocs" >
+		<!-- Make core javadoc -->
+		<javadoc destdir="${dist.dir}/${build.name}_javadoc" useexternalfile="yes" maxmemory="256m" Encoding="8859_1" >
+			 <fileset dir="${azureus2.dir}/src" />
+			 <fileset dir="${azureus3.dir}/src" />
+			 <fileset dir="${uis.dir}/src" />
+			 <classpath refid="build.classpath"/>
+			 <link href="http://java.sun.com/j2se/1.5.0/docs/api/"/>
+		</javadoc>
+		
+		<!-- Make plugin api javadoc -->
+		<javadoc destdir="${dist.dir}/${build.name}_plugindoc" useexternalfile="yes" maxmemory="256m" Encoding="8859_1">
+			 <fileset dir="${azureus2.dir}/src" >
+			 	 <patternset refid="pluginapi.inc"/>
+			 </fileset>
+			
+			 <classpath refid="build.classpath"/>
+			 <link href="http://java.sun.com/j2se/1.5.0/docs/api/"/>
+		</javadoc>
+   </target>
+	
+	
+	<target name="postprocess" if="using.ext.props" >
+			<!-- Pickup subversion revision -->
+			<exec executable="sh" dir="." outputproperty="svn.revision.new" >
+				<arg value="-c" />
+				<arg value="svn info . | grep Revision | sed &quot;s/Revision: //&quot;" />
+			</exec>		
+			<echo message="svn.revision.new=${svn.revision.new}" />			
+			
+			 <!-- Increment build info -->
+			 <propertyfile file="${build.properties}" >
+			 	  <entry key="minor.ver" type="int" operation="+" value="1" pattern="00" />
+			 	  <entry key="svn.revision" value="${svn.revision.new}" />
+			 	  <entry key="svn.revision" type="int" operation="+" value="1" pattern="########" />  <!-- inc to next -->
+			 	  <entry key="build.date" type="date" value="now" pattern="dd-MM-yyyy HH:mm:ss" />
+			 </propertyfile>
+		
+		    <!-- Generate changelog -->
+			 <exec executable="${svn2cl.exec}" dir="." outputproperty="changelog.text" >
+			      	<arg value="--stdout" />
+			      	<arg value="--strip-prefix=" />
+			      	<arg value="--break-before-msg" />
+			      	<arg value="-i" />
+			      	<arg value="-a" />
+			      	<arg value="-r" />
+			      	<arg value="${svn.revision}:${svn.revision.new}" />
+			      	<arg value="${basedir}" />
+			  </exec>
+			  <echo message="changelog.text = ${changelog.text}" />
+		     <echo file="${dist.dir}/${build.name}_changelog.txt" message="${changelog.text}" />
+		
+			  <!-- Fill in templates -->
+		     <tstamp> <format property="timestamp" pattern="dd MMM yyyy hh:mm:ss aa" /> </tstamp>
+		     <property name="jar.name" value="Azureus${major.ver}-B${minor.ver}.jar" />		     
+		
+			  <replace dir="${docs.dir}" summary="true" >
+			  	  <replacefilter token="@timestamp@"      value="${timestamp}" />
+			  	  <replacefilter token="@build.name@"     value="${build.name}" />
+			  	  <replacefilter token="@jar.name@"       value="${jar.name}" />
+			  	  <replacefilter token="@changelog.text@" value="${changelog.text}" />
+			  </replace>
+		
+	        <!-- Save some build properties -->
+			  <propertyfile file="${vzbuild.props}" >
+			  	  <entry key="major.ver" value="${major.ver}" />
+			  	  <entry key="minor.ver" value="${minor.ver}" />
+				  <entry key="timestamp" value="${timestamp}" />
+			  	  <entry key="build.name" value="${build.name}" />
+				  <entry key="jar.name" value="${jar.name}" />
+			     <entry key="changelog.text" value="${changelog.text}" />
+			  </propertyfile>
+
+	    	  <!-- Run deployment script -->
+		     <echo message="Running external deploy script: ${deploy.exec}" />
+		     <exec executable="${deploy.exec}" dir="." failonerror="true" failifexecutionfails="false" >
+		     	   <arg value="${basedir}/${docs.dir}" />
+		      	<arg value="${basedir}/${dist.dir}" />
+		      	<arg value="${build.name}" />
+		      	<arg value="${jar.name}" />
+		     </exec>     
+		</target>
+	
+</project>
+
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="alexandria" basedir="." default="compile-src">
+
+	<description>
+		FrostWire component 'alexandria'.
+	</description>
+	
+    <import file="../common/build-macros.xml" />
+    <import file="../common/build.xml"/>
+    
+    <target name="initialize" depends="lw-common.initialize" unless="initialized.alexandria">
+        <do.setup-properties component="alexandria">
+			<src-classpath>
+				<pathelement location="${limewire.lib.jars}/commons-logging.jar"/>
+			    <path refid="build.limewire.components.common.buildpath"/>
+			</src-classpath>
+        </do.setup-properties>
+    </target>
+	
+	<target name="clean" depends="lw-common.clean">
+	    <do.clean component="alexandria"/>
+	</target>
+    
+    <target name="compile" depends="lw-common.compile">
+    	<do.compile component="alexandria"/>
+    </target>
+	
+	<target name="compile-src" depends="lw-common.compile-src">
+	    <do.compile-src component="alexandria"/>
+	</target>
+    
+	<target name="clean-src" depends="lw-common.clean-src">
+	    <do.clean-src component="alexandria"/>
+	</target>
+	
+	<target name="compile-tests">
+	    <do.compile-tests component="alexandria"/>
+	</target>
+	
+	<target name="clean-tests">
+	    <do.clean-tests component="alexandria"/>
+	</target>
+	
+	<target name="test" if="class" depends="compile">
+	    <do.test component="alexandria" class="${class}"/>
+	</target>
+	
+	<target name="test-package" if="package" depends="compile">
+	    <do.test-package component="alexandria" package="${package}"/>
+	</target>
+	
+	<target name="test-all" depends="compile">
+	    <do.test-all component="alexandria"/>
+	</target>
+    
+    <target name="jar" depends="initialize, compile-src">
+        <do.jar component="alexandria"/>
+    </target>
+    
+	<target name="javadoc" depends="initialize, compile-src">
+    	<do.javadoc component="alexandria"/>
+	</target>
+    
+    <target name="clean-dist" depends="initialize">
+        <do.clean-dist component="alexandria"/>
+    </target>
+	
+    <target name="with.clover" depends="initialize">
+        <do.clover-setup component="alexandria"/>
+	</target>
+    
+    <target name="clover2html" depends="initialize">
+        <do.clover2html component="alexandria"/>
+    </target>
+    
+</project><?xml version="1.0" encoding="UTF-8"?>
+
+<project name="lw-components" basedir="." default="compile-src">
+  
+	<description>
+	  Catch-all buildfile for every component.
+	</description>
+    
+	<property name="limewire.home" location="${basedir}/.."/>
+	
+    <import file="common/build-macros.xml" />
+    <import file="common/build.xml" />
+    <import file="setting/build.xml"/>
+    <import file="resources/build.xml"/>
+    <import file="osx_stub/build.xml" />
+    <import file="alexandria/build.xml"/>
+	
+    <target name="initialize" depends="lw-setting.initialize, lw-common.initialize, lw-resources.initialize, osx_stub.initialize, alexandria.initialize" unless="initialized.all">
+        <do.setup-properties component="all">
+	  <tests-classpath>
+            <path refid="tests.limewire.components.common.classpath"/>
+	    <path refid="tests.limewire.components.collection.classpath"/>
+	    <path refid="tests.limewire.components.security.classpath"/>
+	    <path refid="tests.limewire.components.io.classpath"/>
+	    <path refid="tests.limewire.components.nio.classpath"/>
+	    <path refid="tests.limewire.components.setting.classpath"/>
+	    <path refid="tests.limewire.components.test-util.classpath"/>
+	    <path refid="tests.limewire.components.resources.classpath"/>
+	    <path refid="tests.limewire.components.http.classpath"/>
+	    <path refid="tests.limewire.components.net.classpath"/>
+	    <path refid="tests.limewire.components.alexandria.classpath" />
+	    <!-- Add as components are added. -->
+	  </tests-classpath>
+        </do.setup-properties>    
+        
+        <!-- setup a special property for the buildpath of each component combined. -->
+        <path id="build.limewire.components.classes.core">
+            <pathelement location="${build.limewire.components.common.classes}"/>
+            <pathelement location="${build.limewire.components.collection.classes}"/>
+            <pathelement location="${build.limewire.components.security.classes}"/>
+            <pathelement location="${build.limewire.components.io.classes}"/>
+            <pathelement location="${build.limewire.components.nio.classes}"/>
+            <pathelement location="${build.limewire.components.setting.classes}"/>
+            <pathelement location="${build.limewire.components.http.classes}"/>
+            <pathelement location="${build.limewire.components.osx_stub.classes}"/>
+            <pathelement location="${build.limewire.components.alexandria.classes}"/>
+            <!-- test-util not added purposely, as the classes are required for tests only -->
+            
+            <!-- Add as core components are added. -->
+        </path>
+	
+		<path id="build.limewire.components.classes.ui">
+			<pathelement location="${build.limewire.components.resources.classes}"/>
+			<path refid="build.limewire.components.classes.core"/>
+		    <!-- Add as UI components are added. -->
+        </path>
+    
+    	<fileset id="limewire.components.sources.all" dir="${limewire.components.home}">
+    		<include name="${limewire.components.common.relative.antglob.allsources}"/>
+		<include name="${limewire.components.collection.relative.antglob.allsources}"/>
+		<include name="${limewire.components.security.relative.antglob.allsources}"/>
+		<include name="${limewire.components.io.relative.antglob.allsources}"/>
+		<include name="${limewire.components.nio.relative.antglob.allsources}"/>
+		<include name="${limewire.components.setting.relative.antglob.allsources}"/>
+	     	<include name="${limewire.components.http.relative.antglob.allsources}"/>    
+	     	<include name="${limewire.components.net.relative.antglob.allsources}"/>    
+   			<!-- Add as components are added! -->
+		</fileset>
+    
+		<fileset id="limewire.components.sources.tests" dir="${limewire.components.home}">
+			<include name="${limewire.components.common.relative.antglob.tests}"/>
+			<include name="${limewire.components.collection.relative.antglob.tests}"/>
+			<include name="${limewire.components.security.relative.antglob.tests}"/>
+			<include name="${limewire.components.io.relative.antglob.tests}"/>
+			<include name="${limewire.components.nio.relative.antglob.tests}"/>
+			<include name="${limewire.components.setting.relative.antglob.tests}"/>
+			<include name="${limewire.components.http.relative.antglob.tests}"/>    
+			<include name="${limewire.components.net.relative.antglob.tests}"/>    
+    		<!-- Add as components are added! -->
+		</fileset>
+    
+    </target>
+	
+	<target name="clean"
+	        description="Cleans all generated data in every component."
+	        depends="lw-setting.clean, lw-common.clean, osx_stub.clean, alexandria.clean">
+	    <do.clean component="all"/>
+    </target>
+    
+    <target name="compile"
+        	description="Compiles the source and tests of every component."
+        	depends="compile-core, compile-ui"/>
+    
+    <target name="compile-core"
+            description="Compiles the source and tests of every non-UI component."
+            depends="lw-setting.compile, lw-common.compile">
+        <mkdir dir="${build.limewire.components.all.classes}"/>
+        <mkdir dir="${build.limewire.components.all.tests}"/>
+	</target>
+	
+	<target name="compile-ui"
+	            description="Compiles the source and tests of every component for a UI target."
+	            >
+	        <mkdir dir="${build.limewire.components.all.classes}"/>
+	        <mkdir dir="${build.limewire.components.all.tests}"/>
+	</target>
+    
+    <target name="compile-src"
+    		description="Compiles only the source code of every component."
+    		depends="compile-core-src, compile-ui-src"/>
+	
+	<target name="compile-core-src"
+	        description="Compiles only the source code of every non-UI component."
+	        depends="lw-setting.compile-src, lw-common.compile-src, osx_stub.compile-src, alexandria.compile-src">
+        <mkdir dir="${build.limewire.components.all.classes}"/>
+	</target>
+	
+	<target name="compile-ui-src"
+		        description="Compiles only the source code of every component for a UI target."
+		        >
+	        <mkdir dir="${build.limewire.components.all.classes}"/>
+	</target>
+    
+	<target name="clean-src"
+	        description="Cleans files generated from compiling the source code of every component."
+	        depends="lw-setting.clean-src, lw-common.clean-src">
+		<do.clean-src component="all"/>
+	</target>
+	
+	<target name="compile-tests"
+	        description="Compiles the tests of every component (and the source if necessary)"
+	        depends="compile-src, lw-setting.compile-tests, lw-common.compile-tests, alexandria.compile-tests">
+        <mkdir dir="${build.limewire.components.all.tests}"/>
+	</target>
+    
+	<target name="clean-tests"
+	        description="Cleans data generated from compiling and running the tests of every component."
+	        depends="initialize, lw-setting.clean-tests, lw-common.clean-tests, alexandria.clean-tests">
+	    <do.clean-tests component="all"/>
+	</target>
+	
+	<target name="test"
+            description="Runs a single test from one component. Requires: -Dclass=X and -Dcomponent=X."
+            if="class" depends="compile-tests, prep-tests">
+	    <do.test component="${component}" class="${class}"/>
+	</target>
+	
+	<target name="test-package"
+            description="Runs all tests in a package of one component.  Requires: -Dpackage=X -Dcomponent=X."
+            if="package" depends="compile-tests, prep-tests">
+	    <do.test-package component="${component}" package="${package}"/>
+	</target>
+	
+	<target name="test-all" 
+            description="Runs every test in every component."
+            depends="compile-tests, prep-tests">
+	    <do.test-all component="all">
+	        <testLocations>
+                <fileset dir="${build.limewire.components.test-util.tests}" includes="**/*Test.class"/>
+                <fileset dir="${build.limewire.components.common.tests}" includes="**/*Test.class"/>
+    	        <fileset dir="${build.limewire.components.collection.tests}" includes="**/*Test.class"/>
+    	        <fileset dir="${build.limewire.components.security.tests}" includes="**/*Test.class"/>
+    	        <fileset dir="${build.limewire.components.io.tests}" includes="**/*Test.class"/>
+    	        <fileset dir="${build.limewire.components.nio.tests}" includes="**/*Test.class"/>
+    	        <fileset dir="${build.limewire.components.setting.tests}" includes="**/*Test.class"/>
+               	<fileset dir="${build.limewire.components.http.tests}" includes="**/*Test.class"/>
+           	    <fileset dir="${build.limewire.components.net.tests}" includes="**/*Test.class"/>
+	         </testLocations>
+	    </do.test-all>
+	</target>
+    
+    <target name="prep-tests">
+        <mkdir dir="${limewire.components.all.tests.resources}"/>
+        <copy file="${limewire.components.home}/log4j.properties" todir="${limewire.components.all.tests.resources}" overwrite="true"/>
+    </target>
+
+    <!-- clean old jars -->
+    <target name="clean-jars">
+      <delete file="${limewire.components.home}/osx_stub/dist/lw-osx_stub.jar"/>
+      <delete file="${limewire.components.home}/collection/dist/lw-collection.jar"/>
+      <delete file="${limewire.components.home}/common/dist/lw-common.jar"/>
+      <delete file="${limewire.components.home}/io/dist/lw-io.jar"/>
+      <delete file="${limewire.components.home}/resources/dist/lw-resources.jar"/>
+      <delete file="${limewire.components.home}/setting/dist/lw-setting.jar"/>
+      <delete file="${limewire.components.home}/all/dist/lw-all.jar"/>
+      <delete file="${limewire.components.home}/alexandria/dist/lw-alexandria.jar"/>
+    </target>
+
+    <!-- creates a jar for every component -->
+    <target name="jar" depends="clean-jars, osx_stub.jar, alexandria.jar, lw-common.jar, lw-resources.jar, lw-setting.jar">
+      <echo message="done with jars"/>
+    </target>
+
+    <!-- this used to make a lw-all.jar -->
+  	<!--
+    <target name="jar"
+            description="Creates a jar file of the compiled source of every component."
+            depends="initialize, compile-src, compile-ui-src">
+      <do.jar component="all" basedir="" resourcedir="" resexclude="**" excludes="**/*.java" compress="true">
+	    <more-jar-elements>
+	      <fileset dir="${build.limewire.components.common.classes}" />
+	      <fileset dir="${limewire.components.common.src.resources}" />
+	      <fileset dir="${build.limewire.components.collection.classes}"/>
+    	  <fileset dir="${build.limewire.components.security.classes}" />
+    	  <fileset dir="${build.limewire.components.io.classes}" />
+      	  <fileset dir="${build.limewire.components.nio.classes}" />
+    	  <fileset dir="${build.limewire.components.setting.classes}" />
+    	  <fileset dir="${limewire.components.resources.src.resources}" />
+    	  <fileset dir="${build.limewire.components.http.classes}" />
+    	  <fileset dir="${build.limewire.components.net.classes}" />
+          <fileset dir="${build.limewire.components.osx_stub.classes}" excludes="**/*.java"/>
+	    </more-jar-elements>
+      </do.jar>
+    </target>
+    -->
+    
+	<target name="javadoc" description="Doesn't work.">
+    	<fail message="Use maven to generate javadocs."/>
+    </target>
+	    
+    <target name="clean-dist"
+            description="Cleans all generated distribution files."
+            depends="initialize">
+        <do.clean-dist component="all"/>
+    </target>
+    
+    <target name="with.clover"
+            description="Instructs the build to use clover's instrumenting."
+            depends="initialize">
+        <do.clover-setup component="all">
+	        <locations>
+	            <fileset refid="limewire.components.sources.all"/>
+			</locations>
+	    </do.clover-setup>
+	</target>
+    
+    <target name="clover2html"
+            description="Converts clover's generated data into HTML reports."
+            depends="initialize">
+    	<mkdir dir="${limewire.components.all.tests}"/>
+        <do.clover2html component="all">
+			<moretestinfo>
+    			<testsources refid="limewire.components.sources.tests"/>
+			</moretestinfo>
+	    </do.clover2html>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="lw-common" basedir="." default="compile-src">
+
+	<description>
+		LimeWire component 'common'.
+		This component is required for every other component and contains
+		the most common functionality shared by every component.
+	</description>
+	
+    <import file="build-macros.xml" />
+    
+    <target name="initialize" unless="initialized.common">
+        <do.setup-properties component="common">
+			<src-classpath>
+				<pathelement location="${limewire.lib.jars}/commons-logging.jar"/>
+				<pathelement location="${limewire.lib.jars}/log4j.jar"/>
+				<pathelement location="${limewire.lib.jars}/gson-1.4.jar"/>
+			</src-classpath>
+        </do.setup-properties>
+    </target>
+	
+	<target name="clean" depends="initialize">
+	    <do.clean component="common"/>
+	</target>
+    
+    <target name="compile" depends="initialize">
+    	<do.compile component="common"/>
+    </target>
+	
+	<target name="compile-src" depends="initialize">
+	    <do.compile-src component="common"/>
+	</target>
+    
+	<target name="clean-src" depends="initialize">
+	    <do.clean-src component="common"/>
+	</target>
+	
+	<target name="compile-tests" depends="initialize, compile-src">
+	    <do.compile-tests component="common"/>
+	</target>
+    
+	<target name="clean-tests" depends="initialize">
+	    <do.clean-tests component="common"/>
+	</target>
+	
+	<target name="test" if="class" depends="initialize, compile">
+	    <do.test component="common" class="${class}"/>
+	</target>
+	
+	<target name="test-package" if="package" depends="initialize, compile">
+	    <do.test-package component="common" package="${package}"/>
+	</target>
+	
+	<target name="test-all" depends="initialize, compile">
+	    <do.test-all component="common"/>
+	</target>
+    
+    <target name="jar" depends="initialize, compile-src">
+        <do.jar component="common"/>
+    </target>
+    
+    <target name="javadoc" depends="initialize, compile-src">
+    	<do.javadoc component="common"/>
+	</target>    
+    
+    <target name="clean-dist" depends="initialize">
+        <do.clean-dist component="common"/>
+    </target>
+    
+    <target name="with.clover" depends="initialize">
+        <do.clover-setup component="common"/>
+	</target>
+    
+    <target name="clover2html" depends="initialize">
+        <do.clover2html component="common"/>
+    </target>
+	
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="osx_stub" default="compile-src" basedir=".">
+    <import file="../common/build-macros.xml" />
+    <import file="../common/build.xml"/>
+
+    <target name="initialize" depends="lw-common.initialize" unless="initialized.osx_stub">
+      <do.setup-properties component="osx_stub">
+        <src-classpath>
+          <path refid="build.limewire.components.common.buildpath"/>
+        </src-classpath>
+      </do.setup-properties>
+    </target>
+
+    <target name="compile-src" depends="lw-common.compile-src">
+      <do.compile-src component="osx_stub" />
+    </target>
+
+    <target name="clean" depends="">
+      <!-- this works if we invoke from root folder or components -->
+      <do.clean component="osx_stub"/>
+
+      <!-- these work if we invoke from osx_stub folder -->
+      <delete dir="dist" />
+      <delete dir="build" />
+
+    </target>
+
+    <target name="jar" depends="initialize, compile-src">
+        <do.jar component="osx_stub"/>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="lw-resources" basedir=".">
+
+	<description>
+		LimeWire component 'resources'.
+		This component is a collection of resources required for the GUI.
+	</description>
+	
+    <import file="../common/build-macros.xml" />
+    <import file="../common/build.xml"/>
+    
+    <property name="component" value="lw-resources"/>
+
+    <target name="initialize" depends="lw-common.initialize" 
+            unless="initialized.resources">
+        <do.setup-properties component="lw-resources"/>
+    </target>
+
+	<target name="jar">
+    <delete dir="${basedir}/resources/dist"/>
+    <mkdir dir="${basedir}/resources/dist" />
+    <jar destfile="${basedir}/resources/dist/${component}.jar"
+          compress="@{compress}"
+          level="9"
+          basedir="${basedir}/resources/src/main/resources/">
+      </jar>
+    </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="lw-setting" basedir="." default="compile-src">
+
+	<description>
+		LimeWire component 'setting'.
+	    This component contains settings-related classes, including
+        the ability to set a 'remote settings manager'.
+	</description>
+	
+    <import file="../common/build-macros.xml"/>
+    <import file="../common/build.xml"/>
+    
+    <target name="initialize" depends="lw-common.initialize" unless="initialized.setting">
+        <do.setup-properties component="setting">
+			<src-classpath>
+				<pathelement location="${limewire.lib.jars}/commons-logging.jar"/>
+			    <path refid="build.limewire.components.common.buildpath"/>
+			</src-classpath>
+        </do.setup-properties>
+    </target>
+	
+	<target name="clean" depends="lw-common.clean">
+	    <do.clean component="setting"/>
+	</target>
+    
+    <target name="compile" depends="lw-common.compile">
+    	<do.compile component="setting"/>
+    </target>
+	
+	<target name="compile-src" depends="lw-common.compile-src">
+	    <do.compile-src component="setting"/>
+	</target>
+    
+	<target name="clean-src" depends="lw-common.clean-src">
+	    <do.clean-src component="setting"/>
+	</target>
+	
+	<target name="compile-tests">
+	    <do.compile-tests component="setting"/>
+	</target>
+	
+	<target name="clean-tests">
+	    <do.clean-tests component="setting"/>
+	</target>
+	
+	<target name="test" if="class" depends="compile">
+	    <do.test component="setting" class="${class}"/>
+	</target>
+	
+	<target name="test-package" if="package" depends="compile">
+	    <do.test-package component="setting" package="${package}"/>
+	</target>
+	
+	<target name="test-all" depends="compile">
+	    <do.test-all component="setting"/>
+	</target>
+    
+    <target name="jar" depends="initialize, compile-src">
+        <do.jar component="setting"/>
+    </target>
+    
+	<target name="javadoc" depends="initialize, compile-src">
+    	<do.javadoc component="setting"/>
+	</target>
+    
+    <target name="clean-dist" depends="initialize">
+        <do.clean-dist component="setting"/>
+    </target>
+    
+    <target name="with.clover" depends="initialize">
+        <do.clover-setup component="setting"/>
+	</target>
+    
+    <target name="clover2html" depends="initialize">
+        <do.clover2html component="setting"/>
+    </target>
+	
+</project><project name="lw-core" default="compile" basedir=".">
+
+    <property name="limewire.home" location="${basedir}/.."/>
+    
+    <import file="../components/build.xml"/>
+    
+    <target name="initialize" depends="lw-components.initialize" unless="initialized.core">
+        <property name="initialized.core" 			  value="true"/>
+        <property name="limewire.core.home"           location="${limewire.home}/core"/>
+        <property name="limewire.core.src"  		  location="${limewire.core.home}"/>
+        <property name="build.limewire.core.classes"  location="${limewire.core.home}"/>
+        <path id="build.limewire.core.classpath">
+            <fileset dir="${limewire.lib.jars}" includes="**/*.jar" excludes="tests/**"/>
+            <path refid="build.limewire.components.classes.core"/>
+        </path>
+    </target>
+    
+    <!-- compiles the core & components -->
+    <target name="compile-all"
+            description="Compiles the components and the core."
+            depends="initialize, lw-components.compile-core-src, compile-core"/>
+    
+	<!-- builds only the core -->
+	<target name="compile-core" 
+	        description="Compiles just the core."
+	        depends="initialize">
+        
+	    <copy todir="${build.limewire.core.classes}" overwrite="true">
+        		<fileset dir="${limewire.home}/common/vuze/azureus2/src">
+            		<include name="**/*.properties"/>
+            </fileset>
+        </copy>
+      
+	    <javac destdir      ="${build.limewire.core.classes}"
+			   debug	    ="${compile.debug}"
+			   deprecation  ="${compile.deprecation}"
+	           optimize     ="${compile.optimize}"
+			   encoding     ="ISO-8859-1"
+	           source		="${compile.source}"
+	           target       ="${compile.target}"
+	           srcdir	    ="${limewire.core.src}"
+			   excludes		="examples/**"
+	    	includeantruntime = "false"
+	    >
+			<classpath refid="build.limewire.core.classpath"/>
+            <src path="${limewire.home}/common/components/json"/>
+            <src path="${limewire.home}/common/components/apache"/>
+            <src path="${limewire.home}/common/components/jmdns"/>
+            <src path="${limewire.home}/common/components/jdownloader"/>
+            <src path="${limewire.home}/common/components/minicastle"/>
+            
+            <src path="${limewire.home}/common/vuze/azureus2/src"/>
+            <src path="${limewire.home}/common/vuze/azureus3/src"/>
+            <src path="${limewire.home}/common/vuze/plugins"/>
+            <exclude name="**/bouncycastle/**"/>
+            <exclude name="**/jman/**"/>
+            <exclude name="**/swing/**"/>
+            <exclude name="**/swt/**"/>
+            <exclude name="**/systray/**"/>
+            <exclude name="**/tests/**"/>
+            
+            <src path="${limewire.home}/common/components/core"/>
+	   	</javac>
+	</target>
+    
+    <!-- cleans the core & components -->
+    <target name="clean-all" 
+            description="Cleans the classfiles generated from compiling the components and core."
+            depends="initialize, lw-components.clean-src, clean-core"/>
+
+    <!-- Find and delete empty folders under dir -->
+    <macrodef name="deleteEmptyFolders">
+        <attribute name="dir" />
+        <sequential>
+            <delete includeemptydirs="true">
+                <fileset dir="@{dir}">
+                    <and>
+                        <size value="0" />
+                        <type type="dir" />
+                    </and>
+                </fileset>
+            </delete>
+        </sequential>
+    </macrodef>
+	
+	<!-- cleans only the core -->
+	<target name="clean-core"
+	        description="Cleans just the core classes."
+            depends="initialize">
+		<delete>
+			<fileset dir="${build.limewire.core.classes}" includes="**/*.class"/>
+		</delete>
+        <deleteEmptyFolders dir="${build.limewire.core.classes}" />
+	</target>
+    
+    <target name="clean" description="Cleans just the core" depends="clean-core"/>
+    <target name="compile" description="Compiles just the core" depends="compile-core"/>
+    
+    <!--
+       everything below is just to erase the targets from 'ant -p'
+       they are listed because we import the component's buildfile.
+      -->
+    <target name="clean-src"/>
+    <target name="clean-dist"/>
+    <target name="clean-tests"/>
+    <target name="clover2html"/>
+    <target name="compile-src"/>
+    <target name="compile-core-src"/>
+    <target name="compile-ui-src"/>
+    <target name="compile-tests"/>
+    <target name="jar"/>
+    <target name="javadoc"/>
+    <target name="test"/>
+    <target name="test-all"/>
+    <target name="test-package"/>
+    <target name="with.clover"/>
+
+</project>
+<project name="lw-gui" default="compile" basedir=".">
+
+    <property name="limewire.home" location="${basedir}/.."/>
+    
+    <import file="../components/build.xml"/>
+    
+    <target name="initialize" depends="lw-components.initialize" unless="initialized.gui">
+        <property name="initialized.gui"			 value="true"/>
+        <property name="limewire.gui.home"           location="${limewire.home}/gui"/>
+        <property name="limewire.gui.src"            location="${limewire.gui.home}"/>
+        <property name="build.limewire.gui.classes"  location="${limewire.gui.home}"/>
+        <property name="build.limewire.core.classes" location="${limewire.home}/core"/>
+        <path id="build.limewire.gui.classpath">
+            <fileset dir="${limewire.lib.jars}" includes="**/*.jar" excludes="tests/**"/>
+            <path refid="build.limewire.components.classes.ui"/>
+            <pathelement location="${build.limewire.core.classes}"/>
+        </path>
+    </target>
+    
+    <!-- compiles the gui & components -->
+    <target name="compile-all"
+            description="Compiles the components and the gui."
+            depends="initialize, lw-components.compile-src, lw-components.compile-ui-src, compile-gui"/>
+    
+	<!-- builds only the gui -->
+	<target name="compile-gui" 
+	        description="Compiles just the gui."
+	        depends="initialize">
+	    <javac destdir      ="${build.limewire.gui.classes}"
+		   debug	="${compile.debug}"
+		   deprecation  ="${compile.deprecation}"
+	           optimize     ="${compile.optimize}"
+		   encoding     ="UTF-8"
+	           source	="${compile.source}"
+	           target       ="${compile.target}"
+	           srcdir	="${limewire.gui.src}"
+	           excludes     ="macosx/**, windows/**"
+	    	includeantruntime = "false">
+		   <classpath refid="build.limewire.gui.classpath"/>
+	    </javac>
+	</target>
+    
+    <!-- cleans the gui & components -->
+    <target name="clean-all" 
+            description="Cleans the classfiles generated from compiling the components and gui."
+            depends="initialize, lw-components.clean-src, clean-gui"/>
+	
+	<!-- cleans only the gui -->
+	<target name="clean-gui"
+	        description="Cleans just the gui classes."
+            depends="initialize">
+		<delete>
+			<fileset dir="${build.limewire.gui.classes}" includes="**/*.class"/>
+		</delete>
+	</target>
+    
+    <target name="clean" description="Cleans just the gui" depends="clean-gui"/>
+    <target name="compile" description="Compiles just the gui" depends="compile-gui"/>
+    
+    <!-- target for building a new jar for just the bugs classes -->
+    <target name="bugjar">
+        <javac target="1.6" source="1.6" destdir="." srcdir="com/limegroup/gnutella/bugs/" includes="LocalAbstractInfo.java, RemoteAbstractInfo.java"/>
+        <delete file="lw-bugs.jar"/>
+        <jar basedir="." destfile="lw-bugs.jar" includes="com/limegroup/gnutella/bugs/LocalAbstractInfo.class, com/limegroup/gnutella/bugs/RemoteAbstractInfo.class"/>
+	</target>
+	
+    <!--
+       everything below is just to erase the targets from 'ant -p'
+       they are listed because we import the component's buildfile.
+      -->
+    <target name="clean-src"/>
+    <target name="clean-dist"/>
+    <target name="clean-tests"/>
+    <target name="clover2html"/>
+    <target name="compile-src"/>
+    <target name="compile-core"/>
+    <target name="compile-core-src"/>
+	<target name="compile-ui-src"/>
+    <target name="compile-tests"/>
+	<target name="jar"/>
+    <target name="javadoc"/>
+    <target name="test"/>
+    <target name="test-all"/>
+    <target name="test-package"/>
+    <target name="with.clover"/>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="jars-src" default="main" basedir=".">
+
+	<target name="check-compile">
+		<available file="../jars/COMPILE" property="compile.present" />
+	</target>
+
+	<target name="main" depends="check-compile" if="compile.present">
+
+		<delete includeemptydirs="true" failonerror="false">
+			<fileset dir="dist" includes="*" />
+		</delete>
+
+		<ant dir="commons-logging-1.0.4-src" />
+		<ant dir="httpcomponents-core-4.0.1" />
+		<ant dir="httpcomponents-client-4.0" />
+		<ant dir="gettext-commons-0_9_5" />
+		<ant dir="google-gson-1.4" />
+		<ant dir="lucene-3.5.0" />
+		<ant dir="h2-1.3.164" />
+		<ant dir="metadata-extractor-2.6.2-src" />
+		<ant dir="mp4parser" />
+		<ant dir="jaudiotagger" />
+		<ant dir="slf4j-api" />
+
+		<antcall target="copyjars" />
+
+		<delete file="../jars/COMPILE" />
+
+	</target>
+
+	<target name="clean">
+
+		<delete includeemptydirs="true" failonerror="false">
+			<fileset dir="dist" includes="*" />
+		</delete>
+
+		<ant dir="commons-logging-1.0.4-src" target="clean" />
+		<ant dir="httpcomponents-client-4.0" target="clean" />
+		<ant dir="httpcomponents-core-4.0.1" target="clean" />
+		<ant dir="gettext-commons-0_9_5" target="clean" />
+		<ant dir="google-gson-1.4" target="clean" />
+		<ant dir="lucene-3.5.0" target="clean" />
+		<ant dir="h2-1.3.164" target="clean" />
+		<ant dir="metadata-extractor-2.6.2-src" target="clean" />
+		<ant dir="mp4parser" target="clean" />
+		<ant dir="jaudiotagger" target="clean" />
+		<ant dir="slf4j-api" target="clean" />
+
+		<mkdir dir="dist" />
+
+		<!--  
+	 This should probably be done on purpose when we're making a source distribution.
+	 <touch file="../jars/COMPILE"/> 
+    -->
+
+	</target>
+
+	<target name="copyjars">
+
+		<copy file="dist/commons-logging.jar" todir="../jars/" />
+		<copy file="dist/gettext-commons.jar" todir="../jars/" />
+		<copy file="dist/gson-1.4.jar" todir="../jars/" />
+		<copy file="dist/httpclient-4.0.jar" todir="../jars/" />
+		<copy file="dist/httpcore-4.0.1.jar" todir="../jars/" />
+		<copy file="dist/lucene-3.5.0.jar" todir="../jars/" />
+		<copy file="dist/h2-1.3.164.jar" todir="../jars/" />
+		<copy file="dist/metadata-extractor-2.6.2.jar" todir="../jars/" />
+		<copy file="dist/mp4parser.jar" todir="../jars/" />
+		<copy file="dist/jaudiotagger.jar" todir="../jars/" />
+		<copy file="dist/slf4j-api-1.7.5.jar" todir="../jars/" />
+
+	</target>
+
+</project>
+<project name="gettext-commons-0.9.5" default="main" basedir=".">
+
+    <target name="main">
+        <mkdir dir="bin" />
+
+        <!-- build -->
+        <javac srcdir="src/java" destdir="bin" fork="true" memoryinitialsize="256m" memorymaximumsize="256m" includeantruntime="true">
+        	<compilerarg line="-Xlint -Xmaxwarns 0"/>
+        </javac>
+
+        <!-- jar -->
+        <jar jarfile="../dist/gettext-commons.jar">
+            <fileset dir="bin" />
+        </jar>
+
+    </target>
+
+    <target name="clean">
+
+        <delete dir="bin" />
+
+    </target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="jaudiotagger" default="main" basedir=".">
+
+	<property name="jars" value="../dist/" />
+
+	<path id="default.classpath">
+		<fileset dir="${jars}" includes="*.jar" excludes="jaudiotagger.jar" />
+	</path>
+
+	<target name="main">
+		<mkdir dir="bin" />
+
+		<!-- build -->
+		<javac srcdir="src" destdir="bin" fork="true" includeantruntime="false">
+			<classpath refid="default.classpath" />
+		</javac>
+
+		<!-- jar -->
+		<jar jarfile="../dist/jaudiotagger.jar">
+			<fileset dir="bin" />
+		</jar>
+
+	</target>
+
+	<target name="clean">
+
+		<delete dir="bin" />
+
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="mp4parser" default="main" basedir=".">
+
+	<property name="jars" value="../dist/" />
+
+	<path id="default.classpath">
+		<fileset dir="${jars}" includes="*.jar" excludes="mp4parser.jar" />
+	</path>
+
+	<target name="main">
+		<mkdir dir="bin" />
+
+		<!-- build -->
+		<javac srcdir="isoparser/src/main/java" destdir="bin" fork="true" includeantruntime="false" source="1.6" target="1.6">
+			<classpath refid="default.classpath" />
+		</javac>
+
+		<!-- jar -->
+		<jar jarfile="../dist/mp4parser.jar">
+			<fileset dir="bin" />
+            <fileset dir="isoparser/src/main/resources" />
+		</jar>
+
+	</target>
+
+	<target name="clean">
+
+		<delete dir="bin" />
+
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="h2" default="main" basedir=".">
+
+	<property name="jars" value="../dist" />
+
+	<path id="default.classpath">
+		<fileset dir="${jars}" includes="*.jar" excludes="slf4j-api-1.7.5.jar" />
+	</path>
+
+	<target name="main">
+		<mkdir dir="bin" />
+
+		<!-- build -->
+		<javac srcdir="./src/main" destdir="bin" fork="true" includeantruntime="false">
+			<classpath refid="default.classpath" />
+		</javac>
+
+		<!-- jar -->
+		<jar jarfile="../dist/slf4j-api-1.7.5.jar">
+			<fileset dir="bin" />
+		</jar>
+
+	</target>
+
+	<target name="clean">
+
+		<delete dir="bin" />
+
+	</target>
+
+</project>

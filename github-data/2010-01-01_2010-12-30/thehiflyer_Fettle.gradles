@@ -1,0 +1,152 @@
+apply plugin: 'java'
+apply plugin: 'jacoco'
+apply plugin: 'checkstyle'
+apply plugin: 'maven'
+apply plugin: 'signing'
+
+sourceCompatibility = 1.6
+
+group = 'se.fearless'
+version = '0.8.1'
+
+defaultTasks 'build'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit-dep', version: '4.11'
+    testCompile group: 'se.mockachino', name: 'mockachino', version: '0.6.0'
+    compile group: 'com.google.guava', name: 'guava', version: '14.0.1'
+}
+
+task gwtJar(type: Jar, dependsOn: classes) {
+    classifier = 'gwt'
+    from sourceSets.main.getOutput().classesDir
+    exclude("**/export/DotExporter*")
+    into('se/fearless/fettle/super') {
+        from sourceSets.main.allJava
+
+    }
+    into('se/fearless/fettle') {
+        from sourceSets.main.resources
+        exclude("**/export*")
+    }
+}
+
+jar {
+    exclude("**/*.xml")
+}
+
+checkstyleMain {
+    doLast {
+        ant.xslt(in: "$buildDir/reports/checkstyle/main.xml",
+                style:"config/checkstyle/checkstyle.xsl",
+                out:"$buildDir/reports/checkstyle/checkstyle.html"
+        )
+    }
+}
+
+checkstyleTest {
+    ignoreFailures = true
+}
+
+task checkstyleReport << {
+    if (file("$buildDir/reports/checkstyle/${checkType}.xml").exists()) {
+
+    }
+}
+
+jacocoTestReport {
+    reports {
+        html.enabled = true
+        csv.enabled = false
+        xml.enabled = false
+    }
+    additionalSourceDirs = files(sourceSets.main.allJava.srcDirs)
+}
+
+// custom tasks for creating source jar
+task sourcesJar(type: Jar, dependsOn:classes) {
+    classifier = 'sources'
+    from sourceSets.main.allSource
+}
+// custom tasks for creating javadoc jar
+task javadocJar(type: Jar, dependsOn:javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+}
+
+artifacts {
+    archives jar
+    archives sourcesJar
+    archives javadocJar
+}
+
+signing {
+    if(hasProperty('sonatypeUsername') && hasProperty('sonatypePassword')) {
+        sign configurations.archives
+    }
+}
+
+uploadArchives {
+    if(hasProperty('sonatypeUsername') && hasProperty('sonatypePassword')) {
+        repositories {
+            mavenDeployer {
+                beforeDeployment { MavenDeployment deployment -> signPom(deployment) }
+
+                repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                    authentication(userName: sonatypeUsername, password: sonatypePassword)
+                }
+
+                pom.project {
+                    name 'Fettle'
+                    packaging 'jar'
+                    description 'Fettle is a state machine framework for java'
+                    url 'http://http://thehiflyer.github.com/Fettle/'
+
+                    scm {
+                        url 'scm:git@github.com:thehiflyer/Fettle.git'
+                        connection 'scm:git@github.com:thehiflyer/Fettle.git'
+                        developerConnection 'scm:git@github.com:thehiflyer/Fettle.git'
+                    }
+
+                    licenses {
+                        license {
+                            name 'MIT License'
+                            url 'http://www.opensource.org/licenses/mit-license.php'
+                            distribution 'repo'
+                        }
+                    }
+
+                    developers {
+                        developer {
+                            id 'thehiflyer'
+                            name 'Per Malmén'
+                        }
+                    }
+                }
+
+                //mess with the generated pom to set the 'packaging' tag
+                pom.withXml { XmlProvider xmlProvider ->
+                    def xml = xmlProvider.asString()
+                    def pomXml = new XmlParser().parse(new ByteArrayInputStream(xml.toString().bytes))
+
+                    pomXml.version[0] + { packaging('jar') }
+
+                    def newXml = new StringWriter()
+                    def printer = new XmlNodePrinter(new PrintWriter(newXml))
+                    printer.preserveWhitespace = true
+                    printer.print(pomXml)
+                    xml.setLength(0)
+                    xml.append(newXml.toString())
+                }
+            }
+        }
+    }
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.6'
+}

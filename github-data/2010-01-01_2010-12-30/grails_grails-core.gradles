@@ -1,0 +1,1629 @@
+import org.apache.tools.ant.filters.ReplaceTokens
+
+buildscript {
+    repositories {
+        maven { url "http://repo.grails.org/grails/core" }
+	//mavenRepo(urls: 'http://evgeny-goldin.org/artifactory/repo/')
+    }
+    dependencies {
+        classpath "commons-io:commons-io:2.2"
+        //classpath "com.goldin.plugins:gradle:0.1-RC3" // http://evgeny-goldin.com/wiki/Gradle-duplicates-plugin
+    }
+}
+
+apply plugin: 'idea'
+
+ext.optionalDeps = []
+ext.providedDeps = []
+
+ext.provided = { providedDeps << it }
+ext {
+    grailsVersion = '2.4.0.BUILD-SNAPSHOT'
+    isBuildSnapshot = grailsVersion.endsWith(".BUILD-SNAPSHOT")
+    antTraxVersion = "1.7.1"
+    antVersion = "1.8.4"
+    aspectjVersion = "1.7.4"
+    commonsCliVersion = "1.2"
+    commonsCollectionsVersion = "3.2.1"
+    commonsIOVersion = "2.2"
+    commonsLangVersion = "2.6"
+    datastoreVersion = "3.0.4.RELEASE"
+    gantVersion = "1.9.6"
+    gdocEngineVersion = "1.0.1"
+    groovyVersion = "2.3.0-beta-2"
+    ivyVersion = "2.3.0"
+    jansiVersion = "1.11"
+    jlineVersion = "2.11"
+    jnaVersion = "4.0.0"
+    slf4jVersion = "1.7.5"
+
+    spockVersion = '0.7-groovy-2.0'
+    springLoadedVersion = "1.1.5.RELEASE"
+    springLoadedCommonOptions = "-noverify -Dspringloaded.synchronize=true -Djdk.reflect.allowGetCallerClass=true"
+    springVersion = "4.0.3.RELEASE"
+    ehcacheVersion = "2.4.6"
+    junitVersion = "4.11"
+    concurrentlinkedhashmapVersion = "1.3.1"
+    cglibVersion = "2.2.2"
+    objenesisVersion = "1.2"
+}
+
+version = grailsVersion
+
+// directories created during the build which are related
+// to turning the workspace root into a GRAILS_HOME
+ext {
+    distInstallDir = file("$buildDir/dist-tmp")
+    homeDistDir = file("dist")
+    homeBinDir = file("bin")
+    homeConfDir = file("conf")
+    homeDslSupportDir = file("dsl-support")
+    homeLibDir = file("lib")
+    homeSrcDir = file("src")
+}
+
+// Groovy is added as a dependency to both the 'groovy' and 'compile'
+// configurations, so place the dependency in a shared variable. The
+// 'compile' is required so that Groovy appears as a dependency in the
+// artifacts' POMs.
+ext.jointBuildGroovyJarProperty = System.getProperty('groovy.jar')
+ext.groovyDependency = null
+if (jointBuildGroovyJarProperty) {
+    jointBuildGroovyJar = file(jointBuildGroovyJarProperty)
+    if (jointBuildGroovyJar.exists()) {
+        groovyDependency = dependencies.create(files(jointBuildGroovyJar))
+    } else {
+        throw new GradleException("The groovy.jar system property points to ${jointBuildGroovyJar.absolutePath} which does not exist.")
+    }
+} else {
+    groovyDependency = dependencies.create("org.codehaus.groovy:groovy-all:${groovyVersion}") {
+        exclude module:"commons-cli"
+        exclude module:"ant"
+    }
+}
+
+allprojects {
+    repositories {
+        maven { url "http://repo.grails.org/grails/core" }
+    }
+
+    configurations {
+        all {
+            resolutionStrategy {
+                def cacheHours = isCiBuild ? 0 : 24
+                cacheDynamicVersionsFor cacheHours, 'hours'
+                cacheChangingModulesFor cacheHours, 'hours'
+            }
+        }
+    }
+// this will apply the javadoc fix tool to all generated javadocs
+// we use it to make sure that the javadocs are not vulnerable independently of the JDK used to build
+    [Javadoc, Groovydoc].each {
+        tasks.withType(it).all {
+            doLast {
+                def javadocFix = new JavadocFixTool()
+                javadocFix.recursive = true
+                javadocFix.doPatch = true
+                javadocFix.searchAndPatch(destinationDir)
+            }
+        }
+
+    }
+}
+
+apply from: "gradle/idea.gradle"
+
+subprojects { project ->
+    ext.isTestSuite = project.name.startsWith("grails-test-suite")
+    apply plugin: 'groovy'
+    apply plugin: 'maven'
+    apply plugin: 'eclipse'
+    apply plugin: 'idea'
+    apply plugin: 'project-report'
+    if(!isTestSuite)
+        apply plugin: 'signing'
+    //apply plugin: 'duplicates'
+
+    sourceCompatibility = "1.6"
+    targetCompatibility = "1.6"
+//    archivesBaseName = 'grails'
+    version = grailsVersion
+    group = "org.grails"
+
+    ext.isCiBuild = project.hasProperty("isCiBuild")
+
+    manifest.mainAttributes(
+            "Built-By": System.properties['user.name'],
+            "Created-By": System.properties['java.vm.version'] + " (" + System.properties['java.vm.vendor'] + ")",
+            "Implementation-Title": "Grails",
+            "Implementation-Version": grailsVersion,
+            "Implementation-Vendor": 'grails.org')
+
+
+    configure([compileGroovy, compileTestGroovy]) {
+        groovyOptions.fork(memoryInitialSize: '128M', memoryMaximumSize: '1G')
+        groovyOptions.encoding = "UTF-8"
+        groovyOptions.stacktrace = true
+        options.encoding = "UTF-8"
+    }
+
+    configure([compileJava, compileTestJava]) {
+        options.deprecation = true
+        options.debug = true
+    }
+
+    configure([javadoc]) {
+        options.encoding "UTF-8"
+        options.docEncoding "UTF-8"
+        options.charSet "UTF-8"
+    }
+
+    idea {
+        module.iml.whenMerged { module ->
+            // adding slf4j-simple with scope TEST to .iml
+            module.dependencies << new org.gradle.plugins.ide.idea.model.ModuleLibrary(
+                    [new org.gradle.plugins.ide.idea.model.Path("jar://\$GRADLE_USER_HOME/cache/org.slf4j/slf4j-simple/jars/slf4j-simple-${slf4jVersion}.jar!/")], [], [], [], "TEST"
+            )
+        }
+    }
+    repositories {
+        if(!isCiBuild) {
+            mavenLocal()
+        }
+    }
+
+    dependencies {
+        // this check is really here only to support the
+        // joint build.  as soon as the 2.1 Groovy branch
+        // is update to Gradle 1.10 we can remove this and
+        // remove the call to "groovy groovyDependency"
+        if('1.10' == project.gradle.gradleVersion) {
+            compile groovyDependency
+        } else {
+            groovy groovyDependency
+        }
+
+        if (project.name != "grails-docs") {
+            // Logging
+            compile "org.slf4j:slf4j-api:$slf4jVersion"
+            compile "org.slf4j:jcl-over-slf4j:$slf4jVersion"
+
+            // Testing
+            testCompile "junit:junit:${junitVersion}"
+            testCompile("org.spockframework:spock-core:${spockVersion}") {
+                transitive = false
+                exclude group:'junit', module: 'junit-dep'
+                exclude group:'org.codehaus.groovy', module: 'groovy-all'
+            }
+            // Required by Spock's Mocking
+            testCompile "cglib:cglib:${cglibVersion}"
+            testCompile "org.objenesis:objenesis:${objenesisVersion}"
+        }
+    }
+
+    test {
+        excludes = ["**/*TestCase.class", "**/*\$*.class"]
+        if(System.getProperty("debug.tests")) {
+            jvmArgs '-Xmx2g', '-Xdebug', '-Xnoagent', '-Djava.compiler=NONE',
+                    '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005'
+        }
+    }
+
+    if(!isTestSuite) {
+        task sourcesJar(type: Jar) {
+            classifier = 'sources'
+            from sourceSets.main.allSource
+        }
+
+        task javadocJar(type: Jar, dependsOn:javadoc) {
+            classifier = 'javadoc'
+            from javadoc.destinationDir
+        }
+
+    }
+
+    groovydoc.doLast {
+        delete("${buildDir}/tmp")
+    }
+
+    configurations {
+        meta
+        published.extendsFrom archives, meta
+        all*.exclude group:'commons-logging', module: 'commons-logging'
+    }
+
+    if(!isTestSuite) {
+        artifacts {
+            archives jar
+            archives sourcesJar
+            archives javadocJar
+        }
+
+        signing {
+            sign configurations.archives
+            required { !isBuildSnapshot && gradle.taskGraph.hasTask(uploadPublished) }
+        }
+
+        ext {
+            poms = [project.install.repositories.mavenInstaller.pom]
+            pomModifications = []
+            modifyPom = { Closure modification -> project.pomModifications << modification }
+        }
+
+        task installToHomeDist(type: Upload) {
+            configuration = configurations.archives
+            repositories {
+                project.poms << mavenDeployer {
+                    repository(url: distInstallDir.toURL())
+                    uniqueVersion = false
+                    pom.artifactId = project.name
+                }.pom
+            }
+        }
+
+        install.dependsOn installToHomeDist
+        install.doLast {
+            ant.copy(todir:homeDistDir, flatten:true, includeEmptyDirs:false) {
+                fileset dir:distInstallDir
+            }
+            // This is a temporary hack.  Since https://github.com/grails/grails-core/commit/f7c5882057386853fdbf30c42b2212cfebad3c01
+            // the wrapper support jar is not being copied to the dist dir.  Pending a real solution, this should work.
+            if(project.name == 'grails-wrapper') {
+                ant.copy(todir: homeDistDir) {
+                    fileset dir: 'build/libs', includes: '*wrapper-support*'
+                }
+            }
+        }
+
+        uploadPublished {
+            repositories {
+                project.poms << mavenDeployer {
+                    beforeDeployment { MavenDeployment deployment -> signPom(deployment) }
+
+                    repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                        authentication(userName: project.hasProperty("sonatypeUsername") ? project.sonatypeUsername : null,
+                                        password: project.hasProperty("sonatypePassword") ?  project.sonatypePassword : null)
+                    }
+//                    snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+//                        authentication(userName: project.hasProperty("sonatypeUsername") ? project.sonatypeUsername : null,
+//                                        password: project.hasProperty("sonatypePassword") ?  project.sonatypePassword : null)
+//                    }
+                    snapshotRepository(url: "http://repo.grails.org/grails/libs-snapshots-local") {
+                        authentication(userName: project.hasProperty("artifactoryPublishUsername") ? project.artifactoryPublishUsername : null,
+                            password: project.hasProperty("artifactoryPublishPassword") ?  project.artifactoryPublishPassword : null)
+                    }
+
+
+                }.pom
+            }
+        }
+
+        modifyPom { pom ->
+            pom.project {
+                name 'Grails'
+                packaging 'jar'
+                description 'Grails Web Application Framework'
+                delegate.url 'http://grails.org/'
+
+                scm {
+                    delegate.url 'scm:git@github.com:grails/grails-core.git'
+                    connection 'scm:git@github.com:grails/grails-core.git'
+                    developerConnection 'scm:git@github.com:grails/grails-core.git'
+                }
+
+                licenses {
+                    license {
+                        name 'The Apache Software License, Version 2.0'
+                        delegate.url 'http://www.apache.org/licenses/LICENSE-2.0.txt'
+                        distribution 'repo'
+                    }
+                }
+
+                developers {
+                    developer {
+                        id 'graemerocher'
+                        name 'Graeme Rocher'
+                    }
+                    developer {
+                        id 'jeffscottbrown'
+                        name 'Jeff Brown'
+                    }
+                }
+            }
+        }
+
+        // Remove any dependencies that shouldn't be included in the POM
+        modifyPom { pom ->
+            // respect 'optional' and 'provided' dependencies
+            optionalDeps.each { dep ->
+                pom.dependencies.find { it.artifactId == dep.name }?.optional = true
+            }
+            providedDeps.each { dep ->
+                pom.dependencies.find { it.artifactId == dep.name }?.scope = 'provided'
+            }
+
+            configurations.runtime.allDependencies.each { dependency ->
+                if (dependency.hasProperty("notInPom") && dependency.notInPom) {
+                    pom.dependencies.removeAll { it.groupId == dependency.group && it.artifactId == dependency.name }
+                }
+            }
+        }
+
+        poms*.whenConfigured { pomModifications*.call(it) }
+    }
+
+}
+
+task clean(type: Delete) {
+    delete buildDir,
+           homeBinDir,
+           homeConfDir,
+           homeDistDir,
+           homeDslSupportDir,
+           homeLibDir,
+           homeSrcDir
+}
+
+task allDependencies(dependsOn: { subprojects*.implicitTasks*.dependencies })
+
+// From this point on we need the subprojects to be fully configured, so force their full evaluation
+subprojects.each { evaluationDependsOn it.path }
+
+apply {
+    from 'gradle/docs.gradle' // tasks for building the documentation (e.g. user guide, javadocs)
+    from 'gradle/assemble.gradle' // tasks for creating an installation or distribution
+    from 'gradle/findbugs.gradle'
+}
+
+task wrapper(type: Wrapper) {
+    gradleVersion = '1.11'
+    jarFile = 'gradle/wrapper/gradle-wrapper.jar'
+}
+ext {
+    aetherVersion = "0.9.0.M3"
+    aetherProviderVersion = "0.9.0.M2"
+    mavenVersion = "3.1.1"
+}
+
+dependencies {
+    compile("org.eclipse.aether:aether-api:${aetherVersion}")
+    compile("org.eclipse.aether:aether-util:${aetherVersion}")
+    compile("org.eclipse.aether:aether-impl:${aetherVersion}")
+    compile("org.eclipse.aether:aether-connector-file:${aetherProviderVersion}")
+    compile("org.eclipse.aether:aether-connector-basic:${aetherVersion}")
+    compile("org.eclipse.aether:aether-transport-http:${aetherVersion}")
+    compile("org.eclipse.aether:aether-transport-file:${aetherVersion}")
+    compile("org.apache.maven:maven-aether-provider:$mavenVersion")
+    compile "org.apache.maven:maven-settings-builder:$mavenVersion"
+    compile 'org.eclipse.sisu:org.eclipse.sisu.plexus:0.0.0.M5'
+
+    compile project(":grails-bootstrap")
+
+    runtime "org.slf4j:slf4j-simple:$slf4jVersion"
+}
+
+install.doLast {
+    final aetherConf = new File(rootProject.projectDir, "conf/aether-starter.conf")
+    aetherConf.parentFile.mkdirs()
+
+    aetherConf.withPrintWriter { writer ->
+        writer.println "load \${grails.home}/dist/grails-aether-${grailsVersion}.jar"
+        def appendDependencies = {
+            def fileName = it.file.name
+            if(! ['jline', 'jansi','jna','hibernate', 'asm', 'cglib', 'groovy-all', 'ant', 'servlet-api'].any { fileName.contains(it) }) {
+
+                def mid = it.moduleVersion.id
+
+                writer.println "load \${grails.home}/lib/${mid.group}/${mid.name}/jars/$fileName"
+            }
+        }
+        configurations.runtime.resolvedConfiguration.resolvedArtifacts.each appendDependencies
+    }
+}
+dependencies {
+    compile 'org.codehaus.gpars:gpars:1.1.0', {
+        exclude group:'org.multiverse', module:'multiverse-core'
+    }
+}
+
+eclipse {
+    classpath {
+       file {
+           whenMerged { classpath ->
+                // greclipse doesn't support ASTs and tests in same project
+                classpath.entries.removeAll { entry -> entry.kind == 'src' && entry.path == "src/test/groovy" }
+           }
+       }
+    }
+}
+import org.apache.tools.ant.filters.ReplaceTokens
+
+configurations {
+    uaa
+}
+dependencies {
+
+    // UAA client dependency, optional
+    uaa "org.codehaus.groovy:groovy-all:${groovyVersion}", {
+        exclude module:"commons-cli"
+        exclude module:"ant"
+    }
+    uaa("org.springframework.uaa:org.springframework.uaa.client:1.0.1.RELEASE") {
+        ["protobuf-java-lite", "json-simple", "bcpg-jdk15", "bcprov-jdk15"].each { dep ->
+            exclude group: "org.springframework.roo.wrapping", module: "org.springframework.roo.wrapping." + dep
+        }
+    }
+
+    // These 3 are required by UAA but not Grails (non OSGI version of excludes above)
+    uaa 'com.google.protobuf:protobuf-java:2.5.0',
+             'com.googlecode.json-simple:json-simple:1.1',
+             "org.bouncycastle:bcpg-jdk15:1.45",
+             "jline:jline:$jlineVersion"
+
+    compile "org.fusesource.jansi:jansi:$jansiVersion",
+            "jline:jline:$jlineVersion",
+            "net.java.dev.jna:jna:$jnaVersion"
+
+    // Ant
+    compile "org.apache.ant:ant:${antVersion}",
+            "org.apache.ant:ant-launcher:${antVersion}",
+            "org.apache.ivy:ivy:${ivyVersion}"
+
+    compile "org.apache.ant:ant-trax:${antTraxVersion}", {
+        exclude group:"org.apache.ant", module:"ant"
+    }
+
+    compile("org.apache.ant:ant-junit:${antVersion}") {
+        exclude group:'junit',module:'junit'
+    }
+
+    compile("org.codehaus.gant:gant_groovy1.8:${gantVersion}") {
+        exclude group:'commons-cli', module:'commons-cli'
+    }
+}
+
+sourceSets {
+    uaa {
+        compileClasspath = files(configurations.uaa, main.output)
+        groovy.srcDirs = ['src/uaa/groovy']
+        resources.srcDirs = []
+    }
+}
+processResources {
+    inputs.property "version", version
+    filter(ReplaceTokens, tokens:[version:version])
+}
+
+//jar.appendix = 'bootstrap'
+jar {
+    from compileUaaGroovy.outputs.files
+}
+
+eclipse {
+    classpath {
+        plusConfigurations += configurations.uaa
+    }
+}
+
+install.doLast {
+    final aetherConf = new File("$rootProject.projectDir/conf/uaa-starter.conf")
+    aetherConf.parentFile.mkdirs()
+
+    aetherConf.withPrintWriter { writer ->
+        def appendDependencies = {
+            def fileName = it.file.name
+            if(! ['jline', 'jansi','jna','hibernate', 'asm', 'cglib', 'groovy-all', 'ant', 'servlet-api'].any { fileName.contains(it) }) {
+
+                def mid = it.moduleVersion.id
+
+                writer.println "load \${grails.home}/lib/${mid.group}/${mid.name}/jars/$fileName"
+            }
+        }
+        configurations.uaa.resolvedConfiguration.resolvedArtifacts.each appendDependencies
+    }
+}
+configurations {
+    optional
+}
+dependencies {
+
+    compile 'org.hibernate.javax.persistence:hibernate-jpa-2.1-api:1.0.0.Final'
+    compile( "com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:${concurrentlinkedhashmapVersion}" ) {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    compile("org.springframework:spring-core:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    compile("org.springframework:spring-tx:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    compile("org.springframework:spring-beans:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    compile("org.springframework:spring-context:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    compile("org.springframework:spring-test:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+        ext.notInPom = true
+    }
+
+    // Used by Spring AOP
+    runtime 'aopalliance:aopalliance:1.0',
+            "org.aspectj:aspectjrt:$aspectjVersion"
+
+    runtime ( 'xalan:serializer:2.7.1' ) {
+        exclude group: 'xml-apis', module:'xml-apis'
+    }
+
+    compile ("org.springframework:springloaded:$springLoadedVersion") {
+        ext.notInPom = true
+    }
+
+
+
+    compile project(":grails-bootstrap"), {
+        exclude group:"org.fusesource.jansi", module:"jansi"
+        exclude group:"jline", module:"jline"
+        exclude group:"net.java.dev.jna", module:"jna"
+
+        // Ant
+        exclude group:"org.apache.ant", module:"ant"
+        exclude group:"org.apache.ant", module:"ant-launcher"
+        exclude group:"org.apache.ivy", module:"ivy"
+        exclude group:"org.apache.ant", module:"ant-trax"
+        exclude group:"org.apache.ant", module:"ant-junit"
+
+        exclude group:"org.codehaus.gant", module:"gant_groovy1.8"
+    }
+
+    compile project(":grails-spring"), {
+        exclude group:'org.springframework', module:'spring-tx'
+        exclude group:'org.springframework', module:'spring-web'
+        exclude group:'org.grails', module:'grails-bootstrap'
+    }
+
+    // These dependencies are not required, but due to a Groovy compiler bug they are loaded by Groovy and hence
+    // have to be on the path for compilation even though they shouldn't be
+    optional "org.apache.ant:ant:${antVersion}"
+    optional "jline:jline:$jlineVersion"
+    optional "org.fusesource.jansi:jansi:$jansiVersion"
+    optional("org.codehaus.gant:gant_groovy1.8:${gantVersion}") {
+        exclude group:'commons-cli', module:'commons-cli'
+    }
+
+}
+
+sourceSets {
+    main {
+        compileClasspath += files(configurations.optional)
+    }
+    test {
+        compileClasspath += files(configurations.optional)
+        runtimeClasspath += files(configurations.optional)
+    }
+}
+javadoc.classpath += files(configurations.optional)
+compileGroovy.doFirst {
+    delete("${buildDir}/classes/main/META-INF")
+    ant.mkdir(dir:sourceSets.main.output.classesDir)
+    ant.propertyfile(file:"${sourceSets.main.output.classesDir}/grails.build.properties") {
+         entry key:"grails.version", value:version
+    }
+}
+dependencies {
+}
+
+configurations {
+    // Required to keep Gradle classes off the test compile classpath.
+    gradleConf.extendsFrom compile
+}
+
+dependencies {
+    gradleConf gradleApi()
+    compile "commons-lang:commons-lang:$commonsLangVersion",
+            "org.slf4j:jcl-over-slf4j:$slf4jVersion",
+            "org.apache.ant:ant:$antVersion",
+            'org.grails:grails-gdoc-engine:1.0.1',
+            'org.yaml:snakeyaml:1.8'
+
+    compile('org.xhtmlrenderer:core-renderer:R8') {
+        exclude group: 'bouncycastle', module:'bcprov-jdk14'
+    }
+
+    runtime('com.lowagie:itext:2.0.8')
+    testCompile "junit:junit:$junitVersion"
+    testCompile("org.spockframework:spock-core:${spockVersion}") {
+        transitive = false
+    }
+}
+
+sourceSets {
+    main {
+        compileClasspath = configurations.gradleConf
+    }
+}
+
+task docFilesJar(type: Jar, description: 'Package up files used for generating documentation.') {
+    version = null
+    archiveName = "grails-doc-files.jar"
+    from "src/main/template"
+    doLast {
+        copy {
+            from docFilesJar.archivePath
+            into "${buildDir}/classes/main"
+        }
+    }
+}
+
+jar.dependsOn docFilesJar
+
+eclipse {
+    classpath {
+       plusConfigurations += configurations.gradleConf
+    }
+}
+dependencies {
+    compile project(":grails-core")
+    // HtmlUtils is used from spring-web
+    compile "org.springframework:spring-web:${springVersion}"
+}
+dependencies {
+    compile project(":grails-core"),
+            project(':grails-web')
+}dependencies {
+    compile 'javax.servlet:javax.servlet-api:3.0.1', provided
+    compile 'javax:javaee-web-api:6.0', provided
+    compile project(':grails-plugin-controllers'), project(':grails-async')
+}dependencies {
+    compile "commons-lang:commons-lang:$commonsLangVersion"
+    compile 'commons-codec:commons-codec:1.6'
+    compile project(":grails-web"), project(":grails-plugin-converters"), project(":grails-encoder")
+}
+dependencies {
+    compile project(":grails-core"),
+            project(":grails-web"),
+            project(":grails-async"),
+            project(':grails-plugin-converters'),
+            project(':grails-plugin-mimetypes'),
+            project(':grails-plugin-domain-class'),
+            project(':grails-plugin-validation')
+
+    testRuntime "jline:jline:$jlineVersion"
+    testRuntime "org.fusesource.jansi:jansi:$jansiVersion"
+}
+dependencies {
+    compile "commons-lang:commons-lang:$commonsLangVersion"
+
+    compile project(":grails-web"),
+            project(':grails-plugin-domain-class')
+}
+dependencies {
+    compile project(':grails-core'), project(':grails-web')
+}
+def tomcatVersion = '7.0.50'
+dependencies {
+    compile("org.springframework:spring-jdbc:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+    
+    compile("org.springframework:spring-context:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+
+    compile "org.apache.tomcat:tomcat-jdbc:$tomcatVersion"
+    runtime "org.apache.tomcat.embed:tomcat-embed-logging-log4j:$tomcatVersion"
+
+    runtime 'hsqldb:hsqldb:1.8.0.10', {
+        ext.notInPom = true
+    }
+
+    runtime 'com.h2database:h2:1.3.173', {
+        ext.notInPom = true
+    }
+
+    compile project(":grails-core")
+}
+dependencies {
+
+    compile project(":grails-core"), project(":grails-spring"), project(":grails-validation")
+
+    compile project(":grails-async"), {
+        ext.notInPom = true
+    }
+
+    // Datastore APIs
+    compile("org.grails:grails-datastore-gorm:$datastoreVersion") {
+        transitive = false
+        exclude group: 'org.grails', module:'grails-datastore-core'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'org.grails', module:'grails-test'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+
+    }
+    compile("org.grails:grails-datastore-core:$datastoreVersion") {
+        exclude group: 'org.springframework', module:'spring-core'
+        exclude group: 'org.springframework', module:'spring-context'
+        exclude group: 'org.springframework', module:'spring-web'
+        exclude group: 'org.springframework', module:'spring-beans'
+        exclude group: 'org.springframework', module:'spring-tx'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'commons-collections', module:'commons-collections'
+        exclude group: 'commons-lang', module:'commons-lang'
+        exclude group: 'javassist', module:'javassist'
+        exclude group: 'org.javassist', module: 'javassist'
+        exclude group: "javax.persistence", module:"persistence-api"
+        exclude group: 'java-persistence', module:'persistence-api'
+    }
+    compile("org.grails:grails-datastore-simple:$datastoreVersion") {
+        exclude group: 'org.grails', module:'grails-datastore-core'
+    }
+}
+dependencies {
+    compile project(":grails-web"), project(":grails-plugin-controllers")
+}sourceSets {
+    ast {
+        groovy.srcDirs = ['src/ast/groovy']
+        resources.srcDirs = []
+    }
+}
+
+configurations {
+    compile.extendsFrom astRuntime
+}
+
+dependencies {
+    compile sourceSets.ast.output,
+            project(":grails-plugin-codecs"),
+            project(":grails-logging")
+
+    astCompile project(":grails-web"),
+               project(":grails-plugin-controllers")
+}
+
+test {
+    maxParallelForks = 4
+    forkEvery = 100
+    maxHeapSize = '1024m'
+}
+jar{
+    from compileAstGroovy.outputs.files
+}
+
+eclipse {
+    classpath {
+       file {
+           whenMerged { classpath ->
+                // remove invalid build/resources/ast entry
+                classpath.entries.removeAll { entry -> entry?.kind == 'lib' && entry?.path ==~ ".+/build/\\w+/ast\$" }
+           }
+       }
+    }
+}dependencies {
+    compile "commons-lang:commons-lang:$commonsLangVersion"
+    compile project(":grails-web")
+}
+dependencies {
+    compile 'log4j:log4j:1.2.17'
+    compile "org.slf4j:jul-to-slf4j:$slf4jVersion"
+
+    compile project(':grails-logging')
+}dependencies {
+    compile project(":grails-web")
+}dependencies {
+
+    compile project(":grails-web"),
+            project(":grails-plugin-controllers"),
+            project(":grails-plugin-datasource")
+
+    compile 'com.google.code.gson:gson:2.2.4'
+
+    testCompile project(":grails-plugin-url-mappings")
+}
+dependencies {
+    compile "org.springframework:spring-tx:${springVersion}"
+
+    compile project(":grails-core"), project(":grails-plugin-datasource")
+}dependencies {
+    compile project(":grails-web")
+}dependencies {
+
+    compile project(':grails-plugin-url-mappings'),
+            project(':grails-plugin-databinding'),
+            project(':grails-plugin-servlets'),
+            project(':grails-plugin-controllers'),
+            project(':grails-plugin-domain-class'),
+            project(':grails-plugin-gsp'),
+            project(':grails-plugin-filters'),
+            project(':grails-plugin-mimetypes'),
+            project(':grails-plugin-converters'),
+            project(':grails-plugin-rest'),
+            project(':grails-plugin-codecs'),
+            project(':grails-logging'),
+            project(':grails-test')
+
+
+    compile("org.springframework:spring-test:${springVersion}") {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+
+    compile("org.spockframework:spock-core:${spockVersion}") {
+        exclude group:'junit', module: 'junit-dep'
+        exclude group:'org.codehaus.groovy', module: 'groovy-all'
+    }
+    compile "junit:junit:${junitVersion}", {
+        exclude group:'org.hamcrest', module: 'hamcrest-core'
+    }
+}
+
+eclipse {
+    classpath {
+       file {
+           whenMerged { classpath ->
+                // greclipse doesn't support ASTs and tests in same project
+                classpath.entries.removeAll { entry -> entry.kind == 'src' && entry.path == "src/test/groovy" }
+           }
+       }
+    }
+}
+
+configurations {
+    optional
+}
+dependencies {
+    compile "commons-lang:commons-lang:$commonsLangVersion"
+    compile( "com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:${concurrentlinkedhashmapVersion}" ) {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+
+    compile project(":grails-web"), project(":grails-plugin-controllers"), project(":grails-validation")
+    optional "junit:junit:${junitVersion}"
+}
+sourceSets {
+    main {
+        compileClasspath += files(configurations.optional)
+    }
+    test {
+        runtimeClasspath += files(configurations.optional)
+    }
+}dependencies {
+    compile project(":grails-core"),
+            project(':grails-web'),
+            project(':grails-plugin-domain-class')
+}
+dependencies {
+    compile project(':grails-core')
+    compile project(':grails-web')
+    compile "org.apache.ant:ant:${antVersion}"
+    compile "jline:jline:$jlineVersion"
+    compile "org.fusesource.jansi:jansi:$jansiVersion"
+    compile("org.codehaus.gant:gant_groovy1.8:${gantVersion}") {
+        exclude group:'commons-cli', module:'commons-cli'
+    }
+
+
+}
+
+task createSharedFilesJar(type: Jar, description: 'Package up the files that are shared by both applications and plugins.') {
+    version = null
+    baseName = "grails"
+    appendix = "shared-files"
+    ext.appFileJar = true
+    from("src/war/WEB-INF") {
+        into "web-app/WEB-INF"
+        include "applicationContext.xml", "sitemesh.xml", "tld/*.tld"
+    }
+    from("src/grails/grails-app/conf") {
+        into "grails-app/conf"
+        include "DataSource.groovy", "UrlMappings.groovy"
+    }
+}
+
+task createSharedApplicationFilesJar(type: Jar, description: 'Package up the files that are exclusive to applications.') {
+    version = null
+    baseName = "grails"
+    appendix = "app-files"
+    ext.appFileJar = true
+    from("src/war") {
+        into "web-app"
+        exclude "WEB-INF/**"
+    }
+    from("src/grails/grails-app") {
+        into "grails-app"
+        exclude "taglib/**", "utils/**", "conf/DataSource.groovy", "conf/UrlMappings.groovy"
+    }
+}
+
+task createSharedPluginFilesJar(type: Jar, description: 'Package up the files that are exclusive to plugins.') {
+    version = null
+    baseName = "grails"
+    appendix = "plugin-files"
+    ext.appFileJar = true
+    from("src/grails/templates/plugins")
+    from("src/grails") {
+        include "grails-app/views/error.gsp"
+    }
+    from("src/grails/plugin")
+}
+
+task createIntegrationFilesJar(type: Jar, description: 'Files to integrate Grails with IDEs and build systems.') {
+    version = null
+    baseName = "grails"
+    appendix = "integration-files"
+    ext.appFileJar = true
+    from("src/grails/templates/ide-support", "src/grails/ant")
+}
+
+ext.allJarFileTasks = tasks.matching { it.hasProperty("appFileJar") }
+task resourceJarFiles(dependsOn: allJarFileTasks)
+
+jar {
+    from project(":grails-wrapper").jar
+    from allJarFileTasks
+    from("src/war") {
+        into "src/war"
+        include "WEB-INF/**"
+        exclude 'WEB-INF/tld/grails.tld', 'WEB-INF/tld/spring.tld'
+    }
+    from("src/grails/templates") {
+        into "src/grails/templates"
+    }
+    rename "grails-wrapper-support-${version}.jar", "grails-wrapper-support.jar"
+}
+configurations {
+    scripts
+}
+
+dependencies {
+    // Testing
+    compile("org.spockframework:spock-core:${spockVersion}") {
+        exclude group:'junit', module: 'junit-dep'
+        exclude group:'org.codehaus.groovy', module: 'groovy-all'
+    }
+    compile "junit:junit:${junitVersion}", {
+        exclude group:'org.hamcrest', module: 'hamcrest-core'
+    }
+
+    scripts project(":grails-web"),
+            project(':grails-docs'),
+            project(':grails-plugin-controllers'),
+            project(':grails-plugin-log4j'),
+            project(":grails-test"),
+            project(":grails-plugin-testing"),
+            project(":grails-project-api"),
+            project(":grails-resources")
+
+    compile "org.fusesource.jansi:jansi:$jansiVersion",
+        "jline:jline:$jlineVersion",
+        "net.java.dev.jna:jna:$jnaVersion"
+
+    // Ant
+    compile "org.apache.ant:ant:${antVersion}",
+        "org.apache.ant:ant-launcher:${antVersion}",
+        "org.apache.ivy:ivy:${ivyVersion}"
+
+    compile "org.apache.ant:ant-trax:${antTraxVersion}", {
+        exclude group:"org.apache.ant", module:"ant"
+    }
+
+    compile("org.apache.ant:ant-junit:${antVersion}") {
+        exclude group:'junit',module:'junit'
+    }
+
+    compile("org.codehaus.gant:gant_groovy1.8:${gantVersion}") {
+        exclude group:'commons-cli', module:'commons-cli'
+    }
+}
+
+sourceSets {
+    main {
+        compileClasspath += files(configurations.scripts)
+        groovy.srcDirs = ['../scripts']
+    }
+}
+
+
+eclipse {
+    classpath {
+        file {
+            whenMerged { classpath ->
+                // update ../scripts -> scripts
+                def scriptsSrc = classpath.entries.find { entry -> entry?.kind == 'src' && entry?.path == '../scripts' }
+                if (scriptsSrc) scriptsSrc.path='scripts'
+            }
+        }
+    }
+
+    project {
+        linkedResource name: 'scripts', type: '2', location: new File('../scripts').canonicalPath
+    }
+}
+dependencies {
+    compile "org.springframework:spring-tx:${springVersion}"
+    compile "org.springframework:spring-web:${springVersion}"
+    compile project(":grails-bootstrap"), {
+        exclude group:"org.fusesource.jansi", module:"jansi"
+        exclude group:"jline", module:"jline"
+        exclude group:"net.java.dev.jna", module:"jna"
+
+        // Ant
+        exclude group:"org.apache.ant", module:"ant"
+        exclude group:"org.apache.ant", module:"ant-launcher"
+        exclude group:"org.apache.ivy", module:"ivy"
+        exclude group:"org.apache.ant", module:"ant-trax"
+        exclude group:"org.apache.ant", module:"ant-junit"
+
+        exclude group:"org.codehaus.gant", module:"gant_groovy1.8"
+    }
+}dependencies {
+    compile project(':grails-bootstrap'),
+            project(':grails-core'),
+            project(':grails-spring'),
+            project(':grails-web'),
+            project(':grails-test'),
+            project(':grails-plugin-testing')
+}
+dependencies {
+
+    testCompile project(':grails-test-suite-base'),
+                project(':grails-plugin-domain-class'),
+                project(':grails-plugin-testing'),
+                project(':grails-plugin-datasource'),
+                project(':grails-plugin-i18n'),
+                project(':grails-plugin-servlets'),
+                project(':grails-plugin-url-mappings'),
+                project(':grails-plugin-services'),
+                project(':grails-plugin-controllers'),
+                project(':grails-bootstrap'),
+                project(':grails-plugin-log4j')
+
+    testCompile "org.grails:grails-datastore-gorm-hibernate:$datastoreVersion", {
+        exclude group: 'org.grails', module:'grails-datastore-gorm'
+        exclude group: 'org.grails', module:'grails-datastore-core'
+        exclude group: 'org.springframework', module:'spring-core'
+        exclude group: 'org.springframework', module:'spring-context'
+        exclude group: 'org.springframework', module:'spring-web'
+        exclude group: 'org.springframework', module:'spring-beans'
+        exclude group: 'org.springframework', module:'spring-tx'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-plugin-domain-class'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-web'
+        exclude group: 'org.grails', module:'grails-test'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'commons-collections', module:'commons-collections'
+        exclude group: 'commons-lang', module:'commons-lang'
+        exclude group: 'javassit', module:'javassist'
+        exclude group: 'java-persistence', module:'persistence-api'
+        exclude group: 'javassist', module: 'javassist'
+    }
+}
+
+test {
+    maxParallelForks = 2
+    forkEvery = 100
+    jvmArgs = ['-Xmx2048M','-XX:MaxPermSize=256m']
+    excludes = ['**/GrailsDomainBinderTests.class',
+                '**/ComponentValidationTests.class',
+                '**/HibernateMappingUniqueConstraintTests.class']
+}
+
+task testGrailsDomainBinder(type: Test) { includes = [
+        '**/GrailsDomainBinderTests.class'
+    ] }
+
+
+task testIsolatedPersistentOne(type: Test) {
+    includes = ['**/ComponentValidationTests.class']
+    includes = ['**/HibernateMappingUniqueConstraintTests.class']
+}
+
+test.dependsOn testGrailsDomainBinder, testIsolatedPersistentOne
+dependencies {
+
+    compile project(':grails-test-suite-base'),
+            project(':grails-plugin-testing')
+
+    testRuntime 'javax.servlet.jsp:jsp-api:2.1'
+    testRuntime 'jstl:jstl:1.1.2'
+    testRuntime 'javax.el:el-api:1.0'
+
+    testCompile "commons-io:commons-io:${commonsIOVersion}"
+    testCompile project(':grails-plugin-codecs'),
+                project(':grails-plugin-domain-class') ,
+                project(':grails-plugin-url-mappings') ,
+                project(':grails-plugin-validation'),
+                project(":grails-plugin-datasource"),
+                project(":grails-plugin-servlets"),
+                project(":grails-plugin-services"),
+                project(":grails-plugin-rest"),
+                project(":grails-plugin-i18n"),
+                project(":grails-plugin-log4j"),
+                project(":grails-plugin-databinding")
+
+    testCompile "org.grails:grails-datastore-gorm-hibernate:$datastoreVersion", {
+        exclude group: 'org.grails', module:'grails-datastore-gorm'
+        exclude group: 'org.grails', module:'grails-datastore-core'
+        exclude group: 'org.springframework', module:'spring-core'
+        exclude group: 'org.springframework', module:'spring-context'
+        exclude group: 'org.springframework', module:'spring-web'
+        exclude group: 'org.springframework', module:'spring-beans'
+        exclude group: 'org.springframework', module:'spring-tx'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-plugin-domain-class'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-web'
+        exclude group: 'org.grails', module:'grails-test'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'commons-collections', module:'commons-collections'
+        exclude group: 'commons-lang', module:'commons-lang'
+        exclude group: 'javassit', module:'javassist'
+        exclude group: 'java-persistence', module:'persistence-api'
+        exclude group: 'javassist', module: 'javassist'
+    }
+}
+
+test {
+     maxParallelForks = 4
+     forkEvery = 100
+     maxHeapSize = '1024m'
+     excludes = [
+         "**/grails/test/PersonTests.class",
+         "**/rest/render/**/*Spec.class",
+         "**/*TestCase.class",
+         "**/DataSourceGrailsPluginTests",
+         "**/DefaultGrailsControllerClassTests.class",
+         "**/MockUtilsTests.class",
+         "**/GrailsUnitTestCaseTests.class",
+         "**/SetupTeardownInvokeTests.class",
+         "**/TestMixinSetupTeardownInvokeTests.class",
+         "**/UrlMappingsTestMixinTests.class",
+         "**/WebUtilsTests.class",
+         "**/RestfulControllerSpec.class",
+         "**/ResourceAnnotationRestfulControllerSpec.class"
+     ]
+}
+
+task isolatedTestsOne(type:Test) {
+    includes = [
+        "**/DataSourceGrailsPluginTests.class",
+        "**/MockUtilsTests.class",
+        "**/GrailsUnitTestCaseTests.class",
+        "**/SetupTeardownInvokeTests.class",
+        "**/TestMixinSetupTeardownInvokeTests.class",
+        "**/UrlMappingsTestMixinTests.class",
+        "**/WebUtilsTests.class"
+    ]
+}
+
+task isolatedTestsTwo(type:Test) {
+    maxParallelForks = 1
+    forkEvery = 1
+    includes = [
+        "**/UrlMappingsTestMixinTests.class",
+        "**/SetupTeardownInvokeTests.class",
+        "**/TestMixinSetupTeardownInvokeTests.class"
+    ]
+}
+
+task isolatedRestRendererTests(type:Test) {
+    includes = ['**/rest/render/**/*Spec.class']
+}
+
+task isolatedDefaultGrailsControllerClassTests(type: Test) {
+    includes = ['**/DefaultGrailsControllerClassTests.class']
+}
+
+task isolatedPersonTests(type: Test) {
+    includes = ['**/grails/test/PersonTests.class']
+}
+
+task isolatedRestfulControllerTests(type:Test) {
+    includes = ["**/RestfulControllerSpec.class",
+        "**/ResourceAnnotationRestfulControllerSpec.class"]
+}
+
+test.dependsOn isolatedPersonTests, isolatedTestsOne, isolatedTestsTwo, isolatedRestRendererTests, isolatedDefaultGrailsControllerClassTests, isolatedRestfulControllerTests
+
+dependencies {
+
+    testRuntime 'javax.servlet.jsp:jsp-api:2.1'
+    testRuntime 'jstl:jstl:1.1.2'
+    testRuntime 'javax.el:el-api:1.0'
+
+    testCompile "commons-io:commons-io:${commonsIOVersion}"
+    testCompile project(':grails-test-suite-base'),
+                project(':grails-plugin-testing'),
+                project(':grails-plugin-domain-class'),
+                project(':grails-plugin-codecs'),
+                project(':grails-plugin-datasource'),
+                project(':grails-plugin-i18n'),
+                project(':grails-plugin-servlets'),
+                project(':grails-plugin-async'),
+                project(':grails-plugin-log4j'),
+                project(':grails-plugin-url-mappings'),
+                project(':grails-plugin-services'),
+                project(':grails-web'),
+                project(':grails-web-databinding-spring')
+
+    testCompile "org.grails:grails-datastore-gorm-hibernate:$datastoreVersion", {
+        exclude group: 'org.grails', module:'grails-datastore-gorm'
+        exclude group: 'org.grails', module:'grails-datastore-core'
+        exclude group: 'org.springframework', module:'spring-core'
+        exclude group: 'org.springframework', module:'spring-context'
+        exclude group: 'org.springframework', module:'spring-web'
+        exclude group: 'org.springframework', module:'spring-beans'
+        exclude group: 'org.springframework', module:'spring-tx'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-plugin-domain-class'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-web'
+        exclude group: 'org.grails', module:'grails-test'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'commons-collections', module:'commons-collections'
+        exclude group: 'commons-lang', module:'commons-lang'
+        exclude group: 'javassit', module:'javassist'
+        exclude group: 'java-persistence', module:'persistence-api'
+        exclude group: 'javassist', module: 'javassist'
+    }
+
+
+    // Required for tag library support
+    testCompile 'taglibs:standard:1.1.2'
+    testCompile "javax.servlet:jstl:1.1.2"
+}
+
+// javaee-web-api has a bad versions of classes we need to compile against
+// Just remove it fromt the compile classpath here
+configurations {
+    testCompile {
+        exclude module: "javaee-web-api"
+    }
+}
+
+compileTestGroovy {
+    groovyOptions.listFiles = true
+}
+
+test {
+    maxParallelForks = 4
+    forkEvery = 100
+    jvmArgs = ['-Xmx1024M','-XX:MaxPermSize=192m']
+    excludes = ["**/*TestCase.class",
+                "**/*\$*.class",
+                "**/ContentFormatControllerTests.class",
+                "**/JSONBindingTests.class",
+                "**/AutoParams*MarshallingTests.class",
+                "**/JSONBindingToNullTests.class",
+                "**/ControllerWithXmlConvertersTests.class",
+                "**/GroovyPageAttributesTests.class",
+                "**/BindingExcludeTests.class",
+                "**/NestedXmlBindingTests.class",
+		"**/GSPResponseWriterSpec.class",
+		"**/RespondMethodSpec.class",
+        "**/ContentNegotiationSpec.class",
+        "**/pages/ext/jsp/*.class"]
+}
+
+task isolatedTestsOne(type:Test) {
+    includes = ["**/ContentFormatControllerTests.class"]
+}
+task isolatedTestsTwo(type:Test) {
+    includes = ["**/JSONBindingTests.class",
+                "**/AutoParams*MarshallingTests.class",
+                "**/ContentNegotiationSpec.class",
+                "**/pages/ext/jsp/*.class"]
+}
+task isolatedTestsThree(type:Test) {
+    includes = ["**/JSONBindingToNullTests.class",
+                "**/ControllerWithXmlConvertersTests.class"]
+}
+task isolatedTestsFour(type:Test) {
+    includes = ["**/BindingExcludeTests.class"]
+}
+task isolatedTestsFive(type:Test) {
+    includes = ["**/GroovyPageAttributesTests.class"]
+}
+task isolatedTestsSix(type:Test) {
+    includes = ["**/NestedXmlBindingTests.class"]
+}
+task isolatedTestsSeven(type:Test) {
+    maxParallelForks = 1
+    includes = ["**/GSPResponseWriterSpec.class"]
+}
+task isolatedRespondMethodTests(type:Test) {
+    maxParallelForks = 1
+    includes = ["**/RespondMethodSpec.class"]
+}
+test.dependsOn isolatedTestsOne, isolatedTestsTwo, isolatedTestsThree, isolatedTestsFour, isolatedTestsFive, isolatedTestsSix, isolatedTestsSeven, isolatedRespondMethodTests
+
+/*
+test {
+	jvmArgs '-Xmx1024m', '-Xdebug', '-Xnoagent', '-Dgrails.full.stacktrace=true', '-Djava.compiler=NONE',
+	        '-Xrunjdwp:transport=dt_socket,server=y,suspend=y,address=5005'
+}
+*/
+dependencies {
+
+    compile "org.springframework:spring-tx:${springVersion}"
+
+    // Ant
+    compile "org.apache.ant:ant:${antVersion}",{
+        ext.notInPom = true
+    }
+    compile "org.apache.ant:ant-junit:${antVersion}",{
+        ext.notInPom = true
+    }
+
+    // Testing
+    compile "junit:junit:${junitVersion}", {
+        exclude group:'org.hamcrest', module: 'hamcrest-core'
+    }
+    compile project(":grails-plugin-converters"), project(":grails-plugin-mimetypes")
+
+    compile project(":grails-web")
+    compile project(":grails-project-api")
+
+    compile("org.codehaus.gant:gant_groovy1.8:${gantVersion}") {
+        ext.notInPom = true
+    }
+    compile  "jline:jline:$jlineVersion", {
+        ext.notInPom = true
+    }
+    compile  "org.fusesource.jansi:jansi:$jansiVersion", {
+        ext.notInPom = true
+    }
+
+    compile("org.spockframework:spock-core:${spockVersion}") {
+        exclude group:'junit', module: 'junit-dep'
+        exclude group:'org.codehaus.groovy', module: 'groovy-all'
+    }
+
+    // needed for Spock
+    compile 'org.objenesis:objenesis:1.4'
+}dependencies {
+    compile( "commons-validator:commons-validator:1.4.0" ) {
+        exclude group: 'xml-apis', module:'xml-apis'
+        exclude group: 'commons-digester', module:'commons-digester'
+        exclude group: 'commons-logging', module:'commons-logging'
+        exclude group: 'commons-beanutils', module:'commons-beanutils'
+    }
+
+    compile project(":grails-core")
+}
+
+dependencies {
+    compile project(":grails-core"), {
+        exclude group:'org.grails', module:'grails-spring'
+    }
+    compile project(":grails-databinding"), project(":grails-encoder")
+
+    compile 'javax.servlet:javax.servlet-api:3.0.1', provided
+
+    compile "org.springframework:spring-webmvc:${springVersion}"
+    compile "org.springframework:spring-context-support:${springVersion}"
+    compile 'com.google.code.gson:gson:2.2.4'
+}dependencies {
+    compile project(":grails-web-databinding")
+    compile "commons-collections:commons-collections:${commonsCollectionsVersion}"
+}
+dependencies {
+    compile project(":grails-databinding")
+    compile project(":grails-web-common")
+}
+dependencies {
+    compile project(":grails-web-common")
+    compile('commons-fileupload:commons-fileupload:1.3.1')
+}configurations {
+    optional
+}
+
+
+dependencies {
+    compile( project(":grails-web-common") )
+
+    compile( project(":grails-web-sitemesh") ) {
+        exclude group:'org.grails', module:'grails-web-common'
+    }
+//    compile( project(":grails-web-url-mappings") ) {
+//        exclude group:'org.grails', module:'grails-web-common'
+//    }
+
+    testRuntime( project(":grails-spring") )
+    optional "org.apache.ant:ant:${antVersion}"
+}
+
+sourceSets {
+    main {
+        compileClasspath += files(configurations.optional)
+    }
+}
+
+javadoc.classpath += files(configurations.optional)
+configurations {
+    jsp21.extendsFrom compile
+}
+
+dependencies {
+    compile project(":grails-web-common")
+    compile project(":grails-web-gsp")
+
+    // Required for JSP support
+    jsp21 'javax.servlet.jsp:jsp-api:2.1'
+    compile 'javax.servlet:jsp-api:2.0', {
+        ext.notInPom = true
+        exclude group: 'javax.servlet', module:'servlet-api'
+    }
+
+}
+
+sourceSets {
+    jsp21 {
+        compileClasspath = files(configurations.jsp21, main.output)
+        groovy.srcDirs = ['src/jsp21/groovy']
+        resources.srcDirs = []
+    }
+}
+
+jar {
+    from compileJsp21Groovy.outputs.files
+}
+
+eclipse {
+    classpath {
+        plusConfigurations += configurations.jsp21
+        file {
+            whenMerged { classpath ->
+                // move jsp-api-2.1 to the last one in entries so that it appears after -2.0
+                def jsp21 = classpath.entries.find { entry -> entry?.path =~ /jsp-api-2.1.jar$/ }
+                if (jsp21) {
+                    classpath.entries.remove(jsp21)
+                    classpath.entries << jsp21
+                }
+            }
+        }
+    }
+}dependencies {
+    compile project(":grails-web-common"),
+            project(":grails-web-sitemesh"),
+            project(":grails-web-url-mappings")
+}dependencies {
+    compile project(":grails-web-common")
+
+    compile 'opensymphony:sitemesh:2.4'
+}
+configurations {
+    optional
+}
+dependencies {
+    compile project(":grails-web-common"),
+            project(":grails-validation")
+
+    compile 'javax.servlet:javax.servlet-api:3.0.1', provided
+    compile("org.grails:grails-datastore-core:$datastoreVersion") {
+        exclude group: 'org.springframework', module:'spring-core'
+        exclude group: 'org.springframework', module:'spring-context'
+        exclude group: 'org.springframework', module:'spring-web'
+        exclude group: 'org.springframework', module:'spring-beans'
+        exclude group: 'org.springframework', module:'spring-tx'
+        exclude group: 'org.slf4j', module:'jcl-over-slf4j'
+        exclude group: 'org.slf4j', module:'jul-to-slf4j'
+        exclude group: 'org.slf4j', module:'slf4j-api'
+        exclude group: 'org.slf4j', module:'slf4j-simple'
+        exclude group: 'org.grails', module:'grails-bootstrap'
+        exclude group: 'org.grails', module:'grails-core'
+        exclude group: 'org.grails', module:'grails-async'
+        exclude group: 'commons-collections', module:'commons-collections'
+        exclude group: 'commons-lang', module:'commons-lang'
+        exclude group: 'javassist', module:'javassist'
+        exclude group: 'org.javassist', module: 'javassist'
+        exclude group: "javax.persistence", module:"persistence-api"
+        exclude group: 'java-persistence', module:'persistence-api'
+    }
+    compile( "com.googlecode.concurrentlinkedhashmap:concurrentlinkedhashmap-lru:${concurrentlinkedhashmapVersion}" ) {
+        exclude group: 'commons-logging', module:'commons-logging'
+    }
+
+    optional "org.fusesource.jansi:jansi:$jansiVersion"
+    optional "jline:jline:$jlineVersion"
+}
+sourceSets {
+    main {
+        compileClasspath += files(configurations.optional)
+    }
+    test {
+        runtimeClasspath += files(configurations.optional)
+    }
+}dependencies {
+    compile project(":grails-web-common")
+    compile project(":grails-web-gsp")
+    compile project(":grails-web-databinding")
+    compile project(":grails-web-fileupload")
+    compile project(":grails-web-url-mappings")
+    compile project(":grails-web-jsp")
+    compile project(":grails-web-mvc")
+    compile project(":grails-web-sitemesh")
+
+    // Required for AspectJ support
+    runtime "org.springframework:spring-aspects:${springVersion}"
+    runtime "org.aspectj:aspectjrt:$aspectjVersion",
+            "org.aspectj:aspectjweaver:$aspectjVersion"
+}
+import org.apache.tools.ant.filters.ReplaceTokens
+
+configurations {
+    archive
+}
+
+dependencies {
+    archive "org.springframework:springloaded:$springLoadedVersion"
+}
+
+task copyScript(type: Copy) {
+    into "$buildDir/"
+
+    into('scripts') {
+        from("../grails-resources/src/grails/home/bash/startGrails") {
+            rename 'startGrails', 'grailsw'
+        }
+        from("../grails-resources/src/grails/home/bash/startGrails.bat") {
+            rename 'startGrails.bat', 'grailsw.bat'
+        }
+        filter(ReplaceTokens, tokens: ['grails.version': grailsVersion])
+        filter(ReplaceTokens, tokens: ['starter.main.class': 'org.grails.wrapper.GrailsWrapper'])
+        filter(ReplaceTokens, tokens: ['starter.classpath': '@wrapperDir@/grails-wrapper-runtime-@grailsVersion@.jar:@wrapperDir@:.'])
+        filter(ReplaceTokens, tokens: ['agent.string': '-javaagent:@wrapperDir@/springloaded-@springLoadedVersion@.jar @springLoadedCommonOptions@ -Dspringloaded=\$SPRINGLOADED_PARAMS'])
+        filter(ReplaceTokens, tokens: ['startup.command': 'startGrails $STARTER_MAIN_CLASS "$@"'])
+        filter(ReplaceTokens, tokens: ['windows.starter.classpath': '@wrapperDir@/grails-wrapper-runtime-@grailsVersion@.jar;@wrapperDir@;.'])
+        filter(ReplaceTokens, tokens: ['windows.agent.string': '-javaagent:@wrapperDir@/springloaded-@springLoadedVersion@.jar @springLoadedCommonOptions@ -Dspringloaded=\\"%SPRINGLOADED_PARAMS%\\"'.toString()])
+        fileMode = 0755
+    }
+
+}
+
+task runtimeJar(type: Jar) {
+    // TODO
+    from('build/classes/main')
+    appendix = 'runtime'
+}
+
+jar {
+  from configurations.archive
+  from runtimeJar
+  from "${buildDir}/scripts", {
+    filter org.apache.tools.ant.filters.ReplaceTokens, tokens: [springLoadedVersion: springLoadedVersion, grailsVersion: grailsVersion, springLoadedCommonOptions: springLoadedCommonOptions]
+  }
+  // TODO
+  exclude 'org/**'
+  appendix = 'support'
+}
+
+artifacts {
+  runtime runtimeJar
+}
+
+jar.dependsOn copyScript
+

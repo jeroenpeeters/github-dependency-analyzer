@@ -1,0 +1,445 @@
+<?xml version="1.0"?>
+<!DOCTYPE project>
+
+<project name="build-common-ivy" xmlns:antelope="antlib:ise.antelope.tasks" xmlns:ivy="antlib:org.apache.ivy.ant">
+	<property name="ivy.home" value="${sdk.dir}/.ivy" />
+
+	<if>
+		<not>
+			<available file="${ivy.home}/ivy-${ivy.version}.jar" />
+		</not>
+		<then>
+			<mkdir dir="${ivy.home}" />
+
+			<get
+				dest="${ivy.home}"
+				src="${ivy.jar.url}"
+			/>
+		</then>
+	</if>
+
+	<path id="ivy.lib.path">
+		<fileset
+			dir="${ivy.home}"
+			includes="ivy-${ivy.version}.jar"
+		/>
+		<fileset
+			dir="${sdk.dir}/lib"
+			includes="bcpg-jdk16.jar,bcprov-jdk16.jar"
+		/>
+	</path>
+
+	<taskdef classpathref="ivy.lib.path" resource="org/apache/ivy/ant/antlib.xml" uri="antlib:org.apache.ivy.ant" />
+
+	<for list="${basedir},${sdk.dir}" param="ivy.xml.dir">
+		<sequential>
+			<if>
+				<available file="@{ivy.xml.dir}/ivy.xml" />
+				<then>
+					<checksum file="@{ivy.xml.dir}/ivy.xml" verifyproperty="ivy.xml.unmodified" />
+
+					<if>
+						<isfalse value="${ivy.xml.unmodified}" />
+						<then>
+							<ivy:settings file="${ivy.custom.settings.file}" />
+
+							<ivy:resolve
+								file="@{ivy.xml.dir}/ivy.xml"
+								log="download-only"
+								transitive="false"
+							/>
+
+							<if>
+								<or>
+									<equals arg1="@{ivy.xml.dir}" arg2="${sdk.dir}" />
+									<antelope:endswith string="${ant.project.name}" with="-shared" />
+									<available file="@{ivy.xml.dir}/bnd.bnd" />
+								</or>
+								<then>
+									<ivy:retrieve
+										pattern="@{ivy.xml.dir}/lib/[artifact].[ext]"
+										type="bundle,jar,orbit"
+									/>
+
+									<ivy:retrieve
+										pattern="@{ivy.xml.dir}/lib/[artifact]-[type]s.[ext]"
+										type="source"
+									/>
+								</then>
+								<else>
+									<ivy:retrieve
+										pattern="@{ivy.xml.dir}/docroot/WEB-INF/lib/[artifact].[ext]"
+										type="bundle,jar,orbit"
+									/>
+
+									<ivy:retrieve
+										pattern="@{ivy.xml.dir}/docroot/WEB-INF/lib/[artifact]-[type]s.[ext]"
+										type="source"
+									/>
+								</else>
+							</if>
+
+							<checksum file="@{ivy.xml.dir}/ivy.xml" forceoverwrite="true" />
+						</then>
+					</if>
+
+					<var name="ivy.xml.unmodified" unset="true" />
+				</then>
+			</if>
+		</sequential>
+	</for>
+
+	<target name="publish">
+		<ivy:settings file="${sdk.dir}/ivy-settings-publisher.xml" />
+
+		<ivy:resolve
+			log="download-only"
+			transitive="false"
+		/>
+
+		<property name="ivy.pom.description" value="${plugin.name}" />
+		<property name="ivy.pom.name" value="${plugin.name}" />
+
+		<property name="plugin.release.qualifier" value="" />
+
+		<property name="ivy.pom.version" value="${plugin.full.version}${plugin.release.qualifier}" />
+
+		<ivy:makepom
+			description="${ivy.pom.description}"
+			ivyfile="ivy.xml"
+			pomfile="${plugin.pom.file}"
+			templatefile="${sdk.dir}/tools/pom_tmpl/template.pom"
+		/>
+
+		<ivy:publish
+			forcedeliver="true"
+			overwrite="true"
+			publishivy="false"
+			pubrevision="${ivy.pom.version}"
+			resolver="${ivy.publish.resolver}"
+		>
+			<artifacts pattern="${sdk.dir}/dist/${plugin.name}-${plugin.full.version}.[ext]" />
+			<artifacts pattern="${sdk.dir}/dist/${plugin.name}-${plugin.full.version}-[type].[ext]" />
+		</ivy:publish>
+	</target>
+</project><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="plugins" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="activation" org="javax.activation" rev="1.1" />
+		<dependency name="antelopetasks" org="org.tigris.antelope" rev="3.2.10" />
+		<dependency name="bcpg-jdk16" org="org.bouncycastle" rev="1.46" />
+		<dependency name="bcprov-jdk16" org="org.bouncycastle" rev="1.46" />
+		<dependency name="ccpp" org="javax.ccpp" rev="1.0" />
+		<dependency name="ecj" org="org.eclipse.jdt.core.compiler" rev="3.7.2" />
+		<dependency name="jalopy" org="jalopy" rev="1.5rc3" />
+		<dependency name="jargs" org="net.sf" rev="1.0" />
+		<dependency name="javax.servlet-api" org="javax.servlet" rev="3.0.1" />
+		<dependency name="jsp-api" org="javax.servlet.jsp" rev="2.1" />
+		<dependency name="junit" org="junit" rev="4.11" />
+		<dependency name="log4j" org="log4j" rev="1.2.16" />
+		<dependency name="mail" org="javax.mail" rev="1.4" />
+		<dependency name="mockito-all" org="org.mockito" rev="1.9.5" />
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+		<dependency name="powermock-api-mockito" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-api-support" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-core" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-module-junit4" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-module-junit4-common" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-reflect" org="org.powermock" rev="1.5" />
+		<dependency name="qdox" org="com.thoughtworks.qdox" rev="1.12.1" />
+		<dependency name="scala-compiler" org="org.scala-lang" rev="2.9.2" />
+		<dependency name="serializer" org="xalan" rev="2.7.1" />
+		<dependency name="spring-test" org="org.springframework" rev="3.0.7.RELEASE" />
+		<dependency name="xalan" org="xalan" rev="2.7.1" />
+		<dependency name="xercesImpl" org="xerces" rev="2.10.0" />
+		<dependency name="xml-apis" org="xml-apis" rev="1.4.01" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="plugins" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="activation" org="javax.activation" rev="1.1" />
+		<dependency name="antelopetasks" org="org.tigris.antelope" rev="3.2.10" />
+		<dependency name="bcpg-jdk16" org="org.bouncycastle" rev="1.46" />
+		<dependency name="bcprov-jdk16" org="org.bouncycastle" rev="1.46" />
+		<dependency name="ccpp" org="javax.ccpp" rev="1.0" />
+		<dependency name="ecj" org="org.eclipse.jdt.core.compiler" rev="3.7.2" />
+		<dependency name="jalopy" org="jalopy" rev="1.5rc3" />
+		<dependency name="jargs" org="net.sf" rev="1.0" />
+		<dependency name="javax.servlet-api" org="javax.servlet" rev="3.0.1" />
+		<dependency name="jsp-api" org="javax.servlet.jsp" rev="2.1" />
+		<dependency name="junit" org="junit" rev="4.11" />
+		<dependency name="log4j" org="log4j" rev="1.2.16" />
+		<dependency name="mail" org="javax.mail" rev="1.4" />
+		<dependency name="mockito-all" org="org.mockito" rev="1.9.5" />
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+		<dependency name="powermock-api-mockito" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-api-support" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-core" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-module-junit4" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-module-junit4-common" org="org.powermock" rev="1.5" />
+		<dependency name="powermock-reflect" org="org.powermock" rev="1.5" />
+		<dependency name="qdox" org="com.thoughtworks.qdox" rev="1.12.1" />
+		<dependency name="scala-compiler" org="org.scala-lang" rev="2.9.2" />
+		<dependency name="serializer" org="xalan" rev="2.7.1" />
+		<dependency name="spring-test" org="org.springframework" rev="3.0.7.RELEASE" />
+		<dependency name="xalan" org="xalan" rev="2.7.1" />
+		<dependency name="xercesImpl" org="xerces" rev="2.10.0" />
+		<dependency name="xml-apis" org="xml-apis" rev="1.4.01" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:m2="http://ant.apache.org/ivy/maven"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="cdi-portlet-bridge-shared" organisation="com.liferay">
+		<license name="LGPL 2.1" url="http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt" />
+
+		<description homepage="http://www.liferay.com" />
+	</info>
+
+	<configurations>
+		<conf name="provided" />
+	</configurations>
+
+	<publications>
+		<artifact type="jar" />
+		<artifact type="pom" />
+		<artifact ext="jar" m2:classifier="sources" type="sources" />
+		<artifact ext="jar" m2:classifier="javadoc" type="javadoc" />
+	</publications>
+
+	<dependencies defaultconf="default">
+		<dependency conf="provided->default" name="cdi-api" org="javax.enterprise" rev="1.0-SP4" />
+		<dependency conf="provided->default" name="portlet-api" org="javax.portlet" rev="2.0" />
+		<dependency conf="provided->default" name="javax.servlet-api" org="javax.servlet" rev="3.0.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:m2="http://ant.apache.org/ivy/maven"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="cdi-portlet-bridge-shared" organisation="com.liferay">
+		<license name="LGPL 2.1" url="http://www.gnu.org/licenses/old-licenses/lgpl-2.1.txt" />
+
+		<description homepage="http://www.liferay.com" />
+	</info>
+
+	<configurations>
+		<conf name="provided" />
+	</configurations>
+
+	<publications>
+		<artifact type="jar" />
+		<artifact type="pom" />
+		<artifact ext="jar" m2:classifier="sources" type="sources" />
+		<artifact ext="jar" m2:classifier="javadoc" type="javadoc" />
+	</publications>
+
+	<dependencies defaultconf="default">
+		<dependency conf="provided->default" name="cdi-api" org="javax.enterprise" rev="1.0-SP4" />
+		<dependency conf="provided->default" name="portlet-api" org="javax.portlet" rev="2.0" />
+		<dependency conf="provided->default" name="javax.servlet-api" org="javax.servlet" rev="3.0.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="http-service-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="http-service-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="log-bridge-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="log-bridge-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.compendium" org="org.osgi" rev="4.3.1" />
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="servlet-jsp-compiler-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+		<dependency name="phidias" org="com.github.rotty3000" rev="0.2.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="servlet-jsp-compiler-shared" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="org.osgi.core" org="org.osgi" rev="4.3.1" />
+		<dependency name="phidias" org="com.github.rotty3000" rev="0.2.1" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="portlet_icefaces_tmpl" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="icefaces" org="org.icefaces" rev="3.3.0" />
+		<dependency name="icefaces-ace" org="org.icefaces" rev="3.3.0" />
+		<dependency name="jboss-el" org="org.jboss.el" rev="2.0.1.GA" />
+		<dependency name="jsf-api" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsf-impl" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="liferay-faces-bridge-api" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-impl" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-portal" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-util" org="com.liferay.faces" rev="3.2.4-ga5" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="portlet_jsf_tmpl" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="jboss-el" org="org.jboss.el" rev="2.0.1.GA" />
+		<dependency name="jsf-api" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsf-impl" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="liferay-faces-bridge-api" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-impl" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-portal" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-util" org="com.liferay.faces" rev="3.2.4-ga5" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="portlet_liferay_faces_alloy_tmpl" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="jboss-el" org="org.jboss.el" rev="2.0.1.GA" />
+		<dependency name="jsf-api" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsf-impl" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="liferay-faces-alloy" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-api" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-impl" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-portal" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-util" org="com.liferay.faces" rev="3.2.4-ga5" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="portlet_primefaces_tmpl" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="jboss-el" org="org.jboss.el" rev="2.0.1.GA" />
+		<dependency name="jsf-api" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsf-impl" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="liferay-faces-bridge-api" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-impl" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-portal" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-util" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="primefaces" org="org.primefaces" rev="3.5" />
+	</dependencies>
+</ivy-module><?xml version="1.0"?>
+
+<ivy-module
+	version="2.0"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="http://ant.apache.org/ivy/schemas/ivy.xsd"
+>
+	<info module="portlet_richfaces_tmpl" organisation="com.liferay" />
+
+	<dependencies defaultconf="default">
+		<dependency name="cssparser" org="net.sourceforge.cssparser" rev="0.9.5" />
+		<dependency name="guava" org="com.google.guava" rev="10.0.1" />
+		<dependency name="jboss-el" org="org.jboss.el" rev="2.0.1.GA" />
+		<dependency name="jsf-api" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsf-impl" org="com.sun.faces" rev="2.1.21" />
+		<dependency name="jsr305" org="com.google.code.findbugs" rev="1.3.9" />
+		<dependency name="liferay-faces-bridge-api" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-bridge-impl" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-portal" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="liferay-faces-util" org="com.liferay.faces" rev="3.2.4-ga5" />
+		<dependency name="richfaces-components-api" org="org.richfaces.ui" rev="4.3.2.Final" />
+		<dependency name="richfaces-components-ui" org="org.richfaces.ui" rev="4.3.2.Final" />
+		<dependency name="richfaces-core-api" org="org.richfaces.core" rev="4.3.2.Final" />
+		<dependency name="richfaces-core-impl" org="org.richfaces.core" rev="4.3.2.Final" />
+		<dependency name="sac" org="org.w3c.css" rev="1.3" />
+	</dependencies>
+</ivy-module>

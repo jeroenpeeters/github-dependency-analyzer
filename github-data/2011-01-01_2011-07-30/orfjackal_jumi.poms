@@ -1,0 +1,1419 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>end-to-end-tests</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <test.projectArtifactsDir>${project.build.directory}/project-artifacts</test.projectArtifactsDir>
+        <test.sandbox>${project.build.directory}/sandbox</test.sandbox>
+        <test.sampleClasses>${project.build.directory}/classes</test.sampleClasses>
+        <test.extraClasspath>${basedir}/src/main/only-on-daemon</test.extraClasspath>
+    </properties>
+
+    <dependencies>
+
+        <!-- TODO: should the test data be in a different module? then they could have both main and test sources -->
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>simpleunit</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-launcher</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <!-- Testing -->
+
+        <dependency>
+            <groupId>fi.luontola.buildtest</groupId>
+            <artifactId>buildtest</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Misc -->
+
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Bytecode Analyzing -->
+
+        <dependency>
+            <groupId>org.ow2.asm</groupId>
+            <artifactId>asm-debug-all</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Annotations -->
+
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>com.intellij</groupId>
+            <artifactId>annotations</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+
+        <testResources>
+            <testResource>
+                <directory>src/test/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/*.properties</include>
+                </includes>
+            </testResource>
+        </testResources>
+
+        <plugins>
+
+            <!-- Don't deploy tests to Maven Central -->
+
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+            <!-- All tests in this module are run in the 'integration-test' phase.
+                 Use the `mvn verify` command to build the project. -->
+
+            <plugin>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <systemProperties>
+                        <property>
+                            <name>jumi.useThreadSafetyAgent</name>
+                            <value>true</value>
+                        </property>
+                    </systemProperties>
+                    <argLine>"-javaagent:${test.projectArtifactsDir}/thread-safety-agent-${jumi-actors.version}.jar"
+                    </argLine>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>integration-test</id>
+                        <goals>
+                            <goal>integration-test</goal>
+                        </goals>
+                    </execution>
+                    <execution>
+                        <id>verify</id>
+                        <goals>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipTests>true</skipTests>
+                </configuration>
+            </plugin>
+
+            <!-- Used by project artifact tests -->
+
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-jars</id>
+                        <phase>pre-integration-test</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-api</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-api</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>pom</type>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-core</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-core</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>pom</type>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-daemon</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-daemon</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>pom</type>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-launcher</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-launcher</artifactId>
+                                    <version>${project.version}</version>
+                                    <type>pom</type>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>simpleunit</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>junit</groupId>
+                                    <artifactId>junit</artifactId>
+                                    <!-- JUnit 4.10 is the last all-in-one JAR release; we use it here to avoid handling the transitive dependencies manually -->
+                                    <version>4.10</version>
+                                </artifactItem>
+
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>thread-safety-agent</artifactId>
+                                    <version>${jumi-actors.version}</version>
+                                </artifactItem>
+
+                            </artifactItems>
+                            <overWriteReleases>true</overWriteReleases>
+                            <overWriteSnapshots>true</overWriteSnapshots>
+                            <outputDirectory>${test.projectArtifactsDir}</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>coverage-report</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <configuration>
+                            <excludedClasses>
+                                <!-- Disable mutation testing -->
+                                <pattern>*</pattern>
+                            </excludedClasses>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>jumi-api</artifactId>
+    <packaging>jar</packaging>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                    <tags>
+                        <tag>
+                            <name>reference</name>
+                            <placement>a</placement>
+                            <head>References:</head>
+                        </tag>
+                    </tags>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>jumi-core</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <shadedPrefix>fi.jumi.core.INTERNAL</shadedPrefix>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-actors</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>io.netty</groupId>
+            <artifactId>netty</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-lang3</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>cglib</groupId>
+            <artifactId>cglib-nodep</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>com.google.guava</groupId>
+            <artifactId>guava</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- The tests contain utility classes that may be of use to consumers -->
+
+            <plugin>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-tests</id>
+                        <goals>
+                            <goal>test-jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-test-sources</id>
+                        <goals>
+                            <goal>test-jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Event stubs -->
+
+            <plugin>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-actors-maven-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>generate-event-stubs</goal>
+                        </goals>
+                        <configuration>
+                            <targetPackage>fi.jumi.core.events</targetPackage>
+                            <eventInterfaces>
+                                <interface>java.lang.Runnable</interface>
+                                <interface>java.util.concurrent.Executor</interface>
+                                <interface>fi.jumi.actors.workers.WorkerListener</interface>
+                                <interface>fi.jumi.core.CommandListener</interface>
+                                <interface>fi.jumi.core.util.Startable</interface>
+                                <interface>fi.jumi.core.api.SuiteListener</interface>
+                                <interface>fi.jumi.core.discovery.TestFileFinderListener</interface>
+                                <interface>fi.jumi.core.runs.RunListener</interface>
+                            </eventInterfaces>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Hide external dependencies -->
+
+            <plugin>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <artifactSet>
+                                <excludes>
+                                    <!-- Regular dependencies (transitive) -->
+                                    <exclude>fi.jumi:jumi-actors</exclude>
+                                    <exclude>fi.jumi:jumi-api</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <relocations>
+                                <!-- Hidden dependencies -->
+                                <relocation>
+                                    <pattern>org.apache</pattern>
+                                    <shadedPattern>${shadedPrefix}.org.apache</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>org.jboss</pattern>
+                                    <shadedPattern>${shadedPrefix}.org.jboss</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>net.sf.cglib</pattern>
+                                    <shadedPattern>${shadedPrefix}.net.sf.cglib</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <!-- Throw away license files, POMs etc. of hidden dependencies -->
+                                <filter>
+                                    <artifact>commons-io:commons-io</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>org.apache.commons:commons-lang3</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                        <exclude>templates/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>io.netty:netty</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                    </excludes>
+                                </filter>
+                                <filter>
+                                    <artifact>cglib:cglib-nodep</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                        <exclude>*</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>jumi-daemon</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <shadedPrefix>fi.jumi.daemon.INTERNAL</shadedPrefix>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+        <plugins>
+
+            <!-- Hide external dependencies -->
+
+            <plugin>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <!-- XXX: We don't have a direct reference to JUnitCompatibilityDriver (it's loaded with use reflection), so it gets optimized away -->
+                            <minimizeJar>false</minimizeJar>
+
+                            <transformers>
+                                <transformer
+                                        implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+                                    <mainClass>fi.jumi.daemon.Main</mainClass>
+                                </transformer>
+                            </transformers>
+                            <relocations>
+                                <!-- Hidden dependencies -->
+                            </relocations>
+                            <filters>
+                                <!-- Throw away license files, POMs etc. of hidden dependencies -->
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>jumi-launcher</artifactId>
+    <packaging>jar</packaging>
+
+    <properties>
+        <daemonJarDir>${project.build.outputDirectory}/fi/jumi/launcher/daemon</daemonJarDir>
+        <daemonJarName>jumi-daemon-${project.version}.jar</daemonJarName>
+        <shadedPrefix>fi.jumi.launcher.INTERNAL</shadedPrefix>
+    </properties>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+        </dependency>
+
+    </dependencies>
+
+    <build>
+
+        <resources>
+            <resource>
+                <directory>src/main/resources</directory>
+                <filtering>true</filtering>
+                <includes>
+                    <include>**/*.properties</include>
+                </includes>
+            </resource>
+        </resources>
+
+        <plugins>
+
+            <!-- Embed the daemon JAR inside the launcher JAR -->
+
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>embed-daemon</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>fi.jumi</groupId>
+                                    <artifactId>jumi-daemon</artifactId>
+                                    <version>${project.version}</version>
+                                </artifactItem>
+                            </artifactItems>
+                            <outputDirectory>${daemonJarDir}</outputDirectory>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Hide external dependencies -->
+
+            <plugin>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <artifactSet>
+                                <excludes>
+                                    <!-- Regular dependencies (transitive) -->
+                                    <exclude>fi.jumi:jumi-actors</exclude>
+                                    <exclude>fi.jumi:jumi-api</exclude>
+                                    <exclude>fi.jumi:jumi-core</exclude>
+                                </excludes>
+                            </artifactSet>
+                            <relocations>
+                                <!-- Hidden dependencies -->
+                                <relocation>
+                                    <pattern>org.apache</pattern>
+                                    <shadedPattern>${shadedPrefix}.org.apache</shadedPattern>
+                                </relocation>
+                            </relocations>
+                            <filters>
+                                <!-- Throw away license files, POMs etc. of hidden dependencies -->
+                                <filter>
+                                    <artifact>commons-io:commons-io</artifact>
+                                    <excludes>
+                                        <exclude>META-INF/**</exclude>
+                                    </excludes>
+                                </filter>
+                            </filters>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>org.sonatype.oss</groupId>
+        <artifactId>oss-parent</artifactId>
+        <version>7</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>fi.jumi</groupId>
+    <artifactId>parent</artifactId>
+    <version>0.5-SNAPSHOT</version>
+    <packaging>pom</packaging>
+
+    <description>
+        Common test runner for the JVM. Natively supports running
+        tests in parallel. Full stack from UI to class loading.
+        Overcomes a bunch of limitations in JUnit's test runner, IDEs
+        and build tools.
+    </description>
+    <url>http://jumi.fi</url>
+    <inceptionYear>2011</inceptionYear>
+
+    <licenses>
+        <license>
+            <name>Apache License 2.0</name>
+            <url>http://www.apache.org/licenses/LICENSE-2.0</url>
+        </license>
+    </licenses>
+
+    <developers>
+        <developer>
+            <id>orfjackal</id>
+            <name>Esko Luontola</name>
+            <url>http://www.orfjackal.net/</url>
+        </developer>
+    </developers>
+
+    <scm>
+        <connection>scm:git:git://github.com/orfjackal/jumi.git</connection>
+        <url>https://github.com/orfjackal/jumi</url>
+    </scm>
+
+    <properties>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+        <minimumMavenVersion>3.0.3</minimumMavenVersion>
+        <jumi-actors.version>0.1.196</jumi-actors.version>
+        <testTempDir>${project.build.directory}/tmp</testTempDir>
+    </properties>
+
+    <prerequisites>
+        <maven>${minimumMavenVersion}</maven>
+    </prerequisites>
+
+    <dependencies>
+
+        <!-- Testing -->
+
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.hamcrest</groupId>
+            <artifactId>hamcrest-library</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.easytesting</groupId>
+            <artifactId>fest-assert</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>com.googlecode.catch-exception</groupId>
+            <artifactId>catch-exception</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Annotations -->
+
+        <dependency>
+            <groupId>com.google.code.findbugs</groupId>
+            <artifactId>jsr305</artifactId>
+            <scope>provided</scope>
+        </dependency>
+
+    </dependencies>
+
+    <dependencyManagement>
+        <dependencies>
+
+            <!-- Jumi -->
+
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-api</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-core</artifactId>
+                <version>${project.version}</version>
+                <type>test-jar</type>
+            </dependency>
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-launcher</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>simpleunit</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+
+            <!-- Jumi Actors -->
+
+            <dependency>
+                <groupId>fi.jumi</groupId>
+                <artifactId>jumi-actors</artifactId>
+                <version>${jumi-actors.version}</version>
+            </dependency>
+
+            <!-- Networking -->
+
+            <dependency>
+                <groupId>io.netty</groupId>
+                <artifactId>netty</artifactId>
+                <version>3.5.5.Final</version>
+            </dependency>
+
+            <!-- Misc -->
+
+            <dependency>
+                <groupId>com.google.guava</groupId>
+                <artifactId>guava</artifactId>
+                <version>13.0.1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>commons-io</groupId>
+                <artifactId>commons-io</artifactId>
+                <version>2.4</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.apache.commons</groupId>
+                <artifactId>commons-lang3</artifactId>
+                <version>3.1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.code.findbugs</groupId>
+                <artifactId>jsr305</artifactId>
+                <version>2.0.1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.intellij</groupId>
+                <artifactId>annotations</artifactId>
+                <version>9.0.4</version>
+            </dependency>
+
+            <!-- Bytecode Manipulation -->
+
+            <dependency>
+                <groupId>org.ow2.asm</groupId>
+                <artifactId>asm-debug-all</artifactId>
+                <version>4.0</version>
+            </dependency>
+
+            <dependency>
+                <groupId>cglib</groupId>
+                <artifactId>cglib-nodep</artifactId>
+                <version>2.2.2</version>
+            </dependency>
+
+            <!-- Testing -->
+
+            <dependency>
+                <groupId>junit</groupId>
+                <artifactId>junit</artifactId>
+                <version>4.11</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.hamcrest</groupId>
+                <artifactId>hamcrest-library</artifactId>
+                <version>1.3</version>
+            </dependency>
+            <dependency>
+                <groupId>org.hamcrest</groupId>
+                <artifactId>hamcrest-core</artifactId>
+                <version>1.3</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.easytesting</groupId>
+                <artifactId>fest-assert</artifactId>
+                <version>1.4</version>
+            </dependency>
+
+            <dependency>
+                <groupId>org.mockito</groupId>
+                <artifactId>mockito-core</artifactId>
+                <version>1.9.5</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.googlecode.catch-exception</groupId>
+                <artifactId>catch-exception</artifactId>
+                <version>1.0.4</version>
+            </dependency>
+
+            <dependency>
+                <groupId>com.google.caliper</groupId>
+                <artifactId>caliper</artifactId>
+                <version>0.5-rc1</version>
+            </dependency>
+
+            <dependency>
+                <groupId>net.orfjackal.retrolambda</groupId>
+                <artifactId>retrolambda</artifactId>
+                <version>1.1.2</version>
+            </dependency>
+
+            <dependency>
+                <groupId>fi.luontola.buildtest</groupId>
+                <artifactId>buildtest</artifactId>
+                <version>1.0.0</version>
+            </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <plugins>
+
+            <plugin>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.8</source>
+                    <target>1.8</target>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.class</include>
+                    </includes>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                    <jvm>${env.JAVA7_HOME}/bin/java</jvm>
+                    <systemPropertyVariables>
+                        <java.io.tmpdir>${testTempDir}</java.io.tmpdir>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>**/*Test.class</include>
+                    </includes>
+                    <redirectTestOutputToFile>true</redirectTestOutputToFile>
+                    <jvm>${env.JAVA7_HOME}/bin/java</jvm>
+                    <systemPropertyVariables>
+                        <java.io.tmpdir>${testTempDir}</java.io.tmpdir>
+                    </systemPropertyVariables>
+                </configuration>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar-no-fork</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>1.3.1</version>
+                <executions>
+                    <execution>
+                        <!-- XXX: Using a different ID than in oss-parent to avoid overriding its checks by accident. See https://issues.sonatype.org/browse/OSSRH-2004 -->
+                        <id>enforce-maven-3</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireMavenVersion>
+                                    <version>[${minimumMavenVersion},)</version>
+                                </requireMavenVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>enforce-multiple-java-versions</id>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireEnvironmentVariable>
+                                    <variableName>JAVA7_HOME</variableName>
+                                </requireEnvironmentVariable>
+                                <requireEnvironmentVariable>
+                                    <variableName>JAVA8_HOME</variableName>
+                                </requireEnvironmentVariable>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-resources-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <!-- XXX: It would be nicer to place these properties into pom.properties
+                             by using maven-jar-plugin's /archive/pomPropertiesFile, but that is broken.
+                             See http://jira.codehaus.org/browse/MSHARED-154 -->
+                        <id>create-build-properties</id>
+                        <phase>generate-resources</phase>
+                        <goals>
+                            <goal>copy-resources</goal>
+                        </goals>
+                        <configuration>
+                            <outputDirectory>
+                                ${project.build.outputDirectory}/META-INF/maven/${project.groupId}/${project.artifactId}
+                            </outputDirectory>
+                            <overwrite>true</overwrite>
+                            <resources>
+                                <resource>
+                                    <directory>${basedir}/../parent</directory>
+                                    <includes>
+                                        <include>build.properties</include>
+                                    </includes>
+                                    <filtering>true</filtering>
+                                </resource>
+                            </resources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-dependency-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>copy-retrolambda</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>copy</goal>
+                        </goals>
+                        <configuration>
+                            <artifactItems>
+                                <artifactItem>
+                                    <groupId>net.orfjackal.retrolambda</groupId>
+                                    <artifactId>retrolambda</artifactId>
+                                    <overWrite>true</overWrite>
+                                    <outputDirectory>${project.build.directory}</outputDirectory>
+                                    <destFileName>retrolambda.jar</destFileName>
+                                </artifactItem>
+                            </artifactItems>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <plugin>
+                <artifactId>maven-antrun-plugin</artifactId>
+                <executions>
+
+                    <!-- Process our byte codes to make them run on Java 7 -->
+
+                    <execution>
+                        <id>retrolambda-classes</id>
+                        <phase>process-classes</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <property name="compile_classpath" refid="maven.compile.classpath"/>
+                                <exec executable="${env.JAVA8_HOME}/bin/java" failonerror="true">
+                                    <arg value="-Dretrolambda.inputDir=${project.build.outputDirectory}"/>
+                                    <arg value="-Dretrolambda.classpath=${compile_classpath}"/>
+                                    <arg value="-javaagent:${project.build.directory}/retrolambda.jar"/>
+                                    <arg value="-jar"/>
+                                    <arg value="${project.build.directory}/retrolambda.jar"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>retrolambda-test-classes</id>
+                        <phase>process-test-classes</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <property name="test_classpath" refid="maven.test.classpath"/>
+                                <exec executable="${env.JAVA8_HOME}/bin/java" failonerror="true">
+                                    <arg value="-Dretrolambda.inputDir=${project.build.testOutputDirectory}"/>
+                                    <arg value="-Dretrolambda.classpath=${test_classpath}"/>
+                                    <arg value="-javaagent:${project.build.directory}/retrolambda.jar"/>
+                                    <arg value="-jar"/>
+                                    <arg value="${project.build.directory}/retrolambda.jar"/>
+                                </exec>
+                            </target>
+                        </configuration>
+                    </execution>
+
+                    <!-- Create custom temporary directory. Our tests use memory-mapped files which the tests
+                         cannot remove themselves (the OS may keep them locked until the process dies) -->
+
+                    <execution>
+                        <id>create-temp-dir</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <mkdir dir="${testTempDir}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+
+                    <!-- XXX: workaround for an issue with maven-shade-plugin
+                         There appears to be some stale state from previous executions of the Shade plugin,
+                         which manifest themselves as "We have a duplicate" warnings on build and also as
+                         some classes not being updated on build. -->
+
+                    <execution>
+                        <id>delete-old-artifact</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>run</goal>
+                        </goals>
+                        <configuration>
+                            <target>
+                                <delete file="${project.build.directory}/${project.build.finalName}.${project.packaging}"/>
+                            </target>
+                        </configuration>
+                    </execution>
+
+                </executions>
+            </plugin>
+
+        </plugins>
+        <pluginManagement>
+            <plugins>
+
+                <plugin>
+                    <groupId>fi.jumi</groupId>
+                    <artifactId>jumi-actors-maven-plugin</artifactId>
+                    <version>${jumi-actors.version}</version>
+                    <configuration>
+                        <source>1.7</source>
+                        <target>1.7</target>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-clean-plugin</artifactId>
+                    <version>2.5</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>2.5</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-resources-plugin</artifactId>
+                    <version>2.6</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>2.1.2</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>2.9.1</version>
+                    <configuration>
+                        <!-- Generate external links to Java 7 API instead of Java 8 API (due to Retrolambda use) -->
+                        <javadocVersion>1.7</javadocVersion>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-install-plugin</artifactId>
+                    <version>2.4</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-deploy-plugin</artifactId>
+                    <version>2.7</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-plugin-plugin</artifactId>
+                    <version>3.1</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-site-plugin</artifactId>
+                    <version>3.1</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>2.1</version>
+                    <configuration>
+                        <!-- NOTE: This also minimizes jumi-core when it's included in jumi-daemon -->
+                        <minimizeJar>true</minimizeJar>
+                        <!-- Keep the generated POM file out of the base directory -->
+                        <dependencyReducedPomLocation>
+                            ${project.build.directory}/dependency-reduced-pom.xml
+                        </dependencyReducedPomLocation>
+                    </configuration>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.12.3</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>2.12.3</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-invoker-plugin</artifactId>
+                    <version>1.7</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-dependency-plugin</artifactId>
+                    <version>2.5.1</version>
+                </plugin>
+
+                <plugin>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>1.7</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>versions-maven-plugin</artifactId>
+                    <version>1.3.1</version>
+                </plugin>
+
+                <plugin>
+                    <groupId>org.pitest</groupId>
+                    <artifactId>pitest-maven</artifactId>
+                    <version>0.30</version>
+                </plugin>
+
+            </plugins>
+        </pluginManagement>
+    </build>
+
+    <profiles>
+        <profile>
+            <id>coverage-report</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <groupId>org.pitest</groupId>
+                        <artifactId>pitest-maven</artifactId>
+                        <executions>
+                            <execution>
+                                <goals>
+                                    <goal>mutationCoverage</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                        <configuration>
+                            <threads>4</threads>
+                            <jvmArgs>
+                                <arg>-ea</arg>
+                            </jvmArgs>
+                            <targetClasses>
+                                <pattern>fi.jumi.*</pattern>
+                            </targetClasses>
+                            <targetTests>
+                                <pattern>fi.jumi.*Test</pattern>
+                            </targetTests>
+                            <excludedClasses>
+                                <!-- Exclude generated classes -->
+                                <pattern>fi.jumi.core.events.*</pattern>
+                                <!-- Lambdas don't have debug information so PIT can't mutate them (and anyways they are generated) -->
+                                <pattern>*$$Lambda$*</pattern>
+                            </excludedClasses>
+                            <failWhenNoMutations>false</failWhenNoMutations>
+                            <timestampedReports>false</timestampedReports>
+                            <mutators>
+                                <mutator>ALL</mutator>
+                            </mutators>
+                            <mutateStaticInitializers>true</mutateStaticInitializers>
+                        </configuration>
+                    </plugin>
+                </plugins>
+            </build>
+        </profile>
+    </profiles>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>project</artifactId>
+    <packaging>pom</packaging>
+
+    <name>Jumi</name>
+
+    <modules>
+        <module>jumi-api</module>
+        <module>jumi-core</module>
+        <module>jumi-daemon</module>
+        <module>jumi-launcher</module>
+        <module>simpleunit</module>
+        <module>end-to-end-tests</module>
+        <module>parent</module>
+    </modules>
+
+    <build>
+        <plugins>
+
+            <!-- Don't deploy the project's aggregate module to Maven Central -->
+
+            <plugin>
+                <artifactId>maven-deploy-plugin</artifactId>
+                <configuration>
+                    <skip>true</skip>
+                </configuration>
+            </plugin>
+
+        </plugins>
+    </build>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <parent>
+        <groupId>fi.jumi</groupId>
+        <artifactId>parent</artifactId>
+        <version>0.5-SNAPSHOT</version>
+        <relativePath>../parent/pom.xml</relativePath>
+    </parent>
+
+    <artifactId>simpleunit</artifactId>
+    <packaging>jar</packaging>
+
+    <dependencies>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-api</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>fi.jumi</groupId>
+            <artifactId>jumi-core</artifactId>
+            <type>test-jar</type>
+            <scope>test</scope>
+        </dependency>
+
+        <dependency>
+            <groupId>commons-io</groupId>
+            <artifactId>commons-io</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+    </dependencies>
+
+</project>

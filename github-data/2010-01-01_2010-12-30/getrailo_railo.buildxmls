@@ -1,0 +1,283 @@
+<project name="RailoCore" default="install" basedir=".">
+    
+	<description>Ant build file to build the railo.rc</description>
+
+	<!-- Load properties -->
+	<property file="build.properties"/>
+	
+	<!-- Set jars -->
+	<path id="classpath">
+		<fileset dir="${lib.dir}"/>
+	</path>
+	
+	<!-- ================================= 
+          target: getInfo
+		  This target extracts the version name for the rc file from the INI file                        
+         ================================= -->
+    <target name="getInfo" description="Clears the build and dist directories.">
+		<echo message="Extracting version information from file src/railo/runtime/Info.ini" />
+    	<loadfile property="core.version" srcFile="src/railo/runtime/Info.ini">
+			<filterchain>
+				<linecontainsregexp>
+					<regexp pattern="number=[0-9]+.[0-9]+.[0-9]+.[0-9]+"/>
+				</linecontainsregexp>
+				<replacetokens begintoken="n" endtoken="=">
+					<token key="umber" value=""/>
+				</replacetokens>
+				<striplinebreaks/>
+			</filterchain>
+		</loadfile>
+		<echo message="Version is: ${core.version}.rc" />
+    </target>
+
+	<!-- ================================= 
+          target: clean              
+         ================================= -->
+    <target name="clean" depends="getInfo" description="Clears the build and dist directories.">
+    	<echo>Deleting ${build.dir} and ${dist.dir}</echo>
+    	<delete dir="${build.dir}" />
+    	<delete dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: init              
+         ================================= -->
+    <target name="init" depends="clean" description="Creates nessesary directories.">
+    	<echo>Creating the build, admin and dist directories.</echo>
+    	<mkdir dir="${build.dir}/classes"/>
+    	<mkdir dir="${build.dir}/admin"/>
+    	<mkdir dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: compile railo classes             
+         ================================= -->
+    <target name="compile" depends="init" description="Compiles the src classes.">
+        <echo>Compile Railo src.</echo>
+        <javac srcdir="${src.dir}" destdir="${build.dir}/classes" compiler="javac1.5" encoding="ISO-8859-1" fork="true" memorymaximumsize="512m">
+        	<classpath refid="classpath"/>
+        </javac>
+    </target>
+        	
+	<!-- ================================= 
+          target: createadmin              
+         ================================= -->
+    <target name="createadmin" depends="compile" description="Create the railo-context.ra">
+    	
+    	<property name="railo.admin_source_abs" location="${railo.admin_source}"/>
+    	
+    	<input message="Please enter Railo-Admin password:" addproperty="railo.password" defaultvalue="your admin password"/>
+		<echo>Compiling Railo Administrator</echo>
+    	<!-- please note, that you have to set the railo.admin_source location in the properties file -->
+		<get src="${railo.url}?password=${railo.password}&amp;admin_source=${railo.admin_source_abs}" verbose="on" dest="generate.html"/>
+    	<loadfile property="railo.compile_message" srcFile="generate.html" />
+		<echo>Message from Railo: ${railo.compile_message}</echo>
+    	<echo>Admin compiled to: ${railo.admin_source_abs}/railo-context.ra</echo>
+    	<echo>Copying Railo Admin archive...</echo>
+		<copy tofile="${src.dir}/resource/context/railo-context.ra" file="${railo.admin_source_abs}/railo-context.ra" overwrite="yes"/>
+		<copy todir="${src.dir}/resource/context/admin/dbdriver">
+			<fileset dir="${railo.admin_source_abs}/admin/dbdriver"/>
+		</copy>
+		<copy todir="${src.dir}/resource/context/admin/plugin">
+			<fileset dir="${railo.admin_source_abs}/admin/plugin"/>
+		</copy>
+		<copy todir="${src.dir}/resource/context/templates">
+			<fileset dir="${railo.admin_source_abs}/templates"/>
+		</copy>
+    	
+    </target>
+	
+	<!-- ================================= 
+          target: copy railo.rc dependencies              
+         ================================= -->
+    <target name="copy" depends="createadmin" description="Copies the resource directory.">
+        <echo>Copy resource directory to build.</echo>
+    	<copy todir="${build.dir}/classes/resource">
+    		<fileset dir="${src.dir}/resource"/>
+    	</copy>
+		<echo>Copy railo-context.ra (admin) to context (Not yet implemented).</echo>
+		<copy todir="${build.dir}/classes/resource/context">
+			<fileset dir="${build.dir}/admin"/>
+		</copy>
+    	<!-- copy version information inside info.ini into the dist directory -->
+		<copy tofile="${build.dir}/classes/railo/runtime/Info.ini" file="${src.dir}/railo/runtime/Info.ini" overwrite="yes"/>
+    </target>
+	
+	<!-- ================================= 
+          target: package railo.rc              
+         ================================= -->
+    <target name="package" depends="copy" description="Creates the the core.rc file.">
+        <echo>Packaging the core.rc</echo>
+    	<jar destfile="${dist.dir}/${core.version}.rc">
+			<fileset dir="${build.dir}/classes" excludes="**/servlet/**"/>
+		</jar>
+    </target>
+		
+	<!-- ================================= 
+          target: install              
+         ================================= -->
+    <target name="install" depends="package" description="Copies the railo.jar file to the core directory.">
+        <echo>Copy the railo.rc file to the RailoLoader.</echo>
+    	<copy todir="${core.dir}">
+    		<fileset dir="${dist.dir}"/>
+    	</copy>
+    </target>
+
+</project>
+<project name="RailoLoader" default="install" basedir=".">
+    
+	<description>Ant build file to build the RailoLoader</description>
+	
+	<!-- Load properties -->
+	<property file="build.properties"/>
+	
+	<!-- Set jars -->
+	<path id="classpath">
+		<fileset dir="${lib.dir}"/>
+	</path>
+	
+	<!-- ================================= 
+          target: clean              
+         ================================= -->
+    <target name="clean" description="Clears the build and dist directories.">
+    	<echo>Deleting ${build.dir} and ${dist.dir}</echo>
+    	<delete dir="${build.dir}" />
+    	<delete dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: init              
+         ================================= -->
+    <target name="init" depends="clean" description="Creates nessesary directories.">
+    	<echo>Creating the build and dist directories.</echo>
+    	<mkdir dir="${build.dir}/classes"/>
+    	<mkdir dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: compile              
+         ================================= -->
+    <target name="compile" depends="init" description="Compiles the src classes.">
+        <echo>Compile the RailoLoader src.</echo>
+        <javac srcdir="${src.dir}" destdir="${build.dir}/classes" compiler="javac1.5" encoding="ISO-8859-1">
+        	<classpath refid="classpath"/>
+        </javac>
+    </target>
+	
+	<!-- ================================= 
+          target: package              
+         ================================= -->
+    <target name="package" depends="compile" description="Creates the railo-loader.jar file.">
+        <echo>Packaging the railo-loader.jar file.</echo>
+    	<jar destfile="${dist.dir}/railo-loader.jar">
+    		<fileset dir="${build.dir}/classes"/>
+    	</jar>
+    </target>
+	
+	<!-- ================================= 
+          target: install              
+         ================================= -->
+    <target name="install" depends="package" description="Copies the railo-loader.jar to the Railo src directory.">
+        <echo>Copy the railo-loader.jar to the Railo core lib directory.</echo>
+    	<copy todir="${railo.core.lib.dir}">
+    		<fileset dir="${dist.dir}"/>
+    	</copy>
+    </target>
+		
+</project>
+<project name="RailoMaster" default="master" basedir=".">
+
+    <description>Railo master build file to run all three sub projects together.</description>
+    
+    <!-- Load properties -->
+	<property file="build.properties"/>
+    
+	<!-- ================================= 
+          target: init              
+         ================================= -->
+    <target name="init" description="Cleans all three sub projects.">
+    	<echo>***** Start Railo build process. *****</echo>
+    	<ant dir="${loader.dir}" target="clean" inheritall="false" />
+    	<ant dir="${core.dir}" target="clean" inheritall="false" />
+    	<ant dir="${railo.dir}" target="clean" inheritall="false" />
+    </target>
+	
+	<!-- ================================= 
+          target: master              
+         ================================= -->
+    <target name="master" depends="init" description="Creates the Railo loader, core.rc and railo.jar">
+    	<echo>***** Building railo-loader.jar *****</echo>
+    	<ant dir="${loader.dir}" inheritAll="false"/>
+        <echo>***** Building Railo core.rc *****</echo>        
+        <ant dir="${core.dir}" inheritAll="false"/>
+        <echo>***** Building railo.jar *****</echo>
+        <ant dir="${railo.dir}" inheritAll="false"/>
+    </target>
+
+</project><project name="Railo" default="package" basedir=".">
+    
+	<description>Ant build file to build the railo.jar</description>
+	
+	<!-- Load properties -->
+	<property file="build.properties"/>
+	
+	<!-- Set jars -->
+	<path id="classpath">
+		<fileset dir="${lib.dir}"/>
+	</path>
+	
+	<!-- ================================= 
+          target: clean              
+         ================================= -->
+    <target name="clean" description="Clears the build and dist directories.">
+    	<echo>Deleting ${build.dir} and ${dist.dir}</echo>
+    	<delete dir="${build.dir}" />
+    	<delete dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: init              
+         ================================= -->
+    <target name="init" depends="clean" description="Creates nessesary directories.">
+    	<echo>Creating the build and dist directories.</echo>
+    	<mkdir dir="${build.dir}/classes"/>
+    	<mkdir dir="${dist.dir}"/>
+    </target>
+	
+	<!-- ================================= 
+          target: compile              
+         ================================= -->
+    <target name="compile" depends="init" description="Compiles the src classes.">
+        <echo>Compile the src.</echo>
+        <javac srcdir="${src.dir}" destdir="${build.dir}/classes" compiler="javac1.5" encoding="ISO-8859-1">
+        	<classpath refid="classpath"/>
+        </javac>
+    </target>
+	
+	<!-- ================================= 
+          target: copy              
+         ================================= -->
+    <target name="copy" depends="compile" description="Copies the resources.">
+        <echo>Copy the version file. (Needed, but not yet clear how to generate it the right way automaticllay).</echo>
+    	<copy todir="${build.dir}/classes/railo">
+    		<fileset file="${src.dir}/railo/version"/>
+    	</copy>
+    	<echo>Creating core directory</echo>
+    	<mkdir dir="${build.dir}/classes/core/" />
+    	<echo>Copy the core.rc to the classes/core directory.</echo>   	
+    	<copy todir="${build.dir}/classes/core/">
+    		<fileset dir="${core.dir}"/>
+    	</copy>
+    </target>
+	
+	<!-- ================================= 
+          target: package              
+         ================================= -->
+    <target name="package" depends="copy" description="Creates the railo.jar file.">
+        <echo>Packaging the railo.jar file.</echo>
+    	<jar destfile="${dist.dir}/railo.jar">
+    		<fileset dir="${build.dir}/classes"/>
+    	</jar>
+    </target>
+		
+</project>

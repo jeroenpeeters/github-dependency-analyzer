@@ -1,0 +1,87 @@
+apply plugin: 'idea'
+apply plugin: 'eclipse'
+apply plugin: 'application'
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+}
+
+subprojects {
+    apply plugin: 'java'
+    repositories {
+        mavenCentral()
+        mavenLocal()
+    }
+}
+
+dependencies {
+    compile project(':combined')
+}
+
+task zipJumpstartGradle(type: Zip) {
+    archiveName = 'jumpstart-gradle.zip'
+    destinationDir = file('dist')
+    excludes = ['README.md', 'build.gradle', 'server-app/build.gradle', 'server-app/src/main/webapp/WEB-INF/web.xml', 'settings.gradle', 'classes', 'dist', 'out', '**/pom.xml', '.*', '**/build/', '**/target/', 'gradle-app.setting', 'atlassian*', '**/*.i*', '**/step_*/']
+    from '.'
+    rename('(.*)-template.(.*)', '$1.$2')
+}
+
+task zipJumpstartMaven(type: Zip) {
+    from '.'
+    archiveName = 'jumpstart-maven.zip'
+    destinationDir = file('dist')
+    excludes = ['README.md','server-app/src/main/webapp/WEB-INF/web.xml', 'classes', 'dist', 'out', 'gradle*', '**/*.gradle', '.*', '**/build/', '**/target/', 'gradle-app.setting', 'atlassian*', '**/*.i*', '**/step_*/']
+    rename('(.*)-template.(.*)', '$1.$2')
+
+}
+
+task zipJumpstart(dependsOn: [zipJumpstartGradle, zipJumpstartMaven])
+
+gradle.taskGraph.whenReady { taskGraph ->
+    if (taskGraph.hasTask(run)) {
+        if (!project.hasProperty('step') || !(project['step'] in ('0'..'7'))) {
+            throw new StopActionException('Specify the step id you want to run by passing command line parameter -Pstep=<step_id>. Allowed values are between 0 and 7.')
+        }
+        def runStep = project['step']
+        if (runStep == '7') {
+            logger.lifecycle('Make sure that your server is running. on http://localhost:8080')
+        }
+        def sampleClass = runStep in ('0'..'4') ? "step_${runStep}.JumpStart" : "step_${runStep}.TutorialStarter"
+        logger.lifecycle("Running main class : $sampleClass")
+        mainClassName = sampleClass
+    }
+}
+
+dependencies {
+    compile project.files("${System.properties['java.home']}/lib/jfxrt.jar")
+    compile project(':shared')
+    compile "org.open-dolphin:dolphin-client-javafx:$dolphinVersion"
+    compile "org.open-dolphin:dolphin-client:$dolphinVersion"
+}
+dependencies {
+    compile project(':client')
+    compile project(':server')
+    compile "org.open-dolphin:dolphin-combined:$dolphinVersion"
+    testCompile "junit:junit:4.11"
+}
+apply plugin : 'war'
+apply plugin : 'jetty'
+
+dependencies {
+    compile project(':server')
+}
+
+war {
+    archiveName='myFirstDolphin.war'
+}
+
+jettyRun {
+    contextPath = 'myFirstDolphin'
+}
+
+
+dependencies {
+    compile project(':shared')
+    compile "org.open-dolphin:dolphin-server:$dolphinVersion"
+}

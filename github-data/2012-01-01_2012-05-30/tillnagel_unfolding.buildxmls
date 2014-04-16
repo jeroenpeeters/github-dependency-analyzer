@@ -1,0 +1,258 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<project name="Unfolding" default="main" basedir=".">
+	<description>
+		Unfolding
+	</description>
+
+	<!-- NOTE: Version number needs to be updated manually also in
+		/src/de/fhpotsdam/unfolding/UnfoldingMap.java
+		/resources/unfolding_app_template/classpath
+		/resources/unfolding_app_template/classpath_with_examples
+	-->
+	<property name="version" value="0.9.5" />
+	<property name="unfolding.jar" value="unfolding.${version}.jar" />
+
+	<property name="src.dir" location="src" />
+	<property name="example.dir" location="examples" />
+	<property name="example.processing.dir" location="examples-processing" />
+	<property name="build.dir" location="build" />
+	<property name="dist.dir" location="dist" />
+	<property name="docs.dir" location="doc" />
+	<property name="lib.dir" location="lib" />
+	<property name="gh-pages.dir" value="../unfolding-pages/" />
+
+	<!-- Variables used for JUnit testing -->
+	<property name="test.dir" location="test" />
+	<property name="test.report.dir" location="testreport" />
+
+	<!--
+		Create a classpath container which can be later used in the ant task
+	-->
+	<path id="build.classpath">
+		<fileset dir="${lib.dir}">
+			<include name="**.jar" />
+		</fileset>
+	</path>
+
+	<!-- Define the classpath which includes the junit.jar and the classes after compiling-->
+	<path id="junit.class.path">
+		<pathelement location="lib/junit-4.10.jar" />
+		<pathelement location="${build.dir}" />
+	</path>
+
+	<!-- Deletes the existing build, docs and dist directory-->
+	<target name="clean">
+		<delete dir="${build.dir}" />
+		<delete dir="${docs.dir}" />
+		<delete dir="${dist.dir}" />
+		<delete dir="${test.report.dir}" />
+	</target>
+
+	<!-- Creates the  build, docs and dist directory-->
+	<target name="makedir">
+		<mkdir dir="${build.dir}" />
+		<mkdir dir="${docs.dir}" />
+		<mkdir dir="${dist.dir}" />
+		<mkdir dir="${test.report.dir}" />
+	</target>
+
+	<!-- Creates Javadoc -->
+	<target name="docs">
+		<javadoc packagenames="src" sourcepath="${src.dir}" destdir="${docs.dir}" classpathref="build.classpath">
+			<!-- Define which files / directory should get included, we include all -->
+			<fileset dir="${src.dir}">
+				<include name="**/*.java" />
+			</fileset>
+		</javadoc>
+	</target>
+
+	<!-- Compiles the java code (including the usage of library for JUnit -->
+	<target name="compile" depends="clean, makedir">
+		<javac includeantruntime="false" srcdir="${src.dir}" destdir="${build.dir}">
+			<classpath refid="build.classpath" />
+			<!-- <classpath refid="junit.class.path" /> -->
+		</javac>
+	</target>
+
+	<target name="compile-test" depends="compile">
+		<javac includeantruntime="false" srcdir="${test.dir}" destdir="${build.dir}">
+			<classpath refid="build.classpath" />
+			<!-- <classpath refid="junit.class.path" /> -->
+		</javac>
+	</target>
+
+	<!-- Run the JUnit Tests -->
+	<!-- Output is XML, could also be plain-->
+	<!-- NOTE: This is not working yet -->
+	<target name="junit" depends="compile-test">
+		<junit printsummary="on" fork="false" haltonfailure="yes">
+			<classpath refid="junit.class.path" />
+			<formatter type="xml" />
+			<batchtest todir="${test.report.dir}">
+				<fileset dir="${build.dir}">
+					<include name="**/*Test*.class" />
+				</fileset>
+			</batchtest>
+		</junit>
+	</target>
+
+	<!--Creates the deployable jar file  -->
+	<target name="jar" depends="compile">
+		<jar destfile="${dist.dir}\${unfolding.jar}" basedir="${build.dir}">
+			<!-- <manifest> -->
+			<!-- 	<attribute name="Main-Class" value="test.Main" /> -->
+			<!-- </manifest> -->
+		</jar>
+	</target>
+
+
+	<!--
+		 Create the folder structure for a simple eclipse project including all
+		 libs and some demos.
+	 -->
+	<target name="unfolding_app_template" depends="jar">
+		<!-- create all folders -->
+		<mkdir dir="${dist.dir}/unfolding_app_template" />
+		<mkdir dir="${dist.dir}/unfolding_app_template/bin" />
+		<mkdir dir="${dist.dir}/unfolding_app_template/data" />
+		<mkdir dir="${dist.dir}/unfolding_app_template/lib" />
+		<!--<mkdir dir="${dist.dir}/unfolding_app_template/libNative" />-->
+		<mkdir dir="${dist.dir}/unfolding_app_template/src" />
+		<!-- copy all libs -->
+		<copy todir="${dist.dir}/unfolding_app_template/lib/">
+			<fileset dir="lib">
+				<exclude name="*junit*" />
+			</fileset>
+		</copy>
+		<!--
+		<copy todir="${dist.dir}/unfolding_app_template/libNative/">
+			<fileset dir="libNative" />
+		</copy>
+		-->
+		<!-- copy our current unfolding jar -->
+		<copy file="${dist.dir}/${unfolding.jar}" todir="${dist.dir}/unfolding_app_template/lib/" />
+		<!-- copy readme -->
+		<copy file="resources/unfolding_app_template/README" todir="${dist.dir}/unfolding_app_template/" />
+		<!-- copy license -->
+		<copy file="LICENSE.txt" todir="${dist.dir}/unfolding_app_template/" />
+		<!-- copy main example src -->
+		<copy file="examples/HelloUnfoldingWorld.java" todir="${dist.dir}/unfolding_app_template/src/" />
+		<!-- copy .classpath and .project -->
+		<copy file="resources/unfolding_app_template/classpath" tofile="${dist.dir}/unfolding_app_template/.classpath" />
+		<copy file="resources/unfolding_app_template/project" tofile="${dist.dir}/unfolding_app_template/.project" />
+		<!-- create a zip file -->
+		<zip destfile="${dist.dir}/unfolding_app_template_${version}.zip" basedir="${dist.dir}/unfolding_app_template/" excludes="*.DS_Store" />
+	</target>
+
+
+	<!--
+		 Create the folder structure for a simple eclipse project including all
+		 libs and all examples.
+	 -->
+	<target name="unfolding_app_template_with_examples" depends="jar">
+		<mkdir dir="${dist.dir}/unfolding_app_template_with_examples" />
+		<mkdir dir="${dist.dir}/unfolding_app_template_with_examples/bin" />
+		<mkdir dir="${dist.dir}/unfolding_app_template_with_examples/data" />
+		<mkdir dir="${dist.dir}/unfolding_app_template_with_examples/lib" />
+		<!--<mkdir dir="${dist.dir}/unfolding_app_template_with_examples/libNative" />-->
+		<mkdir dir="${dist.dir}/unfolding_app_template_with_examples/src" />
+		<!-- copy all libs -->
+		<copy todir="${dist.dir}/unfolding_app_template_with_examples/lib/">
+			<fileset dir="lib">
+				<exclude name="*junit*" />
+			</fileset>
+		</copy>
+		<!--
+		<copy todir="${dist.dir}/unfolding_app_template_with_examples/libNative/">
+			<fileset dir="libNative" />
+		</copy>
+		-->
+		<!-- copy our current unfolding jar -->
+		<copy file="${dist.dir}/${unfolding.jar}" todir="${dist.dir}/unfolding_app_template_with_examples/lib/" />
+		<!-- copy data files -->
+		<copy todir="${dist.dir}/unfolding_app_template_with_examples/data/">
+			<fileset dir="data" />
+		</copy>
+		<!-- copy readme -->
+		<copy file="resources/unfolding_app_template/README" todir="${dist.dir}/unfolding_app_template_with_examples/" />
+		<copy file="LICENSE.txt" todir="${dist.dir}/unfolding_app_template_with_examples/" />
+		<!-- copy main example src -->
+		<copy file="examples/HelloUnfoldingWorld.java" todir="${dist.dir}/unfolding_app_template/src/" />
+		<!-- copy some examples -->
+		<copy todir="${dist.dir}/unfolding_app_template_with_examples/examples/">
+			<fileset dir="${example.dir}" />
+		</copy>
+		<!-- copy .classpath and .project -->
+		<copy file="resources/unfolding_app_template/classpath_with_examples" tofile="${dist.dir}/unfolding_app_template_with_examples/.classpath" />
+		<copy file="resources/unfolding_app_template/project_with_examples" tofile="${dist.dir}/unfolding_app_template_with_examples/.project" />
+		<!-- create a zip file -->
+		<zip destfile="${dist.dir}/unfolding_app_template_with_examples_${version}.zip" basedir="${dist.dir}/unfolding_app_template_with_examples/" excludes="*.DS_Store" />
+	</target>
+
+
+	<!--
+		 Create the folder structure for direct use in processing.
+	 -->
+	<target name="unfolding_processing" depends="jar, docs">
+		<!-- create folders -->
+		<mkdir dir="${dist.dir}/Unfolding/examples" />
+		<mkdir dir="${dist.dir}/Unfolding/library" />
+		<mkdir dir="${dist.dir}/Unfolding/reference" />
+
+		<!-- copy library.properties -->
+		<copy todir="${dist.dir}/Unfolding/" file="resources/library.properties" />
+			
+		<!-- copy libs -->
+		<copy tofile="${dist.dir}/Unfolding/library/Unfolding.jar" file="${dist.dir}/${unfolding.jar}" />
+		<copy todir="${dist.dir}/Unfolding/library/" file="${lib.dir}/log4j-1.2.15.jar" />
+		<copy todir="${dist.dir}/Unfolding/library/" file="${lib.dir}/json4processing.jar" />
+
+		<!-- copy processing examples -->
+		<copy todir="${dist.dir}/Unfolding/examples">
+			<fileset dir="${example.processing.dir}" />
+		</copy>
+
+		<!-- copy javadoc -->
+		<copy todir="${dist.dir}/Unfolding/reference">
+			<fileset dir="${docs.dir}" />
+		</copy>
+
+		<!-- create a zip file -->
+		<zip destfile="${dist.dir}/Unfolding.zip" basedir="${dist.dir}/Unfolding/" excludes="*.DS_Store" />
+		<!-- wrap again so users can easily install it by copying the unzipped directory. -->
+		<zip destfile="${dist.dir}/Unfolding_for_processing_${version}.zip" basedir="${dist.dir}/" includes="Unfolding.zip" excludes="*.DS_Store" />
+	</target>
+
+	<!--
+		Copy the javadoc to the gh-pages folder.
+		The assumption is, that there is a gh-pages folder ../gh-pages/.
+		This should make it easier to keep the api section on gh-pages up to date.
+	-->
+	<target name="docs2ghpages" depends="docs2ghpages.errormsg, dir.gh-pages.check, docs" if="dir.exists">
+		<echo>${gh-pages.dir} exists. Copy javadoc.</echo>
+		<copy todir="${gh-pages.dir}/javadoc/">
+			<fileset dir="${docs.dir}" />
+		</copy>
+		<echo>Do not forget to add the new files to git in gh-pages!</echo>
+	</target>
+
+	<!-- Spit out an error msg if ../gh-pages does not exist. -->
+	<target name="docs2ghpages.errormsg" depends="dir.gh-pages.check" unless="dir.exists">
+		<fail message="${gh-pages.dir} missing. Aborting.">
+		</fail>
+	</target>
+
+	<!-- Make sure ../gh-pages exists -->
+	<target name="dir.gh-pages.check">
+		<condition property="dir.exists">
+			<available file="${gh-pages.dir}" type="dir" />
+		</condition>
+	</target>
+
+
+	<!-- do a lot of stuff :) -->
+	<target name="main" depends="clean, docs, jar, unfolding_app_template_with_examples, unfolding_app_template, unfolding_processing">
+		<description>Main target</description>
+	</target>
+
+</project>

@@ -1,0 +1,545 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="jitsi-android" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties" />
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties" />
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties" />
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through an env var"
+            unless="sdk.dir"
+    />
+
+    <!-- version-tag: custom -->
+    <import file="${sdk.dir}/tools/ant/build.xml" />
+
+    <!--target name="-pre-build">
+    </target-->
+
+    <target name="define-jarjar">
+        <!-- task to rename packages in jar files -->
+        <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask"
+                 classpath="lib/installer-exclude/jarjar.jar"/>
+    </target>
+
+    <target name="clean" depends="android_rules.clean">
+        <!-- Clears libs folder -->
+        <delete dir="libs" />
+    </target>
+
+    <!-- This target should be called after updating Jitsi bundles
+         inside lib/asset-bundles
+        -->
+    <target name="create-asset-dex" depends="define-jarjar">
+
+        <getbuildtools name="android.build.tools.dir" />
+        <property name="dx" location="${android.build.tools.dir}/dx${bat}" />
+
+        <!-- Copies lib bundles to temp dir -->
+        <property name="asset.libs.dir"
+                  value="${out.absolute.dir}/asset-libs" />
+        <delete dir="${asset.libs.dir}" />
+        <copy todir="${asset.libs.dir}" >
+            <fileset dir="lib/asset-bundles" />
+        </copy>
+
+        <!-- renames packages as different versions are used in devices -->
+        <jarjar jarfile="${asset.libs.dir}/protocol-sip.jar">
+            <zipfileset src="lib/asset-bundles/protocol-sip.jar"/>
+
+            <!-- Reported by Pawel Domas
+                renaming this strings leads to Exception -
+                ClassNotFoundException: org.jitsi.gov.nist.org.jitsi.javax.sip.header.HeaderFactoryImpl
+                The cause is javax.sip.SipFactory constructing the header
+                factories by name and renaming causes wrong classnames.
+            -->
+            <rule pattern="javax.sip.header.HeaderFactoryImpl"
+                  result="javax.sip.header.HeaderFactoryImpl"/>
+            <rule pattern="javax.sip.message.MessageFactoryImpl"
+                  result="javax.sip.message.MessageFactoryImpl"/>
+            <rule pattern="javax.sip.address.AddressFactoryImpl"
+                  result="javax.sip.address.AddressFactoryImpl"/>
+
+            <rule pattern="javax.sip.**"
+                  result="org.jitsi.javax.sip.@1"/>
+            <rule pattern="gov.nist.core.**"
+                  result="org.jitsi.gov.nist.core.@1"/>
+            <rule pattern="gov.nist.javax.sip.**"
+                  result="org.jitsi.gov.nist.javax.sip.@1"/>
+
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+        </jarjar>
+
+
+        <!-- renaming packages in order to use vanilla smack in android -->
+        <jarjar jarfile="${asset.libs.dir}/smacklib.jar">
+            <zipfileset src="lib/asset-bundles/smacklib.jar"/>
+            <rule pattern="org.xmlpull.v1.**"
+                  result="org.jitsi.org.xmlpull.v1.@1"/>
+
+            <!-- Renames missing java.beans classes -->
+            <rule pattern="java.beans.PropertyDescriptor"
+                  result="org.jitsi.android.util.java.beans.PropertyDescriptor"/>
+            <rule pattern="java.beans.PropertyEditor"
+                  result="org.jitsi.android.util.java.beans.PropertyEditor"/>
+
+            <rule pattern="javax.security.sasl.**"
+                  result="org.apache.harmony.javax.security.sasl.@1"/>
+            <rule pattern="javax.security.auth.**"
+                  result="org.apache.harmony.javax.security.auth.@1"/>
+        </jarjar>
+        <!-- renaming packages in order to use vanilla smack in android -->
+        <jarjar jarfile="${asset.libs.dir}/protocol-jabber.jar">
+            <zipfileset src="lib/asset-bundles/protocol-jabber.jar"/>
+            <rule pattern="org.xmlpull.v1.**"
+                  result="org.jitsi.org.xmlpull.v1.@1"/>
+
+            <!-- Renames missing java.beans classes -->
+            <rule pattern="java.beans.PropertyDescriptor"
+                  result="org.jitsi.android.util.java.beans.PropertyDescriptor"/>
+            <rule pattern="java.beans.PropertyEditor"
+                  result="org.jitsi.android.util.java.beans.PropertyEditor"/>
+
+            <rule pattern="javax.security.sasl.**"
+                  result="org.apache.harmony.javax.security.sasl.@1"/>
+            <rule pattern="javax.security.auth.**"
+                  result="org.apache.harmony.javax.security.auth.@1"/>
+
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+        </jarjar>
+
+        <!-- Create dex file for library bundles -->
+        <mkdir dir="${out.absolute.dir}/jitsi_bundles_dex_dir" />
+        <dex executable="${dx}"
+             output="${out.absolute.dir}/jitsi_bundles_dex_dir/classes.dex"
+             verbose="${verbose}" >
+            <path path="${asset.libs.dir}"/>
+        </dex>
+        <!-- Jar asset dex file so it can be consumed by the DexClassLoader. -->
+        <!-- Package the output in the assets directory of the apk. -->
+        <jar destfile="${asset.absolute.dir}/jitsi-bundles-dex.jar"
+             basedir="${out.absolute.dir}/jitsi_bundles_dex_dir" includes="classes.dex" />
+
+        <delete dir="${asset.libs.dir}" />
+
+    </target>
+
+    <!-- before compilation clears libs folder and populated
+     with all the libraries and binaries we use -->
+    <target name="setup-libs" depends="create-asset-dex">
+        <mkdir dir="libs"/>
+
+        <!-- fix loading some classes -->
+        <jarjar jarfile="libs/ui-service.jar">
+            <zipfileset src="lib/bundles/ui-service.jar"/>
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+            <rule pattern="javax.sound.**"
+                  result="org.jitsi.android.util.javax.sound.@1"/>
+        </jarjar>
+
+        <!-- fix loading some classes -->
+        <jarjar jarfile="libs/protocol.jar">
+            <zipfileset src="lib/bundles/protocol.jar"/>
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+            <rule pattern="javax.sound.**"
+                  result="org.jitsi.android.util.javax.sound.@1"/>
+        </jarjar>
+
+        <!-- fix loading some classes -->
+        <!-- Added delete as jarjar is not always renaming libjitsi.jar -->
+        <jarjar jarfile="libs/libjitsi.jar">
+            <zipfileset src="lib/bundles/libjitsi.jar"/>
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+            <rule pattern="javax.sound.**"
+                  result="org.jitsi.android.util.javax.sound.@1"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+        </jarjar>
+
+        <!-- fix loading some classes -->
+        <jarjar jarfile="libs/bouncycastle.jar">
+            <zipfileset src="lib/bundles/bouncycastle.jar"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/bccontrib.jar">
+            <zipfileset src="lib/bundles/bccontrib.jar"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/certificate.jar">
+            <zipfileset src="lib/bundles/certificate.jar"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/zrtp4j.jar">
+            <zipfileset src="lib/bundles/zrtp4j.jar"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/otr.jar">
+            <zipfileset src="lib/bundles/otr.jar"/>
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+            <rule pattern="org.bouncycastle.**"
+                  result="org.jitsi.bouncycastle.@1"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+        </jarjar>
+        <!-- Rename Apache commons codec -->
+        <jarjar jarfile="libs/commons-codec.jar">
+            <zipfileset src="lib/bundles/commons-codec.jar"/>
+            <rule pattern="org.apache.commons.codec.**"
+                  result="org.jitsi.apache.commons.codec.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/sdes4j.jar">
+            <zipfileset src="lib/bundles/sdes4j.jar"/>
+            <rule pattern="org.apache.commons.codec.**"
+                  result="org.jitsi.apache.commons.codec.@1"/>
+        </jarjar>
+        <!-- Rename org.apache.http -->
+        <jarjar jarfile="libs/httpcore.jar">
+            <zipfileset src="lib/bundles/httpcore.jar"/>
+            <rule pattern="org.apache.http.**"
+                  result="org.jitsi.apache.http.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/httpclient.jar">
+            <zipfileset src="lib/bundles/httpclient.jar"/>
+            <rule pattern="org.apache.http.**"
+                  result="org.jitsi.apache.http.@1"/>
+        </jarjar>
+        <jarjar jarfile="libs/httputil.jar">
+            <zipfileset src="lib/bundles/httputil.jar"/>
+            <rule pattern="org.apache.http.**"
+                  result="org.jitsi.apache.http.@1"/>
+        </jarjar>
+
+
+        <!-- and finally the stubs we use for common java
+         packages that are missing in android, in order to
+         use the desktop version of files without modification
+         and for easy merging-->
+        <jarjar jarfile="libs/java-stubs.jar">
+            <zipfileset src="lib/java-stubs.jar"/>
+            <rule pattern="java.awt.**"
+                  result="org.jitsi.android.util.java.awt.@1"/>
+            <!--
+                We have only PropertyDescriptor and PropertyEditor defined
+                (the rest is in Android core), so only those 2 classes are
+                renamed in our bundles(above).
+            -->
+            <rule pattern="java.beans.**"
+                  result="org.jitsi.android.util.java.beans.@1"/>
+            <rule pattern="javax.sound.**"
+                  result="org.jitsi.android.util.javax.sound.@1"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+        </jarjar>
+
+        <!-- fix loading some classes -->
+        <jarjar jarfile="libs/resourcemanager.jar">
+            <zipfileset src="lib/bundles/resourcemanager.jar"/>
+            <rule pattern="javax.swing.**"
+                  result="org.jitsi.android.util.javax.swing.@1"/>
+        </jarjar>
+
+        <copy todir="libs" verbose="true">
+            <fileset dir="lib">
+                <include name="*.jar"/>
+                <or>
+                    <modified/>
+                    <present present="srconly" targetdir="libs"/>
+                </or>
+            </fileset>
+            <fileset dir="lib/bundles">
+                <include name="*.jar"/>
+                <or>
+                    <modified/>
+                    <present present="srconly" targetdir="libs"/>
+                </or>
+            </fileset>
+            <fileset dir="lib/native">
+                <include name="**/*"/>
+                <or>
+                    <modified/>
+                    <present present="srconly" targetdir="libs"/>
+                </or>
+            </fileset>
+        </copy>
+    </target>
+
+    <!-- Executed before the build -->
+    <target name="-pre-build" depends="-manifest-version">
+    </target>
+    <!-- Executed after the build -->
+    <target name="-post-build"
+            depends="-gen-version-update-props,-restore-manifest">
+    </target>
+    <!-- Injects CC build label - it must be integer number -->
+    <condition property="build.label"
+               value="${label}">
+        <isset property="label"/>
+    </condition>
+    <!-- Injects build label into AndroidManifest.xml as versionCode
+         and as the nightly id part of versionName.
+         Version name syntax: {major}.{minor}.{nightly_id}
+         -->
+    <target name="-manifest-version" if="build.label">
+        <copy file="AndroidManifest.xml"
+              tofile="AndroidManifest.xml.antbak"
+              preservelastmodified="true" />
+        <replaceregexp
+                file="AndroidManifest.xml"
+                match='android:versionCode="(\d+)"'
+                replace='android:versionCode="${build.label}"' />
+        <replaceregexp
+                file="AndroidManifest.xml"
+                match='android:versionName="(\d+\.\d+)\..+"'
+                replace='android:versionName="\1.${build.label}"'
+                />
+    </target>
+    <!-- Restores original AndroidManifest.xml -->
+    <target name="-restore-manifest" if="build.label" >
+        <move file="AndroidManifest.xml.antbak"
+              tofile="AndroidManifest.xml"
+              preservelastmodified="true"
+              overwrite="true" />
+    </target>
+    <!-- Generates versionupdate.properties -->
+    <target name="-gen-version-update-props" if="link.download.android" >
+        <!-- Read version from AndroidManifest.xml -->
+        <loadfile
+                property="build.version.name"
+                srcFile="AndroidManifest.xml"
+                failonerror="true">
+            <filterchain>
+                <containsregex pattern='.*android:versionName="(.*)".*'
+                               replace='\1'/>
+                <deletecharacters chars="\r\n"/>
+            </filterchain>
+        </loadfile>
+        <!-- Generate versionupdate.properties file -->
+        <propertyfile file="${out.absolute.dir}/versionupdate.properties">
+            <entry key="last_version" value="${build.version.name}" />
+            <entry key="download_link" value="${link.download.android}" />
+        </propertyfile>
+    </target>
+
+    <target name="compile" depends="-compile"/>
+
+    <target name="debug-install" depends="debug">
+        <copy file="./bin/jitsi-android-debug.apk"
+            tofile="./bin/classes/jitsi-android.apk"/>
+    </target>
+
+    <target name="adb-install">
+        <exec executable="${sdk.dir}/platform-tools/adb" >
+            <arg line=" install -r ./bin/jitsi-android-debug.apk"/>
+        </exec>
+    </target>
+
+    <target name="adb-uninstall">
+        <exec executable="${sdk.dir}/platform-tools/adb" >
+            <arg line=" uninstall org.jitsi"/>
+        </exec>
+    </target>
+
+    <!-- install and starts jitsi apk -->
+    <target name="adb-install-and-run" depends="adb-install">
+        <exec executable="${sdk.dir}/platform-tools/adb" >
+            <arg line=" shell am start -n org.jitsi/org.jitsi.android.gui.LauncherActivity"/>
+        </exec>
+    </target>
+
+    <target name="make-and-deploy" depends="make,adb-install" />
+
+    <!-- Copies/Updates jitsi bundles from the jitsi project path to the
+        current libs folder. Copies only the bundles that are already present
+        in the lib/bundles folder.
+     -->
+    <target name="copy-jitsi-bundles"
+            depends="jitsi-path-warning"
+            if="jitsi.path">
+        <copy todir="lib/bundles" verbose="true" overwrite="true">
+            <fileset dir="./${jitsi.path}/sc-bundles">
+                <include name="*.jar"/>
+                <!-- Exclude OTR bundle -->
+                <exclude name="otr.jar" />
+                <not>
+                    <present present="srconly" targetdir="lib/bundles"/>
+                </not>
+            </fileset>
+        </copy>
+        <copy todir="lib/asset-bundles" verbose="true" overwrite="true">
+            <fileset dir="./${jitsi.path}/sc-bundles">
+                <include name="*.jar"/>
+                <not>
+                    <present present="srconly" targetdir="lib/asset-bundles"/>
+                </not>
+            </fileset>
+        </copy>
+        <copy todir="lib/bundles" verbose="true" overwrite="true">
+            <fileset dir="./${jitsi.path}/sc-bundles/os-specific/android">
+                <include name="*.jar"/>
+                <not>
+                    <present present="srconly" targetdir="lib/bundles"/>
+                </not>
+            </fileset>
+        </copy>
+    </target>
+    <!-- prints waring if jitsi.path is not set -->
+    <target name="jitsi-path-warning" unless="jitsi.path">
+        <echo message=""/>
+        <echo message="Please specify jitsi.path param.
+        A relative path from the current folder (-Djitsi.path=~/projects/jitsi)"/>
+        <echo message=""/>
+    </target>
+
+    <!-- makes the project and creates debug apk -->
+    <target name="make" depends="compile,debug-install"/>
+
+    <!-- cleans and makes project -->
+    <target name="rebuild" depends="clean,setup-libs,make"/>
+
+    <!-- makes, install and runs the project on the default device -->
+    <target name="run" depends="make,adb-install-and-run"/>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="tests" default="help">
+
+    <!-- The local.properties file is created and updated by the 'android' tool.
+         It contains the path to the SDK. It should *NOT* be checked into
+         Version Control Systems. -->
+    <property file="local.properties"/>
+
+    <!-- The ant.properties file can be created by you. It is only edited by the
+         'android' tool to add properties to it.
+         This is the place to change some Ant specific build properties.
+         Here are some properties you may want to change/update:
+
+         source.dir
+             The name of the source directory. Default is 'src'.
+         out.dir
+             The name of the output directory. Default is 'bin'.
+
+         For other overridable properties, look at the beginning of the rules
+         files in the SDK, at tools/ant/build.xml
+
+         Properties related to the SDK location or the project target should
+         be updated using the 'android' tool with the 'update' action.
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems.
+
+         -->
+    <property file="ant.properties"/>
+
+    <!-- if sdk.dir was not set from one of the property file, then
+         get it from the ANDROID_HOME env var.
+         This must be done before we load project.properties since
+         the proguard config can use sdk.dir -->
+    <property environment="env"/>
+    <condition property="sdk.dir" value="${env.ANDROID_HOME}">
+        <isset property="env.ANDROID_HOME"/>
+    </condition>
+
+    <!-- The project.properties file is created and updated by the 'android'
+         tool, as well as ADT.
+
+         This contains project specific properties such as project target, and library
+         dependencies. Lower level build properties are stored in ant.properties
+         (or in .classpath for Eclipse projects).
+
+         This file is an integral part of the build system for your
+         application and should be checked into Version Control Systems. -->
+    <loadproperties srcFile="project.properties"/>
+
+    <!-- quick check on sdk.dir -->
+    <fail
+            message="sdk.dir is missing. Make sure to generate local.properties using 'android update project' or to inject it through the ANDROID_HOME environment variable."
+            unless="sdk.dir"
+            />
+
+    <!--
+        Import per project custom build rules if present at the root of the project.
+        This is the place to put custom intermediary targets such as:
+            -pre-build
+            -pre-compile
+            -post-compile (This is typically used for code obfuscation.
+                           Compiled code location: ${out.classes.absolute.dir}
+                           If this is not done in place, override ${out.dex.input.absolute.dir})
+            -post-package
+            -post-build
+            -pre-clean
+    -->
+    <import file="custom_rules.xml" optional="true"/>
+
+    <!-- Import the actual build file.
+
+         To customize existing targets, there are two options:
+         - Customize only one target:
+             - copy/paste the target into this file, *before* the
+               <import> task.
+             - customize it to your needs.
+         - Customize the whole content of build.xml
+             - copy/paste the content of the rules files (minus the top node)
+               into this file, replacing the <import> task.
+             - customize to your needs.
+
+         ***********************
+         ****** IMPORTANT ******
+         ***********************
+         In all cases you must update the value of version-tag below to read 'custom' instead of an integer,
+         in order to avoid having your file be overridden by tools such as "android update project"
+    -->
+    <!-- version-tag: 1 -->
+    <import file="${sdk.dir}/tools/ant/build.xml"/>
+
+</project>

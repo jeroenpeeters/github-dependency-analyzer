@@ -1,0 +1,135 @@
+buildscript {
+
+    repositories {
+
+        mavenCentral()
+
+        maven {
+            name = "forge"
+            url = "http://files.minecraftforge.net/maven"
+        }
+
+        maven {
+            name = "sonatype"
+            url = "https://oss.sonatype.org/content/repositories/snapshots/"
+        }
+    }
+
+    dependencies {
+        classpath 'net.minecraftforge.gradle:ForgeGradle:1.1-SNAPSHOT'
+    }
+}
+
+apply plugin: 'forge'
+
+// Define properties file
+ext.configFile = file "mod.properties"
+configFile.withReader {
+    // Load config. Can be referenced as config
+    def prop = new Properties()
+    prop.load(it)
+    project.ext.config = new ConfigSlurper().parse prop
+}
+//Set things from the properties file
+version = config.modversion
+minecraft {
+    assetDir = "eclipse/assets"
+    version = config.mcversion + "-" + config.forgeversion
+    replace '${version}', project.version
+}
+archivesBaseName = config.mcversion + "-" + config.distname
+//Set the workspace
+sourceSets {
+    main {
+        resources {
+            srcDir 'battlegear mod src/minecraft/' include('assets/**','*.cfg','*.png','*.mcmeta','*.info')
+        }
+	    java {
+	        srcDir 'battlegear mod src/minecraft/' exclude('assets/**','net/minecraft/**')
+	    }
+    }
+}
+
+processResources {
+
+    from(sourceSets.main.resources.srcDirs) {
+        // replace stuff in mcmod.info, nothing else
+        include 'mcmod.info'
+        // replace version and mcversion
+        expand 'name':config.modname, 'version':config.modversion, 'mcversion':config.mcversion
+    }
+    // copy everything else
+    from(projectDir) {
+        include('LICENCE', 'README.md')
+    }
+    from(sourceSets.main.resources.srcDirs) {
+        include('*.lang', '*.wav', '*.png', '*.cfg', '*.mcmeta')
+    }
+}
+
+jar {
+    //Place jar into distribution folder
+    destinationDir = file "battlegear dist/"
+    //Keep the jar as clean as possible
+    includeEmptyDirs = false
+    exclude('*.java', 'tconstruct/**')
+    // Add Coremod Manifest
+    manifest {
+        attributes 'FMLCorePlugin': config.loadingPlugin
+        attributes 'FMLCorePluginContainsFMLMod': config.containsMod
+    }
+}
+//Perform checksum and add it next to the jar
+jar.doLast { task ->
+    ant.checksum file: task.archivePath
+}
+
+task jarBGSrc(dependsOn:'processResources', type:Jar)
+jarBGSrc{
+    destinationDir = file "battlegear api/"
+    baseName = config.mcversion+"-Battlegear-Src"
+    from 'build/sources/java'
+    include 'mods/battlegear2/**'
+}
+
+task jarMUDSrc(dependsOn:'processResources', type:Jar)
+jarMUDSrc{
+    destinationDir = file "battlegear api/"
+    baseName = config.mcversion+"-MUD-Src"
+    from 'build/sources/java'
+    include 'mods/mud/**'
+}
+
+task jarBGBin(dependsOn:'build', type:Jar)
+jarBGBin{
+    destinationDir = file "battlegear api/"
+    baseName = config.mcversion+"-Battlegear-Bin"
+    // Add classes
+    from 'build/classes/main'
+    include 'mods/battlegear2/**'
+	
+    // Add Resources
+    from 'build/resources/main'
+    include 'assets/battlegear2/**', '*.cfg', '*.png', '*.info', '*.mcmeta', 'LICENCE'
+
+    // Add Coremod Manifest
+    manifest {
+        attributes 'FMLCorePlugin': config.loadingPlugin
+        attributes 'FMLCorePluginContainsFMLMod': config.containsMod
+    }
+}
+
+task jarMUDBin(dependsOn:'build', type:Jar)
+jarMUDBin{
+    destinationDir = file "battlegear api/"
+    baseName = config.mcversion+"-MUD-Bin"
+    // Add classes
+    from 'build/classes/main'
+    include 'mods/mud/**'
+	
+    // Add Resources
+    from 'build/resources/main'
+    include 'assets/mud/**', 'LICENCE'
+}
+
+task jarAPI(dependsOn:['jarMUDBin','jarBGBin','jarMUDSrc','jarBGBin'])

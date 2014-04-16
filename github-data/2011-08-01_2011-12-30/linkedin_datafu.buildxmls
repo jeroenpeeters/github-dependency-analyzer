@@ -1,0 +1,972 @@
+<project name="datafu" basedir="." default="all"
+         xmlns:ivy="antlib:org.apache.ivy.ant"
+         xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+  <property file="build.properties" />
+
+  <property name="ivy.jar.dir" value="${basedir}/ivy" />
+  <loadproperties srcfile="${ivy.jar.dir}/libraries.properties"/>
+
+  <property name="name" value="datafu" />
+  <property name="display.name" value="DataFu" />
+  <property name="author" value="Matthew Hayes, Sam Shah" />
+  <property environment="env" />
+  <property name="datafu.version" value="1.2.1" />
+  <property name="version" value="${datafu.version}-SNAPSHOT" />
+  <property name="final.name" value="${name}-${version}" />
+  
+  <!-- maven snapshots and staging repository id and url -->
+  <property name="maven-snapshots-repository-id" value="sonatype-nexus-snapshots" />
+  <property name="maven-snapshots-repository-url" value="https://oss.sonatype.org/content/repositories/snapshots" />
+  <property name="maven-staging-repository-id" value="sonatype-nexus-staging" />
+  <property name="maven-staging-repository-url" value="https://oss.sonatype.org/service/local/staging/deploy/maven2" />
+  
+  <!-- directories -->
+  <property name="src.dir" value="${basedir}/src" />
+  <property name="java.dir" value="${src.dir}/java" />
+  <property name="plugin.java.dir" value="${basedir}/plugin/java" />
+  <property name="test.dir" value="${basedir}/test" />
+  <property name="pigtestsrc.dir" value="${test.dir}/pig" />
+  <property name="dist.dir" value="${basedir}/dist" />
+  <property name="tools.dir" value="${basedir}/tools" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="common.lib.dir" value="${lib.dir}/common" />
+  <property name="packaged.lib.dir" value="${lib.dir}/packaged" />
+  <property name="test.lib.dir" value="${lib.dir}/test" />
+  <property name="hadoop.lib.dir" value="${lib.dir}/hadoop" />
+  <property name="tools.lib.dir" value="${lib.dir}/tools" />
+  <property name="static.lib.dir" value="${basedir}/staticlibs" />
+  <property name="classes.dir" value="${dist.dir}/classes" />
+  <property name="plugin.classes.dir" value="${dist.dir}/pluginclasses" />
+  <property name="report.dir" value="${basedir}/report" />
+  <property name="report.pig.dir" value="${report.dir}/pig" />
+  <property name="docs.dir" value="${basedir}/docs" />
+  <property name="javadoc.dir" value="${docs.dir}/javadoc" />
+  <property name="cobertura.dir" value="${basedir}/cobertura" />
+  <property name="coveragereport.dir" value="${basedir}/coverage-report" />
+  <property name="instrumented.dir" value="${basedir}/instrumented" />
+  <property name="pigtestclasses.dir" value="${dist.dir}/pigtestclasses" />
+  <property name="fastutil.jar" value="fastutil-jar-${fastutil.version}.jar" />
+  <property name="commons-math.jar" value="commons-math-jar-${commons-math.version}.jar" />
+  <property name="guava.jar" value="guava-jar-${guava.version}.jar" />
+  <property name="stream.jar" value="stream-jar-${stream.version}.jar" />
+
+  <!-- Java configuration -->
+  <property name="targetJavaVersion" value="1.5" />
+  <property name="sourceJavaVersion" value="${targetJavaVersion}" />
+
+  <!-- output names -->
+  <property name="output.jarfile" value="${dist.dir}/${final.name}.jar" />
+  <property name="output.jarfile.sources" value="${dist.dir}/${final.name}-sources.jar" />
+  <property name="output.jarfile.javadoc" value="${dist.dir}/${final.name}-javadoc.jar" />
+  
+  <property name="testclasses.pattern" value="**/*.class" />
+  <property name="test.methods" value="" />
+    
+  <property name="datafu.pom.name" value="pom.xml" />
+  <property name="datafu.pomfile" value="${ivy.jar.dir}/${datafu.pom.name}" />
+  <property name="datafu.pomfile.template" value="${ivy.jar.dir}/pom-template.xml" />
+  <property name="ivy.jar.version" value="2.2.0" />
+  <property name="maven.jar.version" value="2.0.8" />
+  <property name="mvnrepo" value="http://repo2.maven.org/maven2"/>
+  <property name="maven.jar.repo.url" value="${mvnrepo}/org/apache/maven/maven-ant-tasks/${maven.jar.version}/maven-ant-tasks-${maven.jar.version}.jar"/>
+  <property name="ivy.jar.repo.url" value="${mvnrepo}/org/apache/ivy/ivy/${ivy.jar.version}/ivy-${ivy.jar.version}.jar"/>
+	<property name="ivy.jar" value="${ivy.jar.dir}/ivy-${ivy.jar.version}.jar" />
+	<property name="ivy.settings.file" value="ivysettings.xml" />
+	<property name="maven.jar" location="${ivy.jar.dir}/maven-ant-tasks-${maven.jar.version}.jar"/>
+
+  <basename property="basedirname" file="${basedir}"/>
+  
+  <target name="all" depends="clean, jar, sources-jar, javadoc-jar" description="Build all artifacts." />
+    
+  <target name="init" depends="ivy-resolve">
+    <mkdir dir="${dist.dir}" />
+  </target>
+
+  <target name="eclipse" depends="jar,jar-plugin">
+    <delete file="${basedir}/.factorypath"/>
+    <copy file="${basedir}/.factorypath.template"
+             tofile="${basedir}/.factorypath">
+        <filterchain>
+           <replacetokens>
+                <token key="HOME" value="/${basedirname}"/>
+            </replacetokens>
+        </filterchain>
+    </copy>
+    <echo message="Created .factorypath"/>
+    <delete file="${basedir}/.classpath"/>
+    <copy file="${basedir}/.classpath.template"
+             tofile="${basedir}/.classpath">
+        <filterchain>
+           <replacetokens>
+                <token key="PROJECT" value="${basedirname}"/>
+            </replacetokens>
+        </filterchain>
+    </copy>
+    <echo message="Created .classpath"/>
+  </target>
+    
+  <target name="maven-ant-tasks-jar-download" description="Download maven tasks jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${maven.jar.repo.url}" dest="${maven.jar}" usetimestamp="true"/>
+  </target>
+  
+  <target name="maven-taskdef" depends="maven-ant-tasks-jar-download">
+    <path id="mvn-ant-task.classpath" path="${maven.jar}"/>
+    <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+        uri="urn:maven-artifact-ant"
+        classpathref="mvn-ant-task.classpath"/>
+  </target>
+  
+  <target name="ivy-jar-download" description="Download ivy jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${ivy.jar.repo.url}" dest="${ivy.jar}" usetimestamp="true"/>
+  </target>
+    
+  <target name="ivy-taskdef" depends="ivy-jar-download" description="install ivy">
+   	<path id="ivy.lib.path">
+   	  <pathelement location="${ivy.jar}"/>
+   	</path>
+   	<taskdef resource="org/apache/ivy/ant/antlib.xml"
+             uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+  </target>
+  
+  <target name="ivy-resolve" depends="ivy-taskdef" description="retrieve dependencies with ivy">
+    <ivy:retrieve pattern="${lib.dir}/[conf]/[artifact]-[type]-[revision].[ext]"/>
+  </target>
+
+  <target name="check-licenses" description="checks that source files have license header">
+    <exec executable="./check-license-headers.sh" failonerror="true"/>
+  </target>
+  
+  <target name="clean-cache" depends="ivy-taskdef" description="clean the ivy cache">
+  	<ivy:cleancache />
+  </target>
+  
+  <path id="main-classpath">
+    <fileset dir="${common.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${packaged.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${hadoop.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <pathelement path="${classes.dir}" />
+  </path>  
+  
+  <path id="cobertura.classpath">
+    <fileset dir="${cobertura.dir}">
+      <include name="cobertura.jar" />
+      <include name="lib/**/*.jar" />
+    </fileset>
+  </path>
+  
+  <taskdef classpathref="cobertura.classpath" resource="tasks.properties" />
+  
+  <path id="plugin-classpath">
+    <fileset dir="${static.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${tools.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${ivy.jar.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <path id="build-tests-classpath">
+    <fileset dir="${common.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${static.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${hadoop.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${test.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${tools.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <pathelement path="${classes.dir}" />
+    <pathelement path="${plugin.classes.dir}" />
+  </path>
+  
+  <path id="run-tests-base-classpath">
+    <!-- these common libs are assumed to be downloaded and available when using datafu
+         as they are listed in the pom -->
+    <fileset dir="${common.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <!-- we do not include the packaged directory since classes from these jars 
+         should be in the datafu jar -->
+    <fileset dir="${hadoop.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${test.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${tools.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <pathelement path="${pigtestclasses.dir}" />
+  </path>
+
+  <path id="run-tests-classpath">
+    <path refid="run-tests-base-classpath" />
+    <!-- pick up the datafu jar -->
+    <fileset dir="${dist.dir}">
+      <include name="datafu-*.jar" />
+    </fileset>
+  </path>
+  
+  <path id="instrumented-test-classpath">
+    <path refid="run-tests-base-classpath" />
+    <path refid="cobertura.classpath" />
+    <!-- Use instrumented JARs -->
+    <fileset dir="${instrumented.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+  
+  <macrodef name="replace-dir">
+    <attribute name="dir" />
+    <sequential>
+      <delete dir="@{dir}" />
+      <mkdir dir="@{dir}" />
+    </sequential>
+  </macrodef>
+  
+  <target name="clean" description="Delete generated files.">
+    <delete dir="${basedir}/build" />
+    <delete dir="${lib.dir}" />
+    <delete dir="${dist.dir}" />
+    <delete dir="${docs.dir}" />
+    <delete dir="${report.dir}" />
+    <delete dir="${coveragereport.dir}"/>
+    <delete dir="${instrumented.dir}"/>
+    <delete dir="test-output"/>
+    <delete file="cobertura.ser"/>
+  </target>
+  
+  <target name="build" depends="init" description="Compile main source tree java files">
+    <replace-dir dir="${classes.dir}" />
+    <javac destdir="${classes.dir}" source="${sourceJavaVersion}" target="${targetJavaVersion}" debug="true" deprecation="false" failonerror="true" includeantruntime="false">
+      <src path="${java.dir}" />
+      <exclude name="datafu/linkedin/**"/>
+      <classpath refid="main-classpath" />
+    </javac>
+  </target>
+
+  <target name="build-plugins" depends="init" description="Compile main source tree java files">
+    <replace-dir dir="${plugin.classes.dir}" />
+    <javac destdir="${plugin.classes.dir}" source="${sourceJavaVersion}" target="${targetJavaVersion}" debug="true" deprecation="false" failonerror="true" includeantruntime="false">
+      <src path="${plugin.java.dir}" />
+      <classpath refid="plugin-classpath" />
+    </javac>
+  </target>
+
+  <target name="jar-plugin" depends="build-plugins" description="Builds the plugin JAR">
+    <delete file="${basedir}/annotation-plugin.jar" />
+    <jar destfile="${basedir}/annotation-plugin.jar">
+      <fileset dir="${plugin.classes.dir}">
+        <include name="**/*.*" />
+      </fileset>
+      <service type="javax.annotation.processing.Processor" provider="org.adrianwalker.multilinestring.MultilineProcessor"/>
+    </jar>
+  </target>
+  
+  <target name="build-pig-tests" depends="build,build-plugins" description="Compile pig test classes">
+    <replace-dir dir="${pigtestclasses.dir}" />
+    <copy todir="${pigtestclasses.dir}">
+      <fileset dir="${pigtestsrc.dir}">
+        <exclude name="**/*.java" />
+      </fileset>
+    </copy>
+    <javac destdir="${pigtestclasses.dir}" source="${sourceJavaVersion}" target="${targetJavaVersion}" debug="true" deprecation="false" failonerror="true" includeantruntime="false">
+      <src path="${pigtestsrc.dir}" />
+      <compilerarg line="-processor org.adrianwalker.multilinestring.MultilineProcessor"/>
+      <classpath refid="build-tests-classpath" />
+    </javac>
+  </target>
+    
+  <target name="jar" depends="build" description="Builds the final JAR">
+    <!-- build the core jar -->
+    <delete file="${dist.dir}/${final.name}.jar" />
+    <jar destfile="${dist.dir}/${final.name}.jar">
+      <fileset dir="${classes.dir}">
+        <include name="**/*.*" />
+      </fileset>
+    </jar>
+
+    <!-- Need to check for the existence of the jar because next command won't fail if it's missing -->
+    <fail message="Could not find fastutil jar">
+      <condition>
+          <not>
+              <resourcecount count="1">
+                  <fileset id="fs" dir="${packaged.lib.dir}" includes="${fastutil.jar}"/>
+              </resourcecount>
+          </not>
+      </condition>
+    </fail>
+    <fail message="Could not find commons-math jar">
+      <condition>
+          <not>
+              <resourcecount count="1">
+                  <fileset id="fs" dir="${packaged.lib.dir}" includes="${commons-math.jar}"/>
+              </resourcecount>
+          </not>
+      </condition>
+    </fail>
+    <fail message="Could not find stream jar">
+      <condition>
+          <not>
+              <resourcecount count="1">
+                  <fileset id="fs" dir="${packaged.lib.dir}" includes="${stream.jar}"/>
+              </resourcecount>
+          </not>
+      </condition>
+    </fail>
+    <fail message="Could not find guava jar">
+      <condition>
+          <not>
+              <resourcecount count="1">
+                  <fileset id="fs" dir="${packaged.lib.dir}" includes="${guava.jar}"/>
+              </resourcecount>
+          </not>
+      </condition>
+    </fail>
+    
+    <!-- add fastutil classes to the core jar -->
+    <echo message="Adding to ${final.name}.jar with autojar" />
+    <delete file="${dist.dir}/${final.name}-orig.jar" />
+    <move file="${dist.dir}/${final.name}.jar" tofile="${dist.dir}/${final.name}-orig.jar" />
+    <java jar="${tools.dir}/autojar.jar" fork="true">
+      <arg line="-baeq -o ${dist.dir}/${final.name}.jar -c ${packaged.lib.dir}/${fastutil.jar}:${packaged.lib.dir}/${commons-math.jar}:${packaged.lib.dir}/${stream.jar}:${packaged.lib.dir}/${guava.jar} ${dist.dir}/${final.name}-orig.jar" />
+    </java>
+    <delete file="${dist.dir}/${final.name}-orig.jar" />
+    
+    <!-- build the final jar -->
+    <delete file="${dist.dir}/${final.name}-orig.jar" />
+    <move file="${dist.dir}/${final.name}.jar" tofile="${dist.dir}/${final.name}-orig.jar" />
+    <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="tools/jarjar-1.1.jar"/>
+    <jarjar jarfile="${dist.dir}/${final.name}.jar">
+        <zipfileset src="${dist.dir}/${final.name}-orig.jar"/>
+        <rule pattern="it.unimi.dsi.fastutil.**" result="datafu.it.unimi.dsi.fastutil.@1"/>
+        <rule pattern="org.apache.commons.math.**" result="datafu.org.apache.commons.math.@1"/>
+        <rule pattern="com.clearspring.analytics.**" result="datafu.com.clearspring.analytics.@1"/>
+        <rule pattern="com.google.common.**" result="datafu.com.google.common.@1"/>
+    </jarjar>
+    <delete file="${dist.dir}/${final.name}-orig.jar" />
+  </target>
+    
+  <target name="jar-instrumented" depends="jar" description="Build an instrumented jar">
+    <delete file="cobertura.ser" />
+    <replace-dir dir="${instrumented.dir}" />
+    <cobertura-instrument todir="${instrumented.dir}">
+      <includeClasses regex=".*datafu.*" />
+      <excludeClasses regex=".*fastutil.*" />
+      <excludeClasses regex=".*test.*" />
+      <instrumentationClasspath>
+        <pathelement location="${dist.dir}"/>
+      </instrumentationClasspath>
+    </cobertura-instrument>
+    <taskdef name="jarjar" classname="com.tonicsystems.jarjar.JarJarTask" classpath="tools/jarjar-1.1.jar"/>
+    <delete file="${instrumented.dir}/${final.name}.jar" />
+    <!-- Classes are now instrumented, but we need to merge back with original JAR to get back what was lost, since
+         we don't instrument everything and therefore classes are missing form the instrumented directory. -->
+    <jarjar jarfile="${instrumented.dir}/${final.name}.jar">      
+      <zipfileset src="${dist.dir}/${final.name}.jar"/>        
+      <!-- Classes in instrumented directory come last so they take precedence over the classes in the JAR.
+           We need to include the JAR so we get the fastutil classes.  The fastutil classes are not instrumented (by design),
+           so they are not in the instrumented directory. -->
+      <fileset dir="${instrumented.dir}" />
+    </jarjar>
+  </target>
+  
+  <target name="test" depends="build-pig-tests, jar" description="Runs the pig tests">
+    <taskdef resource="testngtasks" classpath="${tools.lib.dir}/testng-jar-${testng.version}.jar"/>
+    <testng classpathref="run-tests-classpath" methods="${test.methods}"
+            outputDir="${report.dir}" verbose="2" haltonfailure="true" haltonskipped="true">
+      <jvmarg value="-Xmx1G" />
+      <sysproperty key="datafu.jar.dir" value="${dist.dir}" />
+      <classfileset dir="${pigtestclasses.dir}" includes="${testclasses.pattern}" />
+    </testng>
+  </target>
+  
+  <target name="test-instrumented" depends="build-pig-tests, jar-instrumented" description="Runs the tests with instrumented JARs">
+    <taskdef resource="testngtasks" classpath="${tools.lib.dir}/testng-jar-${testng.version}.jar"/>
+    <testng classpathref="instrumented-test-classpath" methods="${test.methods}"
+            outputDir="${report.dir}" haltonfailure="true" haltonskipped="true">
+      <jvmarg value="-Xmx1G" />
+      <sysproperty key="datafu.jar.dir" value="${instrumented.dir}" />
+      <classfileset dir="${pigtestclasses.dir}" includes="${testclasses.pattern}" />
+    </testng>
+  </target>
+  
+  <target name="coverage" depends="test-instrumented" description="Generates the code coverage report">
+    <replace-dir dir="${coveragereport.dir}" />
+    <cobertura-report format="html" destdir="${coveragereport.dir}">
+      <fileset dir="${java.dir}">
+        <include name="**/*.java" />
+      </fileset>
+    </cobertura-report>
+  </target>
+  
+  <target name="sources-jar" description="Build source jar file">
+    <jar destfile="${output.jarfile.sources}">
+      <fileset dir="${java.dir}">
+        <include name="**/*.java" />
+      </fileset>
+    </jar>
+  </target>
+  
+  <macrodef name="make-javadocs">
+    <attribute name="dir" />
+    <attribute name="packagenames" />
+    <attribute name="javadir" />
+    <sequential>
+      <replace-dir dir="@{dir}" />
+      <javadoc destdir="@{dir}" windowtitle="${display.name} ${datafu.version}" source="1.5" author="true" version="true" use="true" packagenames="@{packagenames}">
+        <doctitle>${display.name} ${datafu.version}</doctitle>
+        <bottom>${author}</bottom>
+        <classpath refid="main-classpath" />
+        <fileset dir="@{javadir}">
+          <exclude name="datafu/pig/stats/*?VAR.java"/>
+          <exclude name="datafu/pig/sets/SetOperationsBase.java"/>
+        </fileset>
+      </javadoc>
+    </sequential>
+  </macrodef>
+  
+  <target name="javadoc-jar" description="Create complete Javadoc documentation">
+    <delete dir="${javadoc.dir}" />
+    <make-javadocs dir="${javadoc.dir}" packagenames="*" javadir="${java.dir}"/>
+    
+    <!-- Make javadoc JAR -->    
+    <jar destfile="${output.jarfile.javadoc}">
+      <fileset dir="${javadoc.dir}">
+        <include name="**/*.*" />
+      </fileset>
+    </jar>
+  </target>
+     
+  <target name="deploy" depends="clean,jar,sources-jar,javadoc-jar,set-version,sign">
+    <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+         uri="antlib:org.apache.maven.artifact.ant"
+         classpathref="plugin-classpath" />
+
+    <artifact:pom file="${datafu.pomfile}" id="datafu-pom"/>
+    <artifact:install-provider artifactId="wagon-ssh" version="${wagon-http.version}"/>
+    <artifact:deploy file="${output.jarfile}">
+      <remoteRepository id="${maven-staging-repository-id}" url="${maven-staging-repository-url}"/>
+      <pom refid="datafu-pom"/>
+      <attach file="${output.jarfile}.asc" type="jar.asc"/>
+      <attach file="${datafu.pomfile}.asc" type="pom.asc"/>
+      <attach file="${output.jarfile.sources}.asc" type="jar.asc" classifier="sources" />
+      <attach file="${output.jarfile.sources}" classifier="sources" />
+    	<attach file="${output.jarfile.javadoc}.asc" type="jar.asc" classifier="javadoc" />
+    	<attach file="${output.jarfile.javadoc}" classifier="javadoc" />
+    </artifact:deploy>
+ </target>
+ 
+ <target name="sign" depends="clean-sign">
+   <macrodef name="sign-artifact" description="Signs the artifact">
+     <attribute name="input.file"/>
+     <attribute name="output.file" default="@{input.file}.asc"/>
+     <sequential>
+       <echo>Signing @{input.file} Sig File: @{output.file}</echo>
+       <exec executable="gpg" >
+         <arg value="--armor"/>
+         <arg value="--output"/>
+         <arg value="@{output.file}"/>
+         <arg value="--detach-sig"/>
+         <arg value="@{input.file}"/>
+       </exec>
+     </sequential>
+   </macrodef>
+   <sign-artifact input.file="${output.jarfile}"/>
+   <sign-artifact input.file="${output.jarfile.sources}"/>
+   <sign-artifact input.file="${output.jarfile.javadoc}"/>
+   <sign-artifact input.file="${datafu.pomfile}"/>
+  </target>
+
+  <target name="set-version">
+    <delete file="${datafu.pomfile}"/>
+    <copy file="${datafu.pomfile.template}" tofile="${datafu.pomfile}"/>
+    <replaceregexp byline="true">
+      <regexp pattern="@version"/>
+      <substitution expression="${datafu.version}"/>
+      <fileset dir="${ivy.jar.dir}">
+        <include name="${datafu.pom.name}"/>
+      </fileset>
+    </replaceregexp>
+  </target>
+
+  <target name="clean-sign" description="Clean.  Delete .asc files">
+    <delete>
+      <fileset dir="." includes="**/**/*.asc"/>
+    </delete>
+  </target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<project name="cobertura.examples.basic" default="coverage" basedir=".">
+
+	<description>
+    Cobertura - http://cobertura.sourceforge.net/
+    Copyright (C) 2003 jcoverage ltd.
+    Copyright (C) 2005 Mark Doliner &lt;thekingant@users.sourceforge.net&gt;
+    Copyright (C) 2006 Dan Godfrey
+    Cobertura is licensed under the GNU General Public License
+    Cobertura comes with ABSOLUTELY NO WARRANTY
+    </description>
+
+	<property file="build.properties" />
+
+	<path id="cobertura.classpath">
+		<fileset dir="${cobertura.dir}">
+			<include name="cobertura.jar" />
+			<include name="lib/**/*.jar" />
+		</fileset>
+	</path>
+
+	<taskdef classpathref="cobertura.classpath" resource="tasks.properties"/>
+
+	<target name="init">
+		<mkdir dir="${classes.dir}" />
+		<mkdir dir="${instrumented.dir}" />
+		<mkdir dir="${reports.xml.dir}" />
+		<mkdir dir="${reports.html.dir}" />
+		<mkdir dir="${coverage.xml.dir}" />
+		<mkdir dir="${coverage.summaryxml.dir}" />
+		<mkdir dir="${coverage.html.dir}" />
+	</target>
+
+	<target name="compile" depends="init">
+		<javac srcdir="${src.dir}" destdir="${classes.dir}" debug="yes">
+			<classpath refid="cobertura.classpath" />
+		</javac>
+	</target>
+
+	<target name="instrument" depends="init,compile">
+		<!--
+			Remove the coverage data file and any old instrumentation.
+		-->
+		<delete file="cobertura.ser"/>
+		<delete dir="${instrumented.dir}" />
+
+		<!--
+			Instrument the application classes, writing the
+			instrumented classes into ${build.instrumented.dir}.
+		-->
+		<cobertura-instrument todir="${instrumented.dir}">
+			<!--
+				The following line causes instrument to ignore any
+				source line containing a reference to log4j, for the
+				purposes of coverage reporting.
+			-->
+			<ignore regex="org.apache.log4j.*" />
+
+			<fileset dir="${classes.dir}">
+				<!--
+					Instrument all the application classes, but
+					don't instrument the test classes.
+				-->
+				<include name="**/*.class" />
+				<exclude name="**/*Test.class" />
+			</fileset>
+		</cobertura-instrument>
+	</target>
+
+	<target name="test" depends="init,compile">
+		<junit fork="yes" dir="${basedir}" failureProperty="test.failed">
+			<!--
+				Note the classpath order: instrumented classes are before the
+				original (uninstrumented) classes.  This is important.
+			-->
+			<classpath location="${instrumented.dir}" />
+			<classpath location="${classes.dir}" />
+
+			<!--
+				The instrumented classes reference classes used by the
+				Cobertura runtime, so Cobertura and its dependencies
+				must be on your classpath.
+			-->
+			<classpath refid="cobertura.classpath" />
+
+			<formatter type="xml" />
+			<test name="${testcase}" todir="${reports.xml.dir}" if="testcase" />
+			<batchtest todir="${reports.xml.dir}" unless="testcase">
+				<fileset dir="${src.dir}">
+					<include name="**/*Test.java" />
+				</fileset>
+			</batchtest>
+		</junit>
+
+		<junitreport todir="${reports.xml.dir}">
+			<fileset dir="${reports.xml.dir}">
+				<include name="TEST-*.xml" />
+			</fileset>
+			<report format="frames" todir="${reports.html.dir}" />
+		</junitreport>
+	</target>
+
+	<target name="coverage-check">
+		<cobertura-check branchrate="34" totallinerate="100" />
+	</target>
+
+	<target name="coverage-report">
+		<!--
+			Generate an XML file containing the coverage data using
+			the "srcdir" attribute.
+		-->
+		<cobertura-report srcdir="${src.dir}" destdir="${coverage.xml.dir}" format="xml" />
+	</target>
+
+	<target name="summary-coverage-report">
+		<!--
+			Generate an summary XML file containing the coverage data using
+			the "srcdir" attribute.
+		-->
+		<cobertura-report srcdir="${src.dir}" destdir="${coverage.summaryxml.dir}" format="summaryXml" />
+	</target>
+
+	<target name="alternate-coverage-report">
+		<!--
+			Generate a series of HTML files containing the coverage
+			data in a user-readable form using nested source filesets.
+		-->
+		<cobertura-report destdir="${coverage.html.dir}">
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+			</fileset>
+		</cobertura-report>
+	</target>
+
+	<target name="clean" description="Remove all files created by the build/test process.">
+		<delete dir="${classes.dir}" />
+		<delete dir="${instrumented.dir}" />
+		<delete dir="${reports.dir}" />
+		<delete file="cobertura.log" />
+		<delete file="cobertura.ser" />
+	</target>
+
+	<target name="coverage" depends="compile,instrument,test,coverage-report,summary-coverage-report,alternate-coverage-report" description="Compile, instrument ourself, run the tests and generate JUnit and coverage reports."/>
+
+</project>
+<project name="datafu-hourglass" basedir="." default="build"
+         xmlns:ivy="antlib:org.apache.ivy.ant"
+         xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+  <property name="name" value="datafu-hourglass" />
+  <property name="display.name" value="DataFu Hourglass" />
+  <property name="author" value="Matthew Hayes" />
+  <property name="datafu.hourglass.version" value="0.1.4" />
+  <property name="version" value="${datafu.hourglass.version}-SNAPSHOT" />
+
+  <!-- ivy -->
+  <property name="ivy.jar.version" value="2.2.0" />
+  <property name="ivy.jar.dir" value="${basedir}/ivy" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="mvnrepo" value="http://repo2.maven.org/maven2"/>
+  <property name="ivy.jar.repo.url" value="${mvnrepo}/org/apache/ivy/ivy/${ivy.jar.version}/ivy-${ivy.jar.version}.jar"/>
+  <property name="ivy.jar" value="${ivy.jar.dir}/ivy-${ivy.jar.version}.jar" />
+
+  <!-- maven -->
+  <property name="maven-snapshots-repository-id" value="sonatype-nexus-snapshots" />
+  <property name="maven-snapshots-repository-url" value="https://oss.sonatype.org/content/repositories/snapshots" />
+  <property name="maven-staging-repository-id" value="sonatype-nexus-staging" />
+  <property name="maven-staging-repository-url" value="https://oss.sonatype.org/service/local/staging/deploy/maven2" />
+  <property name="pom.name" value="pom.xml"/>
+  <property name="pomfile" value="${basedir}/${pom.name}" />
+  <property name="pomfile.template" value="${basedir}/pom-template.xml" />
+  <property name="maven.jar.version" value="2.0.8" />
+  <property name="mvnrepo" value="http://repo2.maven.org/maven2"/>
+  <property name="maven.jar.repo.url" value="${mvnrepo}/org/apache/maven/maven-ant-tasks/${maven.jar.version}/maven-ant-tasks-${maven.jar.version}.jar"/>
+  <property name="maven.jar" location="${ivy.jar.dir}/maven-ant-tasks-${maven.jar.version}.jar"/>
+  <property name="wagon-http.version" value="1.0-beta-2" />
+
+  <!-- hourglass paths, files -->
+  <property name="dist.dir" value="${basedir}/dist" />
+  <property name="classes.dir" value="${dist.dir}/classes" />
+  <property name="test.classes.dir" value="${dist.dir}/testclasses" />
+  <property name="java.dir" value="${basedir}/src/java" />
+  <property name="test.java.dir" value="${basedir}/test/java" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="common.lib.dir" value="${lib.dir}/common" />
+  <property name="test.lib.dir" value="${lib.dir}/test" />
+  <property name="hadoop.lib.dir" value="${lib.dir}/hadoop" />
+  <property name="jar.dir" value="${dist.dir}/jar" />
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="report.dir" value="${basedir}/report" />
+  <property name="docs.dir" value="${basedir}/docs" />
+  <property name="javadoc.dir" value="${docs.dir}/javadoc" />
+  <condition property="jar.name" value="${name}-${version}" else="${name}">
+    <isset property="version" />
+  </condition>
+  <condition property="sources.jar.name" value="${name}-${version}-sources" else="${name}-sources">
+    <isset property="version" />
+  </condition>
+  <condition property="javadoc.jar.name" value="${name}-${version}-javadoc" else="${name}-javadoc">
+    <isset property="version" />
+  </condition>
+  <property name="jar.file" value="${jar.name}.jar" />
+  <property name="jar.path" value="${build.dir}/${jar.file}" />
+  <property name="sources.jar.path" value="${build.dir}/${sources.jar.name}.jar" />
+  <property name="javadoc.jar.path" value="${build.dir}/${javadoc.jar.name}.jar" />
+  <property name="test.jar.name" value="${name}-test.jar" />
+  <property name="test.jar.path" value="${build.dir}/${test.jar.name}" />
+  <property name="classes.pattern" value="**/*.class" />
+
+
+  <target name="ivy-jar-download" description="Download ivy jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${ivy.jar.repo.url}" dest="${ivy.jar}" usetimestamp="true"/>
+  </target>
+
+  <target name="ivy-taskdef" depends="ivy-jar-download" description="install ivy">
+    <path id="ivy.lib.path">
+      <pathelement location="${ivy.jar}"/>
+    </path>
+    <taskdef resource="org/apache/ivy/ant/antlib.xml"
+             uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+  </target>
+  
+  <target name="ivy-resolve" depends="ivy-taskdef" description="retreive dependencies with ivy">
+    <delete dir="${lib.dir}" />
+    <ivy:retrieve pattern="${lib.dir}/[conf]/[artifact]-[type]-[revision].[ext]"/>
+    <ivy:report todir="ivy/report" />
+  </target>
+    
+  <target name="maven-ant-tasks-jar-download" description="Download maven tasks jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${maven.jar.repo.url}" dest="${maven.jar}" usetimestamp="true"/>
+  </target>
+  
+  <target name="maven-taskdef" depends="maven-ant-tasks-jar-download">
+    <path id="mvn-ant-task.classpath" path="${maven.jar}"/>
+    <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+        uri="urn:maven-artifact-ant"
+        classpathref="mvn-ant-task.classpath"/>
+  </target>
+    
+  <target name="clean-logs">
+    <delete dir="${basedir}/test-logs" />
+    <delete dir="${basedir}/test-output" />
+    <delete dir="${basedir}/test-report" />
+    <delete dir="${basedir}/report" />
+  </target>
+
+  <target name="clean-build">
+    <delete dir="${build.dir}" />
+  </target>
+
+  <target name="clean" depends="clean-build,clean-logs">
+    <delete dir="${dist.dir}" />
+    <delete dir="${lib.dir}" />
+    <delete dir="${docs.dir}" />
+    <delete dir="${ivy.jar.dir}" />
+  </target>
+
+  <path id="compile-classpath">
+    <fileset dir="${common.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${hadoop.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <target name="compile" depends="ivy-resolve">
+    <delete dir="${classes.dir}"/>
+    <mkdir dir="${classes.dir}" />
+    <javac fork="true" destdir="${classes.dir}" target="1.6" debug="true"
+           deprecation="true" failonerror="true">
+      <src path="${java.dir}"/>
+      <classpath refid="compile-classpath"/>
+    </javac>
+  </target>
+
+  <path id="compile-tests-classpath">
+    <path refid="compile-classpath" />
+    <pathelement path="${classes.dir}" />
+    <fileset dir="${test.lib.dir}">
+      <include name="*.jar" />
+    </fileset>
+  </path>
+
+  <target name="compile-tests" depends="ivy-resolve">
+    <delete dir="${test.classes.dir}"/>
+    <mkdir dir="${test.classes.dir}" />
+    <javac fork="true" destdir="${test.classes.dir}" target="1.6" debug="true"
+           deprecation="true" failonerror="true">
+      <src path="${test.java.dir}"/>
+      <classpath refid="compile-tests-classpath"/>
+    </javac>
+  </target>
+
+  <target name="jar" depends="compile">
+    <mkdir dir="${build.dir}" />
+    <jar jarfile="${build.dir}/${jar.file}" filesetmanifest="merge">
+      <fileset dir="${classes.dir}"/>
+    </jar>
+  </target>
+
+  <target name="testjar" depends="compile-tests">
+    <mkdir dir="${build.dir}" />
+    <jar jarfile="${build.dir}/${test.jar.name}" filesetmanifest="skip">
+      <fileset dir="${test.classes.dir}"/>
+      <manifest>
+        <attribute name="Main-Class" value="datafu.hourglass.demo.Main"/>
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="build" depends="clean,jar,javadoc-jar,sources-jar">
+  </target>
+
+  <path id="test-classpath">
+    <path refid="compile-tests-classpath" />
+    <pathelement path="${test.classes.dir}" />
+  </path>
+
+  <path id="test-local-classpath">
+    <path refid="test-classpath" />
+    <!-- need conf dir for local hadoop instance -->
+    <pathelement location="${conf.dir}" />
+  </path>
+
+  <target name="test-local" depends="testjar" description="Runs the tests against local hadoop instance">
+    <fail unless="conf.dir">You must define 'conf.dir' with -Dconf.dir=&lt;path-to-hadoop-conf-directory&gt;</fail>
+    <taskdef resource="testngtasks" classpath="lib/test/testng-jar-6.0.1.jar"/>
+    <testng classpathref="test-classpath"
+            groups="pcl"
+            outputDir="${report.dir}" verbose="2" haltonfailure="true" haltonskipped="true">
+      <jvmarg value="-Xmx1G" />
+      <sysproperty key="testlocal" value="true" />
+      <sysproperty key="testjar" value="${test.jar.path}" />
+      <classpath refid="test-local-classpath"/>
+      <classfileset dir="${classes.dir}" includes="${classes.pattern}" />
+      <classfileset dir="${test.classes.dir}" includes="${classes.pattern}" />
+    </testng>
+  </target>
+
+  <target name="test" depends="clean-logs,compile,compile-tests" description="Runs the tests using single process cluster">
+    <taskdef resource="testngtasks" classpath="lib/test/testng-jar-6.0.1.jar"/>
+    <testng classpathref="test-classpath"
+            groups="pcl"
+            outputDir="${report.dir}" verbose="2" haltonfailure="true" haltonskipped="true">
+      <jvmarg value="-Xmx1G" />
+      <classpath refid="test-classpath"/>
+      <classfileset dir="${classes.dir}" includes="${classes.pattern}" />
+      <classfileset dir="${test.classes.dir}" includes="${classes.pattern}" />
+    </testng>
+  </target>
+
+  <target name="sources-jar" description="Build source jar file">
+    <jar destfile="${sources.jar.path}">
+      <fileset dir="${java.dir}">
+        <include name="**/*.java" />
+      </fileset>
+    </jar>
+  </target>
+
+  <macrodef name="replace-dir">
+    <attribute name="dir" />
+    <sequential>
+      <delete dir="@{dir}" />
+      <mkdir dir="@{dir}" />
+    </sequential>
+  </macrodef>
+  
+  <macrodef name="make-javadocs">
+    <attribute name="dir" />
+    <attribute name="packagenames" />
+    <attribute name="javadir" />
+    <sequential>
+      <replace-dir dir="@{dir}" />
+      <javadoc destdir="@{dir}" windowtitle="${display.name}" source="1.5" author="true" version="true" use="true" packagenames="@{packagenames}" Overview="overview.html">
+        <doctitle>${display.name}</doctitle>
+        <bottom>${author}</bottom>
+        <classpath refid="compile-classpath" />
+        <fileset dir="@{javadir}">
+        </fileset>
+      </javadoc>
+    </sequential>
+  </macrodef>
+  
+  <target name="javadoc-jar" description="Create complete Javadoc documentation">
+    <delete dir="${javadoc.dir}" />
+    <make-javadocs dir="${javadoc.dir}" packagenames="*" javadir="${java.dir}"/>
+    
+    <!-- Make javadoc JAR -->    
+    <jar destfile="${javadoc.jar.path}">
+      <fileset dir="${javadoc.dir}">
+        <include name="**/*.*" />
+      </fileset>
+    </jar>
+  </target>
+
+  <target name="deploy" depends="clean,jar,sources-jar,javadoc-jar,set-version,sign">
+    <typedef resource="org/apache/maven/artifact/ant/antlib.xml"
+         uri="antlib:org.apache.maven.artifact.ant"
+         classpathref="test-classpath" />
+
+    <artifact:pom file="${pomfile}" id="datafu-pom"/>
+    <artifact:install-provider artifactId="wagon-ssh" version="${wagon-http.version}"/>
+    <artifact:deploy file="${jar.path}">
+      <remoteRepository id="${maven-staging-repository-id}" url="${maven-staging-repository-url}"/>
+      <pom refid="datafu-pom"/>
+      <attach file="${jar.path}.asc" type="jar.asc"/>
+      <attach file="${pomfile}.asc" type="pom.asc"/>
+      <attach file="${sources.jar.path}.asc" type="jar.asc" classifier="sources" />
+      <attach file="${sources.jar.path}" classifier="sources" />
+      <attach file="${javadoc.jar.path}.asc" type="jar.asc" classifier="javadoc" />
+      <attach file="${javadoc.jar.path}" classifier="javadoc" />
+    </artifact:deploy>
+ </target>
+ 
+ <target name="sign" depends="clean-sign">
+   <macrodef name="sign-artifact" description="Signs the artifact">
+     <attribute name="input.file"/>
+     <attribute name="output.file" default="@{input.file}.asc"/>
+     <sequential>
+       <echo>Signing @{input.file} Sig File: @{output.file}</echo>
+       <exec executable="gpg" >
+         <arg value="--armor"/>
+         <arg value="--output"/>
+         <arg value="@{output.file}"/>
+         <arg value="--detach-sig"/>
+         <arg value="@{input.file}"/>
+       </exec>
+     </sequential>
+   </macrodef>
+   <sign-artifact input.file="${jar.path}"/>
+   <sign-artifact input.file="${sources.jar.path}"/>
+   <sign-artifact input.file="${javadoc.jar.path}"/>
+   <sign-artifact input.file="${pomfile}"/>
+  </target>
+
+  <target name="set-version">
+    <delete file="${pomfile}"/>
+    <copy file="${pomfile.template}" tofile="${pomfile}"/>
+    <replaceregexp byline="true">
+      <regexp pattern="@version"/>
+      <substitution expression="${datafu.hourglass.version}"/>
+      <fileset dir="${basedir}">
+        <include name="${pom.name}"/>
+      </fileset>
+    </replaceregexp>
+  </target>
+
+  <target name="clean-sign" description="Clean.  Delete .asc files">
+    <delete>
+      <fileset dir="." includes="**/**/*.asc"/>
+    </delete>
+  </target>
+</project>

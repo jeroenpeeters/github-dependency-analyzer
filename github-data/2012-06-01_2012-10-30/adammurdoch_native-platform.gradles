@@ -1,0 +1,266 @@
+apply plugin: 'groovy'
+apply plugin: 'cpp'
+
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'idea'
+    apply plugin: 'maven'
+
+    repositories {
+        mavenCentral()
+        maven { url "http://repo.gradle.org/gradle/libs-releases-local" }
+    }
+
+    dependencies {
+        testCompile 'org.spockframework:spock-core:0.6-groovy-1.8'
+    }
+
+    group = 'net.rubygrapefruit'
+    version = '0.11'
+
+    if (!project.hasProperty('release')) {
+        version = "${version}-dev"
+    }
+
+    sourceCompatibility = 1.5
+    targetCompatibility = 1.5
+
+    tasks.withType(Upload) {
+        repositories {
+            mavenDeployer {
+                if (project.hasProperty('release')) {
+                    repository(url: uri("https://gradle.artifactoryonline.com/gradle/libs-releases-local")) {
+                        authentication(userName: artifactoryUserName, password: artifactoryPassword)
+                    }
+                } else {
+                    repository(url: uri("$rootProject.buildDir/repo"))
+                }
+            }
+        }
+    }
+}
+
+dependencies {
+    testCompile 'org.codehaus.groovy:groovy:1.8.7'
+}
+
+def nativeHeadersDir = file("$buildDir/nativeHeaders")
+
+task nativeHeaders {
+    def outputFile = file("$nativeHeadersDir/native.h")
+    inputs.files sourceSets.main.output
+    outputs.file outputFile
+    doLast {
+        outputFile.parentFile.mkdirs()
+        exec {
+            executable org.gradle.internal.jvm.Jvm.current().getExecutable('javah')
+            args '-o', outputFile
+            args '-classpath', sourceSets.main.output.classesDir
+            args 'net.rubygrapefruit.platform.internal.jni.NativeLibraryFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.PosixFileFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.PosixFileSystemFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.PosixProcessFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.PosixTerminalFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.TerminfoFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.WindowsConsoleFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.WindowsHandleFunctions'
+            args 'net.rubygrapefruit.platform.internal.jni.WindowsRegistryFunctions'
+        }
+    }
+}
+
+model {
+    platforms {
+        osx_i386 {
+            architecture "i386"
+            operatingSystem "osx"
+        }
+        osx_amd64 {
+            architecture "amd64"
+            operatingSystem "osx"
+        }
+        linux_i386 {
+            architecture "i386"
+            operatingSystem "linux"
+        }
+        linux_amd64 {
+            architecture "amd64"
+            operatingSystem "linux"
+        }
+        windows_i386 {
+            architecture "i386"
+            operatingSystem "windows"
+        }
+        windows_amd64 {
+            architecture "amd64"
+            operatingSystem "windows"
+        }
+        freebsd_i386 {
+            architecture "i386"
+            operatingSystem "freebsd"
+        }
+        freebsd_amd64 {
+            architecture "amd64"
+            operatingSystem "freebsd"
+        }
+    }
+}
+
+libraries {
+    nativePlatform {
+        baseName 'native-platform'
+    }
+    nativePlatformCurses {
+        baseName 'native-platform-curses'
+        targetPlatforms "osx_i386", "osx_amd64", "linux_i386", "linux_amd64", "freebsd_i386", "freebsd_amd64"
+        binaries.all {
+            linker.args "-lcurses"
+        }
+    }
+
+    all {
+        binaries.all {
+            if (targetPlatform.operatingSystem.macOsX) {
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include"
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include/darwin"
+                linker.args '-mmacosx-version-min=10.4'
+            } else if (targetPlatform.operatingSystem.linux) {
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include"
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include/linux"
+            } else if (targetPlatform.operatingSystem.windows) {
+                cppCompiler.args "-I${org.gradle.internal.jvm.Jvm.current().javaHome}/include"
+                cppCompiler.args "-I${org.gradle.internal.jvm.Jvm.current().javaHome}/include/win32"
+                linker.args "Shlwapi.lib", "Advapi32.lib"
+            } else if (targetPlatform.operatingSystem.freeBSD) {
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include"
+                cppCompiler.args '-I', "${org.gradle.internal.jvm.Jvm.current().javaHome}/include/freebsd"
+            }
+            cppCompiler.args "-I${nativeHeadersDir}"
+            tasks.withType(CppCompile) { task ->
+                task.dependsOn nativeHeaders
+            }
+        }
+    }
+}
+
+sources {
+    nativePlatform {
+        cpp {
+            source.srcDirs = ['src/shared/cpp', 'src/main/cpp']
+            exportedHeaders.srcDirs = ['src/shared/headers']
+        }
+    }
+    nativePlatformCurses {
+        cpp {
+            source.srcDirs = ['src/shared/cpp', 'src/curses/cpp']
+            exportedHeaders.srcDirs = ['src/shared/headers']
+        }
+    }
+}
+
+configurations {
+    jni
+}
+
+def deployer = uploadJni.repositories.mavenDeployer
+
+binaries.withType(SharedLibraryBinary) { binary ->
+    if (!buildable) {
+        return
+    }
+    def arch = System.properties['os.arch']
+    if (targetPlatform.operatingSystem.name in ['linux', 'freebsd'] && targetPlatform.architecture.name != arch) {
+        // Native plugins don't detect whether multilib support is available or not. Assume not for now
+        return
+    }
+
+    def variantName = "${targetPlatform.operatingSystem.name}-${targetPlatform.architecture.name}"
+    def taskName = "jar-${variantName}"
+    def nativeJar = project.tasks.findByName(taskName)
+    if (nativeJar == null) {
+        nativeJar = project.task(taskName, type: Jar) {
+            baseName = "native-platform-$variantName"
+        }
+        artifacts {
+            jni nativeJar
+            runtime nativeJar
+        }
+        def jniPom = deployer.addFilter(variantName) { artifact, file ->
+            return file == nativeJar.archivePath
+        }
+        jniPom.groupId = project.group
+        jniPom.artifactId = nativeJar.baseName
+        jniPom.version = project.version
+        jniPom.scopeMappings.mappings.clear()
+    }
+
+    def builderTask = binary.tasks.builder
+    nativeJar.into("net/rubygrapefruit/platform/$variantName") { from builderTask.outputFile }
+    nativeJar.dependsOn builderTask
+    test.dependsOn nativeJar
+}
+
+javadoc {
+    exclude '**/internal/**'
+}
+
+task sourceZip(type: Zip) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+    extension = 'jar'
+}
+
+task javadocZip(type: Zip) {
+    from javadoc
+    classifier = 'javadoc'
+    extension = 'jar'
+}
+
+artifacts {
+    archives sourceZip
+    archives javadocZip
+}
+
+def mainPom = uploadArchives.repositories.mavenDeployer.pom
+mainPom.groupId = project.group
+mainPom.artifactId = jar.baseName
+mainPom.version = project.version
+mainPom.scopeMappings.mappings.clear()
+mainPom.withXml { provider ->
+    def node = provider.asNode()
+    def deps = node.appendNode('dependencies')
+    ['osx-i386', 'osx-amd64', 'linux-amd64', 'linux-i386',
+            'windows-amd64', 'windows-i386', 'freebsd-i386', 'freebsd-amd64'].each { platform ->
+        def dep = deps.appendNode('dependency')
+        dep.appendNode('groupId', project.group)
+        dep.appendNode('artifactId', "native-platform-${platform}")
+        dep.appendNode('version', project.version)
+    }
+}
+apply plugin: 'application'
+
+mainClassName = 'net.rubygrapefruit.platform.test.Main'
+applicationName = 'native-platform-test'
+archivesBaseName = 'native-platform-test'
+
+if (project.hasProperty('release')) {
+    repositories {
+        maven { url "$rootProject.buildDir/repo" }
+    }
+    dependencies {
+        compile "net.rubygrapefruit:native-platform:${version}"
+    }
+} else {
+    dependencies {
+        compile project(':')
+    }
+}
+
+dependencies {
+    compile 'net.sf.jopt-simple:jopt-simple:4.2'
+}
+
+configurations.archives.artifacts.clear()
+artifacts {
+    archives distZip
+}

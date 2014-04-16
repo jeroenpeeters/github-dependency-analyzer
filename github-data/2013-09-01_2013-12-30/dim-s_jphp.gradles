@@ -1,0 +1,193 @@
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'maven'
+    apply plugin: 'idea'
+
+    [compileJava, compileTestJava, javadoc]*.options*.encoding = 'UTF-8'
+
+    sourceCompatibility = 1.6
+    targetCompatibility = 1.6
+
+    project.group = 'org.develnext'
+    project.version = '0.4'
+    project.ext.isSnapshot = true;
+
+    if (project.ext.isSnapshot) {
+        version += '-SNAPSHOT'
+    }
+
+    repositories {
+        mavenCentral()
+    }
+
+    sourceSets {
+        main.java.srcDirs = ['src/main/java']
+        main.resources.srcDirs = ['src/main/resources']
+
+        test.java.srcDirs = ["src/main/tests"]
+        test.resources.srcDirs = ["src/main/tests"]
+    }
+}
+
+// extensions
+configure(subprojects.findAll { it.name.endsWith("-ext") }) {
+    task extensionJar(type: Jar, dependsOn: "classes") {
+        extensionJar.archiveName = project.name + ".jar"
+
+        from {
+            configurations.compile.findAll {
+                !it.toString().contains("jphp-") && !it.toString().contains("asm-")
+            }.collect {
+                it.isDirectory() ? it : zipTree(it)
+            }
+        }
+        from sourceSets.main.output.classesDir
+    }
+}
+
+// for deploy
+configure([
+        project(':jphp-core'),
+        project(':jphp-swing-ext'),
+        project(':jphp-zend-ext'),
+        project(':jphp-json-ext')
+]) {
+
+    if (!project.ext.isSnapshot) {
+        task sourcesJar(type: Jar, dependsOn: 'classes') {
+            classifier = 'sources'
+            from sourceSets.main.allSource
+        }
+
+        task javadocJar(type: Jar, dependsOn: javadoc) {
+            classifier = 'javadoc'
+            from javadoc.destinationDir
+        }
+
+        jar.dependsOn += [sourcesJar, javadocJar]
+
+        artifacts {
+            archives sourcesJar
+            archives javadocJar
+        }
+    }
+
+    task deploy << {
+        ext {
+            username = System.console().readLine("\nusername: ")
+            password = System.console().readPassword("password: ").toString()
+        }
+
+        uploadArchives {
+            repositories {
+                mavenDeployer {
+                    repository(url: 'http://maven.develnext.org/repository/internal') {
+                        authentication(userName: deploy.username, password: deploy.password);
+                    }
+                    snapshotRepository(url: 'http://maven.develnext.org/repository/snapshots') {
+                        authentication(userName: deploy.username, password: deploy.password);
+                    }
+                }
+            }
+        }
+        uploadArchives.execute();
+    }
+
+    deploy.dependsOn += jar
+}
+sourceSets {
+    main.java.srcDirs = ['src']
+}
+
+jar {
+    jar.archiveName = 'jphp-cli.jar'
+
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    manifest { attributes 'Main-Class': 'org.develnext.jphp.cli.CLI' }
+
+    copy {
+        from 'shell/jphp'
+        from 'shell/jphp.bat'
+        from 'shell/jphp.conf'
+
+        into "$libsDir"
+    }
+}
+
+dependencies {
+    compile project(':jphp-core')
+    compile project(':jphp-zend-ext')
+    compile 'com.beust:jcommander:1.32'
+}
+
+sourceSets {
+    main.java.srcDirs = ['src']
+    test.java.srcDirs = ["tests"]
+    test.resources.srcDirs = ["tests"]
+}
+
+dependencies {
+    compile group: 'org.ow2.asm', name: 'asm-all', version:'5.0+'
+
+    testCompile 'junit:junit:4.+'
+    testCompile project(':jphp-zend-ext')
+}
+sourceSets {
+    main {
+        java {
+            srcDir 'src/main/java'
+        }
+        resources {
+            srcDir 'src/main/resources'
+            srcDir 'src/main/php'
+        }
+    }
+}
+
+dependencies {
+    compile project(':jphp-core')
+    compile project(':jphp-swing-ext')
+    compile project(':jphp-zend-ext')
+}
+
+jar {
+    from { configurations.compile.collect { it.isDirectory() ? it : zipTree(it) } }
+    manifest { attributes 'Main-Class': 'php.runtime.launcher.Launcher' }
+}
+
+task(exampleStart, dependsOn: "classes", type: JavaExec) {
+    description = "Main start"
+    main = "php.runtime.launcher.Launcher"
+    classpath = sourceSets.main.runtimeClasspath
+}
+ext.isExtension = true;
+
+dependencies {
+    compile project(':jphp-core')
+    compile 'com.google.code.gson:gson:2.2+'
+
+    testCompile 'junit:junit:4.+'
+    testCompile project(':jphp-core').sourceSets.test.output
+}
+ext.isExtension = true;
+
+sourceSets {
+    main.java.srcDirs = ['src']
+}
+
+dependencies {
+    compile project(':jphp-core')
+}
+ext.isExtension = true;
+
+sourceSets {
+    test.resources.srcDirs = ["src/main/tests"]
+}
+
+dependencies {
+    compile project(':jphp-core')
+    compile project(':jphp-json-ext')
+
+    testCompile 'junit:junit:4.+'
+    testCompile project(':jphp-core').sourceSets.test.output
+}

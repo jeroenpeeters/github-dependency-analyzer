@@ -1,0 +1,122 @@
+// Tasks to perform when no task is specified
+defaultTasks 'clean', 'build', 'shadowJar'
+
+// Plugins used
+apply plugin: 'java' // Specifies a java project, allows for javadoc generation etc.
+apply plugin: 'application' // Adds the 'gradle run' task
+apply plugin: 'project-report' // Adds project report tasks
+apply plugin: 'shadow' // Allows for dependency shading
+
+// Methods to determine detailed version string
+def gitDescribe() {
+    try {
+        // determine git-describe output
+        def stdout = new ByteArrayOutputStream()
+        exec {
+            commandLine 'git', 'describe', '--always'
+            standardOutput = stdout
+        }
+        return stdout.toString().trim()
+    } catch (e) {
+        return "unknown"
+    }
+}
+def getVersionName() {
+    try {
+        // determine git-describe output
+        def version = gitDescribe()
+
+        // add on jenkins or travis build information
+        def jenkins_build = System.getenv("BUILD_NUMBER")
+        def travis_build = System.getenv("TRAVIS_BUILD_NUMBER")
+        if (jenkins_build != null) {
+            version += "-b" + jenkins_build
+        } else if (travis_build != null) {
+            version += "-trv" + travis_build
+        } else {
+            version += "-dev"
+        }
+
+        return version
+    } catch (e) {
+        return "unknown-version"
+    }
+}
+
+// Basic project information
+group = 'net.glowstone'
+version = '0.0.1-SNAPSHOT'
+description = "Glowstone"
+mainClassName = "net.glowstone.GlowServer"
+
+// Extended project information
+ext.url = 'https://github.com/SpaceManiac/Glowstone'
+ext.bukkitVersion = '1.7.2-R0.3'
+ext.gitDescribe = getVersionName()
+
+// Minimum Java version required
+sourceCompatibility = '1.7'
+targetCompatibility = '1.7'
+
+// Compile encoding
+compileJava {
+    options.encoding = 'UTF-8'
+}
+
+// Simple build script information
+buildscript {
+    repositories {
+        maven { url "http://jcenter.bintray.com" }
+    }
+    dependencies {
+        classpath 'com.github.jengelman.gradle.plugins:shadow:0.8'
+    }
+}
+
+// Configuration settings to check for new snapshots
+configurations.all {
+    resolutionStrategy.cacheChangingModulesFor 0, 'seconds' // Always check for new snapshots
+}
+
+// Repositories storing our dependencies
+repositories {
+    mavenLocal()
+    mavenCentral()
+    maven { url "http://repo.bukkit.org/content/groups/public/" }
+    maven { url "https://oss.sonatype.org/content/repositories/public/" }
+}
+
+// Dependencies used by our project
+dependencies {
+    compile group: 'org.bukkit', name: 'bukkit', version: ext.bukkitVersion
+    compile 'com.flowpowered:flow-networking:0.1.0-SNAPSHOT'
+    compile 'org.bouncycastle:bcprov-jdk16:1.46'
+    compile 'jline:jline:2.11'
+    //compile 'mysql:mysql-connector-java:5.1.14'
+    //compile 'org.xerial:sqlite-jdbc:3.7.2'
+    compile 'org.slf4j:slf4j-jdk14:1.7.5'
+    testCompile 'junit:junit:4.8.1'
+}
+
+// Shadow plugin settings
+shadow {
+    artifactAttached = false
+}
+
+// Jar manifest information
+manifest.mainAttributes(
+        'Main-Class': mainClassName,
+        'Implementation-Title': description,
+        'Implementation-Version': ext.gitDescribe,
+        'Implementation-Vendor': 'SpaceManiac',
+        'Specification-Title': 'Bukkit',
+        'Specification-Version': ext.bukkitVersion,
+        'Specification-Vendor': 'Bukkit Team',
+        'Sealed': true
+)
+
+// Exclude jar signatures
+shadow {
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+}

@@ -1,0 +1,769 @@
+<!-- This project is built with 'Apache Ant version 1.6.5' and 'java version 1.5' -->
+<project name="AttestationService" basedir="./" default="all">
+
+	<!-- Project settings -->
+		<property name="classes.dir" value="./WebContent/WEB-INF/classes" />
+		<property name="runtime.lib.dir" value="./WebContent/WEB-INF/lib" />
+		<property name="compile.lib.dir" value="./WebContent/WEB-INF/lib" />
+		<property name="deployment.root" value="./WebContent" />
+		<property name="src.dir" value="./src" />
+		<property name="dist.type" value=".war" />
+		<property name="debug" value="on" />
+	
+	<basename property="project.distname" file="./" />
+	
+	<path id="compile.classpath">
+			<pathelement path="${classpath}" />
+			<fileset dir="${runtime.lib.dir}">
+				<include name="**/*.jar" />
+				<include name="**/*.zip" />
+			</fileset>
+			<fileset dir="${compile.lib.dir}">
+				<include name="**/*.jar" />
+				<include name="**/*.zip" />
+			</fileset>
+		</path>
+
+
+	<!-- Build project and create distribution-->
+		<target name="all">
+			<!-- Timestamp for potential use in filenames below-->
+			<tstamp />
+
+			<!-- Clean and copy non java files-->
+			<delete dir="${classes.dir}" />
+			<mkdir dir="${classes.dir}" />
+			<copy todir="${classes.dir}" includeEmptyDirs="no">
+				<fileset dir="${src.dir}">
+					<patternset>
+						<exclude name="**/*.java" />
+					</patternset>
+				</fileset>
+			</copy>
+			<!-- Compile-->
+	        <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="${debug}">
+	            <classpath refid="compile.classpath"/>
+	        </javac>
+
+
+			<!-- Build the type of distribution specified above-->
+			<delete file="./${project.distname}${dist.type}" />
+			<jar jarfile="${project.distname}${dist.type}" basedir="${deployment.root}" >
+				<fileset dir="./">
+						<exclude name="src/" />
+						<exclude name=".classpath" />
+						<exclude name=".project" />
+						<exclude name=".settings/" />
+						<exclude name="build.xml" />
+					    <exclude name="build/"/>
+						<exclude name="WebContent/" />
+						<patternset>
+							<exclude name="**/*.java" />
+						</patternset>
+				</fileset>
+			</jar>		
+
+			
+		</target>
+
+	
+	
+</project><!-- This project is built with 'Apache Ant version 1.6.5' and 'java version 1.5' -->
+<project name="HisAppraiser" basedir="./" default="all">
+
+	<!-- Project settings -->
+	<property name="classes.dir" value="./bin" />
+	<property name="runtime.lib.dir" value="./lib" />
+	<property name="compile.lib.dir" value="./lib" />
+	<property name="deployment.root" value="./bin" />
+	<property name="src.dir" value="./src" />
+	<property name="dist.type" value=".jar" />
+	<property name="debug" value="on" />
+	<property name="build.web.classes.jar" value="false" />
+	<property name="build.axis.client.jar" value="false" />
+
+	<basename property="project.distname" file="./" />
+
+	<path id="compile.classpath">
+		<pathelement path="${classpath}" />
+		<fileset dir="${runtime.lib.dir}">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+		<fileset dir="${compile.lib.dir}">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<!-- Build project and create distribution-->
+	<target name="all">
+		<!-- Timestamp for potential use in filenames below-->
+		<tstamp />
+
+		<!-- Clean and copy non java files-->
+		<delete dir="${classes.dir}" />
+		<mkdir dir="${classes.dir}" />
+		<copy todir="${classes.dir}" includeEmptyDirs="no">
+			<fileset dir="${src.dir}">
+				<!--
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+				-->
+			</fileset>
+		</copy>
+		<!-- Compile-->
+        <javac srcdir="${src.dir}" destdir="${classes.dir}"
+               debug="${debug}" source="1.5" target="1.5">
+            <classpath refid="compile.classpath"/>
+        </javac>
+
+		<!-- Build the type of distribution specified above-->
+		<delete file="./${project.distname}${dist.type}" />
+		<jar jarfile="${project.distname}${dist.type}" basedir="${deployment.root}" />
+
+		<!-- Build jar from web classes directory-->
+		<condition property="Activate.webClasses">
+			<istrue value="${build.web.classes.jar}"/>
+		</condition>
+		<antcall target="webClasses"/>
+
+		<!-- Build jar from axis directory-->
+		<condition property="Activate.axisClient">
+			<istrue value="${build.axis.client.jar}"/>
+		</condition>
+		<antcall target="axisClient"/>
+
+	</target>
+
+	<!-- Build jar from web classes directory-->
+	<target name="webClasses" if="Activate.webClasses">
+		<delete file="./${project.distname}.jar" />
+		<jar jarfile="${project.distname}.jar" basedir="${classes.dir}" />
+	</target>
+	
+	<!-- Build jar from axis directory-->
+	<target name="axisClient" if="Activate.axisClient">
+		<delete file="./${project.distname}-client.jar" />
+		<jar destfile="${project.distname}-client.jar">
+			<fileset dir="${classes.dir}">
+				<patternset>
+					<include name="**/axis/**/*"/>
+					<exclude name="**/axis/*BindingImpl.*" />
+				</patternset>
+			</fileset>
+		</jar>
+	</target>
+
+	<!-- Run a class within the project-->
+	<target name="runJavaTarget">
+	    <path id="project.path">
+			<path refid="compile.classpath" />
+			<pathelement path="${classes.dir}"/>
+	    </path>
+	    
+	    <pathconvert property="project.path.pathconvert" refid="project.path"/>
+		<exec executable="CMD" failonerror="true" >
+			<arg line="/R"/>
+			<arg line="%_JAVACMD% -classpath ${project.path.pathconvert} ${execString}"/>
+		</exec>		
+	</target>
+
+	<!-- Produce javadoc for the project-->
+	<target name="javaDoc">
+		<delete dir="javaDoc" />
+		<javadoc destdir="javaDoc" overview="${src.dir}/overview.html" includenosourcepackages="true" verbose="false">
+			<classpath>
+				<path refid="compile.classpath" />
+				<pathelement path="${classes.dir}"/>
+		    </classpath>
+			<fileset dir="${src.dir}">
+				<include name="**/*.java"/>
+				<exclude name="gov/niarl/his/xsd/integrity_Report_v1_0/**"/>
+				<exclude name="gov/niarl/his/xsd/pcr_difference/**"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+</project>
+<project name="Integrity_Report_Manifest_v1_0" basedir="./" default="Build">
+
+        <path id="compile.classpath">
+                <pathelement path="${classpath}" />
+                <fileset dir="../../lib">
+                        <include name="**/*.jar" />
+                        <include name="**/*.zip" />
+                </fileset>
+        </path>
+
+	<taskdef name="xjc" classname="com.sun.tools.xjc.XJCTask">
+		<classpath refid="compile.classpath" />
+	</taskdef>
+
+
+	<!-- Build project and create distribution-->
+	<target name="Build">
+		<delete dir="src" />
+		<mkdir dir="src" />
+		<xjc destdir="src">
+			<schema dir="./">
+				<include name="Core_Integrity_Manifest_v1_0_1.xsd" />
+				<include name="Integrity_Report_Manifest_v1_0.xsd" />
+				<include name="Simple_Object_v1_0.xsd" />
+			</schema>
+			<binding dir="./">
+				<include name="binding.xjb" />
+			</binding>
+		</xjc>
+       <!-- Clean and copy java files-->
+        <delete dir="../../src/gov/niarl/his/xsd/integrity_Report_v1_0" />
+		<copy todir="../../src/gov/niarl/his/xsd">
+		    <fileset dir="./src/gov/niarl/his/xsd"/>
+		 </copy>
+	 </target>
+
+</project>
+<project name="PCR_Difference" basedir="./" default="Build">
+       <path id="compile.classpath">
+                <pathelement path="${classpath}" />
+                <fileset dir="../../lib">
+                        <include name="**/*.jar" />
+                        <include name="**/*.zip" />
+                </fileset>
+        </path>
+
+
+	<taskdef name="xjc" classname="com.sun.tools.xjc.XJCTask">
+		<classpath refid="compile.classpath" />
+	</taskdef>
+
+
+	<!-- Build project and create distribution-->
+	<target name="Build">
+		<delete dir="src" />
+		<mkdir dir="src" />
+		<xjc destdir="src">
+			<schema dir="./">
+				<include name="PCR_Difference.xsd" />
+				<include name="PCR_DifferenceXMLSchema.xsd" />
+			</schema>
+			<binding dir="./">
+				<include name="PCR_Difference.binding.xjb.xml" />
+			</binding>
+		</xjc>
+        <!-- Clean and copy java files-->
+        <delete dir="../../src/gov/niarl/his/xsd/pcr_difference" />
+        <copy todir="../../src/gov/niarl/his/xsd">
+            <fileset dir="./src/gov/niarl/his/xsd"/>                                                
+        </copy>
+	</target>
+
+</project>
+<project name="HisClient" basedir="./" default="build">
+
+	<path id="compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./lib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<!-- Build project and create distribution-->
+	<target name="build">
+		<!-- Timestamp for potential use in filenames below-->
+		<tstamp />
+
+		<!-- Clean and copy non java files-->
+		<delete dir="./bin" />
+		<mkdir dir="./bin" />
+		<copy todir="./bin">
+			<fileset dir="./src">
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</copy>
+		<!-- Compile-->
+		<javac srcdir="./src" destdir="./bin" debug="true"
+               source="1.5" target="1.5">
+			<classpath refid="compile.classpath"/>
+		</javac>
+
+		<!-- Build-->
+		<delete file="./jar/OAT_Standalone.jar" />
+		<jar jarfile="./jar/OAT_Standalone.jar">
+			<manifest>
+				<attribute name = "Main-Class" value = "gov.niarl.his.StandaloneHIS"/>
+				<attribute name = "Class-Path" 
+					 value = "lib/activation.jar lib/am_sdk.jar lib/am_services.jar lib/amclientsdk.jar
+					          lib/commons-beanutils.jar lib/commons-collections.jar lib/commons-digester.jar
+                                                  lib/commons-logging.jar lib/GeneralUtilities.jar lib/jaas.jar lib/jax-qname.jar
+                                                  lib/jaxb-api.jar lib/jaxb-impl.jar lib/jaxb-libs.jar lib/jaxb-xjc.jar
+                                                  lib/jta-spec1_0_1.jar lib/log4j-1.2.14.jar lib/mail.jar lib/namespace.jar
+                                                  lib/relaxngDatatype.jar lib/servlet-api.jar lib/TokenUtil.jar lib/xsdlib.jar
+                                                  lib/bbxasc.jar lib/bbxcore.jar lib/bbxdatamodel.jar lib/bbxutil.jar lib/FastInfoset.jar
+				        	 					  lib/HisAuthenticationWebService-client.jar lib/http.jar lib/jaxws-api.jar 
+                                                  lib/jaxws-rt.jar lib/jaxws-tools.jar lib/jsr173_api.jar lib/jsr181-api.jar
+                                                  lib/jsr250-api.jar lib/mimepull.jar lib/resolver.jar lib/saaj-api.jar lib/saaj-impl.jar
+                                                  lib/stax-ex.jar lib/streambuffer.jar lib/woodstox.jar lib/HisWebServices-client.jar lib/uuid-3.2.jar"/>
+			</manifest>
+			<fileset dir="./bin"/>
+		</jar>
+	</target>
+
+</project>
+<project name="Integrity_Report_Manifest_v1_0" basedir="./" default="Build">
+
+        <path id="compile.classpath">
+                <pathelement path="${classpath}" />
+                <fileset dir="../../lib">
+                        <include name="**/*.jar" />
+                        <include name="**/*.zip" />
+                </fileset>
+        </path>
+
+	<taskdef name="xjc" classname="com.sun.tools.xjc.XJCTask">
+		<classpath refid="compile.classpath" />
+	</taskdef>
+
+
+	<!-- Build project and create distribution-->
+	<target name="Build">
+		<delete dir="src" />
+		<mkdir dir="src" />
+		<xjc destdir="src">
+			<schema dir="./">
+				<include name="Simple_Object_v1_0.xsd" />
+				<include name="Core_Integrity_Manifest_v1_0_1.xsd" />
+				<include name="Integrity_Report_Manifest_v1_0.xsd" />
+			</schema>
+			<binding dir="./">
+				<include name="binding.xjb" />
+			</binding>
+		</xjc>
+               <!-- Clean and copy java files-->
+               <delete dir="../../src/org" />
+               <copy todir="../../src">
+	           <fileset dir="./src"/>
+	       </copy>
+	 </target>
+
+</project>
+<project name="HisPrivacyCAWebServices2" basedir="./" default="server">
+
+	<path id="compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./WEB-INF/lib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+		<fileset dir="./WEB-INF/jars-compile-only">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<path id="client.compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./clientlib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<taskdef name="wsimport" classname="com.sun.tools.ws.ant.WsImport">
+		<classpath>
+			<path refid="client.compile.classpath" />
+		</classpath>
+	</taskdef>
+
+	<!-- Build project and create distribution-->
+	<target name="server">
+		<!-- Timestamp for potential use in filenames below-->
+		<tstamp />
+
+		<!-- Clean and copy non java files-->
+		<delete dir="./WEB-INF/classes" />
+		<mkdir dir="./WEB-INF/classes" />
+		<copy todir="./WEB-INF/classes">
+			<fileset dir="./src">
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</copy>
+		<!-- Compile-->
+		<javac debug="true" destdir="./WEB-INF/classes" srcdir="./src"
+               source="1.5" target="1.5"
+               includes="**/*.java" excludes="**/hisPrivacyCAWebService2/client/,Main.java">
+			<classpath>
+				<path refid="compile.classpath" />
+			</classpath>
+		</javac>
+
+		<!-- Build-->
+		<delete file="./HisPrivacyCAWebServices2.war" />
+		<jar jarfile="./HisPrivacyCAWebServices2.war">
+			<fileset dir="./">
+				<exclude name="src/" />
+				<exclude name="WEB-INF/jars-compile-only/" />
+				<exclude name=".classpath" />
+				<exclude name=".project" />
+				<exclude name="build.xml" />
+				<exclude name="clientlib/" />
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</jar>
+	</target>
+
+	<!-- Build jar from axis directory-->
+	<target name="client">
+		<delete dir="client" />
+		<mkdir dir="client" />
+		<delete dir="clientsrc" />
+		<mkdir dir="clientsrc" />
+		<delete dir="clientlib/HisPrivacyCAWebServices2-client.jar" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.his.webservices.hisPrivacyCAWebServices2.clientWsImport"
+			wsdl="${basedir}/wsdl/hisPrivacyCAWebService2.wsdl"
+			xnocompile="true" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.his.webservices.hisPrivacyCAWebServices2.clientWsImport"
+			wsdl="${basedir}/wsdl/hisPrivacyCAWebService2FactoryService.wsdl"
+			xnocompile="true" />
+		<javac debug="true" destdir="client"
+			source="1.5" target="1.5">
+			<src path="src"/>
+			<src path="clientsrc"/>
+			<include name="**/hisPrivacyCAWebService2/client/**/*.java"/>
+			<include name="**/hisPrivacyCAWebService2/*,Main.java"/>
+			<include name="**/clientWsImport/*"/>
+			<classpath>
+				<path refid="client.compile.classpath" />
+				<pathelement path="client"/>
+			</classpath>
+		</javac>
+		<jar jarfile="clientlib/HisPrivacyCAWebServices2-client.jar" basedir="client" />
+		<delete dir="client" />
+	</target>
+
+	<target name="clientInvoker">
+		<java classname="Main" fork="true">
+			<classpath>
+				<path refid="client.compile.classpath" />
+			</classpath>
+		</java>
+	</target>
+
+</project>
+<!-- This project is built with 'Apache Ant version 1.6.5' and 'java version 1.5' -->
+<project name="HisWebServices" basedir="./" default="server">
+
+	<path id="compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./WEB-INF/lib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+		<fileset dir="./WEB-INF/jars-compile-only">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<path id="client.compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./clientlib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+			<exclude name="HisWebServices-client.jar"/>
+		</fileset>
+	</path>
+
+	<taskdef name="wsimport" classname="com.sun.tools.ws.ant.WsImport">
+		<classpath>
+			<path refid="client.compile.classpath" />
+		</classpath>
+	</taskdef>
+
+	<!-- Build project and create distribution-->
+	<target name="server">
+		<!-- Timestamp for potential use in filenames below-->
+		<tstamp />
+
+		<!-- Clean and copy non java files-->
+		<delete dir="./WEB-INF/classes" />
+		<mkdir dir="./WEB-INF/classes" />
+		<copy todir="./WEB-INF/classes">
+			<fileset dir="./src">
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</copy>
+		<!-- Compile-->
+		<javac debug="true" destdir="./WEB-INF/classes" srcdir="./src"
+			source="1.5" target="1.5"
+			includes="**/*.java" excludes="**/hisWebService/client/,MainHisWebServices.java">
+			<classpath>
+				<path refid="compile.classpath" />
+			</classpath>
+		</javac>
+
+		<!-- Build-->
+		<delete file="./HisWebServices.war" />
+		<jar jarfile="./HisWebServices.war">
+			<fileset dir="./">
+				<exclude name="src/" />
+				<exclude name="WEB-INF/jars-compile-only/" />
+				<exclude name=".classpath" />
+				<exclude name=".project" />
+				<exclude name="build.xml" />
+				<exclude name="clientlib/" />
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</jar>
+	</target>
+
+	<!-- Build jar from axis directory-->
+	<target name="client">
+		<delete dir="client" />
+		<mkdir dir="client" />
+        <delete dir="clientsrc" />
+        <mkdir dir="clientsrc"/>
+		<!-- <delete file="clientlib/HisWebServices-client.jar" />-->
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.sal.webservices.hisWebServices.clientWsImport"
+			wsdl="${basedir}/wsdl/hisWebService.wsdl"
+			xnocompile="true" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.sal.webservices.hisWebServices.clientWsImport"
+			wsdl="${basedir}/wsdl/hisWebServiceFactoryService.wsdl"
+			xnocompile="true" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.sal.webservices.hisWebServices.clientWsImport"
+			wsdl="${basedir}/wsdl/hisEnrollmentWebService.wsdl"
+			xnocompile="true" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.sal.webservices.hisWebServices.clientWsImport"
+			wsdl="${basedir}/wsdl/hisPollingWebService.wsdl"
+			xnocompile="true" />
+		<wsimport 
+			debug="true" 
+			verbose="true" 
+			keep="true" 
+			sourcedestdir="clientsrc" 
+			package="gov.niarl.sal.webservices.hisWebServices.clientWsImport"
+			wsdl="${basedir}/wsdl/hisDownloadReportService.wsdl"
+			xnocompile="true" />
+		<javac debug="true" destdir="client"
+			source="1.5" target="1.5">
+			<src path="src"/>
+			<src path="clientsrc"/>
+			<include name="**/hisWebService/client/**/*.java"/>
+			<include name="**/hisWebService/*"/>
+			<include name="**/clientWsImport/*"/>
+			<classpath>
+				<path refid="client.compile.classpath" />
+				<pathelement path="client"/>
+			</classpath>
+		</javac>
+		<jar jarfile="clientlib/HisWebServices-client.jar" basedir="client" />
+		<delete dir="client" />
+	</target>
+
+	<target name="clientInvoker">
+		<delete dir="client" />
+		<mkdir dir="client" />
+		<copy todir="client" includeEmptyDirs="no">
+			<fileset dir="./src">
+				<include name="MainHisWebServices.java" />
+			</fileset>
+		</copy>
+        <javac srcdir="client" destdir="client"
+               debug="true" source="1.5" target="1.5">
+			<classpath>
+				<fileset dir="./clientlib">
+					<include name="**/*.jar" />
+					<include name="**/*.zip" />
+				</fileset>
+				<pathelement path="./client"/>
+			</classpath>
+        </javac>
+		<java classname="MainHisWebServices" fork="true">
+			<classpath>
+				<fileset dir="./clientlib">
+					<include name="**/*.jar" />
+					<include name="**/*.zip" />
+				</fileset>
+				<pathelement path="./client"/>
+			</classpath>
+		</java>
+		<delete dir="client" />
+	</target>
+
+	<!-- Produce javadoc for the project-->
+	<target name="javaDoc">
+		<delete dir="javaDoc" />
+		<javadoc destdir="javaDoc" overview="./src/overview.html" includenosourcepackages="true" verbose="false">
+			<classpath>
+				<path refid="compile.classpath" />
+				<pathelement path="./WEB-INF/classes"/>
+				<fileset dir="./clientlib">
+					<include name="**/*.jar" />
+					<include name="**/*.zip" />
+				</fileset>
+		    </classpath>
+			<fileset dir="./src">
+				<include name="**/*.java"/>
+			</fileset>
+		</javadoc>
+	</target>
+
+</project>
+<project name="PrivacyCA" basedir="./" default="build">
+
+	<path id="compile.classpath">
+		<pathelement path="${classpath}" />
+		<pathelement path="${java.class.path}" />
+		<fileset dir="./lib">
+			<include name="**/*.jar" />
+			<include name="**/*.zip" />
+		</fileset>
+	</path>
+
+	<!-- Build project and create distribution-->
+	<target name="build">
+		<!-- Timestamp for potential use in filenames below-->
+		<tstamp />
+
+		<!-- Clean and copy non java files-->
+		<delete dir="./bin" />
+		<mkdir dir="./bin" />
+		<copy todir="./bin">
+			<fileset dir="./src">
+				<patternset>
+					<exclude name="**/*.java" />
+				</patternset>
+			</fileset>
+		</copy>
+		<!-- Compile-->
+		<javac srcdir="./src" destdir="./bin" debug="true"
+               source="1.5" target="1.5">
+			<classpath refid="compile.classpath"/>
+		</javac>
+
+		<!-- Build-->
+		<delete file="./PrivacyCA.jar" />
+		<jar jarfile="./PrivacyCA.jar">
+			<fileset dir="./bin"/>
+		</jar>
+	</target>
+
+</project>
+<!-- This project is built with 'Apache Ant version 1.6.5' and 'java version 1.5' -->
+<project name="WLMService" basedir="./" default="all">
+
+	<!-- Project settings -->
+		<property name="classes.dir" value="./WebContent/WEB-INF/classes" />
+		<property name="runtime.lib.dir" value="./WebContent/WEB-INF/lib" />
+		<property name="compile.lib.dir" value="./WebContent/WEB-INF/lib" />
+		<property name="deployment.root" value="./WebContent" />
+		<property name="src.dir" value="./src" />
+		<property name="dist.type" value=".war" />
+		<property name="debug" value="on" />
+	
+	<basename property="project.distname" file="./" />
+	
+	<path id="compile.classpath">
+			<pathelement path="${classpath}" />
+			<fileset dir="${runtime.lib.dir}">
+				<include name="**/*.jar" />
+				<include name="**/*.zip" />
+			</fileset>
+			<fileset dir="${compile.lib.dir}">
+				<include name="**/*.jar" />
+				<include name="**/*.zip" />
+			</fileset>
+		</path>
+
+
+	<!-- Build project and create distribution-->
+		<target name="all">
+			<!-- Timestamp for potential use in filenames below-->
+			<tstamp />
+
+			<!-- Clean and copy non java files-->
+			<delete dir="${classes.dir}" />
+			<mkdir dir="${classes.dir}" />
+			<copy todir="${classes.dir}" includeEmptyDirs="no">
+				<fileset dir="${src.dir}">
+					<patternset>
+						<exclude name="**/*.java" />
+					</patternset>
+				</fileset>
+			</copy>
+			<!-- Compile-->
+	        <javac srcdir="${src.dir}" destdir="${classes.dir}" debug="${debug}">
+	            <classpath refid="compile.classpath"/>
+	        </javac>
+
+
+			<!-- Build the type of distribution specified above-->
+			<delete file="./${project.distname}${dist.type}" />
+			<jar jarfile="${project.distname}${dist.type}" basedir="${deployment.root}" >
+				<fileset dir="./">
+						<exclude name="src/" />
+						<exclude name=".classpath" />
+						<exclude name=".project" />
+						<exclude name=".settings/" />
+						<exclude name="build.xml" />
+					    <exclude name="build/"/>
+						<exclude name="WebContent/" />
+						<patternset>
+							<exclude name="**/*.java" />
+						</patternset>
+				</fileset>
+			</jar>		
+
+			
+		</target>
+
+	
+	
+</project>

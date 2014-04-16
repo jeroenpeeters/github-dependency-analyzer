@@ -1,0 +1,1604 @@
+<project name="s2-tiger" default="dist" basedir=".">
+	<tstamp>
+		<format property="releaseDate" pattern="yyyy-MM-dd" locale="ja,JP"/>
+	</tstamp>
+	<property name="zipDir" value="target/site/download/${releaseDate}"/>
+
+	<target name="dist">
+		<ant antfile="../seasar2/build.xml" target="fix-site">
+			<property name="site" value="${basedir}/target/site"/>
+		</ant>
+		<mkdir dir="${zipDir}"/>
+		<zip zipfile="${zipDir}/S2Tiger-${ver}.zip">
+			<zipfileset prefix="s2-tiger" dir=".">
+				<exclude name="**/build/**"/>
+				<exclude name="**/target/**"/>
+				<exclude name="**/site/**"/>
+			</zipfileset>
+			<zipfileset prefix="s2-tiger/lib" dir="target">
+				<include name="s2-tiger-${ver}.jar"/>
+			</zipfileset>
+			<zipfileset prefix="s2-tiger/lib/sources" dir="target">
+				<include name="s2-tiger-${ver}-sources.jar"/>
+			</zipfileset>
+			<zipfileset prefix="s2-tiger/resources" dir="src/test/resources">
+				<include name="s2jdbc.dicon"/>
+				<include name="s2junit4.dicon"/>
+			</zipfileset>
+			<zipfileset prefix="s2-tiger/doc" dir="target/site">
+				<exclude name="**/download/**"/>
+				<exclude name="**/*.zip"/>
+			</zipfileset>
+		</zip>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="s2jdbc-gen-it" default="showRdbmsName" basedir=".">
+	
+	<property name="rdbms" value="hsql"/>
+	<property name="temp" value="${rdbms}/temp"/>
+	<property name="build" value="${temp}/build"/>
+	<property name="testresult" value="${temp}/testresult"/>
+	<property name="src" value="${temp}/src"/>
+	<property name="resources" value="${rdbms}/resources"/>
+	<property name="db" value="${temp}/db"/>
+	<property name="migrate" value="${db}/migrate"/>
+	<property name="dump" value="${db}/dump"/>	
+	<property name="ddl-info" value="${db}/ddl-info.txt"/>
+	<property name="sql" value="${rdbms}/sql"/>	
+	<property name="rootpackagename" value="example"/>
+	<property name="transactional" value="false"/>
+	
+	<path id="classpath">
+		<fileset dir="../lib"/>
+		<fileset dir="../../s2jdbc-gen/lib"/>
+		<fileset dir="../../seasar2/lib" excludes="**/*-sources.jar"/>
+		<fileset dir="../../s2-tiger/lib" excludes="**/*-sources.jar"/>
+		<pathelement location="${build}"/>
+		<pathelement location="../../seasar2/build/classes"/>
+		<pathelement location="../../s2-tiger/build/classes"/>
+		<pathelement location="../../s2jdbc-gen/build/classes"/>
+		<pathelement location="${java.home}/../lib/tools.jar"/>
+	</path>
+
+	<taskdef resource="s2jdbc-gen-task.properties" classpathref="classpath"/>
+	
+	<target name="showRdbmsName">
+		<echo>${rdbms}</echo>
+	</target>
+
+	<target name="testAll">
+		<antcall target="testFromDbToEntity"/>
+		<antcall target="testFromEntityToDb"/>
+		<antcall target="testGenerateEntityTest"/>
+		<antcall target="testGenerateSqlFileConstants"/>
+		<antcall target="testGenerateSqlFileTest"/>
+		<antcall target="testMigrate"/>
+		<antcall target="testDumpDbMeta"/>
+		<antcall target="testDumpData"/>
+		<antcall target="testLoadData"/>
+		<antcall target="testSequenceGenerator"/>
+	</target>
+
+	<target name="testFromDbToEntity" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testFromDbToEntity">
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java"/>
+			<include name="example/entity/AbstractEntity.java"/>
+		</javac>
+		<!-- test -->
+		<gen-entity
+			rootpackagename="${rootpackagename}"
+			entitysuperclassname="example.entity.AbstractEntity"
+			javafiledestdir="${src}"
+			pluralformfile="plural.properties"
+			applydbcommenttojava="true"
+			classpathref="classpath"
+		/>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			applyjavacommenttoddl="true"
+			javafilesrcdirs="${src}, ../src/main/java"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testFromDbToEntity">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+	
+	<target name="testFromEntityToDb" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			srcdir="../src/main/java"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<!-- test -->
+		<gen-entitytest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-condition
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-names
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-service
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-servicetest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<junit 
+			haltonfailure="true" 
+			printsummary="true">
+			<formatter type="xml"/>
+			<batchtest todir="${testresult}" fork="true">
+				<fileset dir="${src}">
+					<include name="**/AddressTest.java"/>
+					<include name="**/AddressServiceTest.java"/>
+				</fileset>
+			</batchtest>
+			<classpath refid="classpath"/>
+		</junit>
+		<!-- tearDown -->
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			version="0"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testFromEntityToDb_s2junit4" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			srcdir="../src/main/java"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<!-- test -->
+		<gen-entitytest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			uses2junit4="true"
+			classpathref="classpath"
+		/>
+		<gen-names
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-service
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		/>
+		<gen-servicetest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			uses2junit4="true"
+			classpathref="classpath"
+		/>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<junit 
+			haltonfailure="true" 
+			printsummary="true">
+			<formatter type="xml"/>
+			<batchtest todir="${testresult}" fork="true">
+				<fileset dir="${src}">
+					<include name="**/AddressTest.java"/>
+					<include name="**/AddressServiceTest.java"/>
+				</fileset>
+			</batchtest>
+			<classpath refid="classpath"/>
+		</junit>
+		<!-- tearDown -->
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			version="0"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+	
+	<target name="testGenerateEntityTest" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			srcdir="../src/main/java"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<!-- test -->
+		<gen-entitytest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			usenamesclass="false"
+			classpathref="classpath"
+		/>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testGenerateSqlFileConstants" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<!-- test -->
+		<gen-sqlfileconstants
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		>
+			<sqlfileset dir="${build}">
+				<include name="META-INF/sql/**/*.sql" />
+			</sqlfileset>
+		</gen-sqlfileconstants>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+	
+	<target name="testGenerateSqlFileTest" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testGenerateSqlFileTest">
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<gen-sqlfiletest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			classpathref="classpath"
+		>
+			<sqlfileset dir="${build}">
+				<include name="META-INF/sql/**/*.sql" />
+			</sqlfileset>
+		</gen-sqlfiletest>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<junit 
+			haltonfailure="true" 
+			printsummary="true">
+			<formatter type="xml"/>
+			<batchtest todir="${testresult}" fork="true">
+				<fileset dir="${src}">
+					<include name="**/SqlFileTest.java"/>
+				</fileset>
+			</batchtest>
+			<classpath>
+				<path refid="classpath"/>
+			</classpath>
+		</junit>
+		<!-- tearDown -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testGenerateSqlFileTest">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testGenerateSqlFileTest_s2junit4" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testGenerateSqlFileTest">
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<gen-sqlfiletest
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			javafiledestdir="${src}"
+			uses2junit4="true"
+			classpathref="classpath"
+		>
+			<sqlfileset dir="${build}">
+				<include name="META-INF/sql/**/*.sql" />
+			</sqlfileset>
+		</gen-sqlfiletest>
+		<javac 
+			srcdir="${src}"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<junit 
+			haltonfailure="true" 
+			printsummary="true">
+			<formatter type="xml"/>
+			<batchtest todir="${testresult}" fork="true">
+				<fileset dir="${src}">
+					<include name="**/SqlFileTest.java"/>
+				</fileset>
+			</batchtest>
+			<classpath>
+				<path refid="classpath"/>
+			</classpath>
+		</junit>
+		<!-- tearDown -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testGenerateSqlFileTest">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testGenerateDdl" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java"/>
+		</javac>
+		<!-- test -->
+		<input 
+			message="DDLを生成する理由（リファクタリングの内容）を入力してください。このコメントはDDL情報ファイルに記録されます。"
+			addproperty="gen-ddl.comment"
+		/>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			comment="${gen-ddl.comment}"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testSequenceGenerator" if="supportssequence" depends="showRdbmsName, clean, condition">
+		<!-- setUp -->
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java3"/>
+			<src path="../src/test/java3"/>
+		</javac>
+		<!-- test -->
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<junit 
+			haltonfailure="true" 
+			printsummary="true">
+			<formatter type="xml"/>
+			<batchtest todir="${testresult}" fork="true">
+				<fileset dir="../src/test/java3">
+					<include name="**/SequenceGeneratorTest.java"/>
+				</fileset>
+			</batchtest>
+			<classpath>
+				<path refid="classpath"/>
+				<pathelement location="../src/main/java3"/>
+				<pathelement location="../src/test/java3"/>
+			</classpath>
+		</junit>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			version="0"
+			rootpackagename="${rootpackagename}"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testMigrate" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java"/>
+			<include name="example/entity/Address.java"/>
+			<include name="example/entity/Department.java"/>
+			<include name="example/entity/Employee.java"/>
+			<include name="example/entity/Foo.java"/>
+		</javac>
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testMigrate">
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			rootpackagename="${rootpackagename}"
+			transactional="${transactional}"
+			classpathref="classpath"
+		/>
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testMigrate">
+				<file name="insert.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<delete dir="${build}/example"/>
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java2"/>
+			<include name="example/entity/Address.java"/>
+			<include name="example/entity/Department.java"/>
+			<include name="example/entity/Employee.java"/>
+			<include name="example/entity/Foo.java"/>
+			<include name="example/entity/Hoge.java"/>
+		</javac>
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			rootpackagename="${rootpackagename}"
+			transactional="${transactional}"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<migrate 
+			classpathDir="${build}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			version="0"
+			rootpackagename="${rootpackagename}"
+			transactional="${transactional}"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testDumpDbMeta" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpDbMeta">
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<dump-dbmeta 
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpDbMeta">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+	</target>
+
+	<target name="testDumpData" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			srcdir="../src/main/java"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpData">
+				<file name="create.sql"/>
+				<file name="insert.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<dump-data
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			classpathref="classpath"
+		/>
+		<dump-data
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			applyenvtoversion="true"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<exec-sql classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpData">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="testLoadData" depends="showRdbmsName, clean">
+		<!-- setUp -->
+		<javac 
+			srcdir="../src/main/java"
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath"
+		/>
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpData">
+				<file name="create.sql"/>
+				<file name="insert.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<dump-data
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			applyenvtoversion="true"
+			classpathref="classpath"
+		/>
+		<exec-sql 
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpData">
+				<file name="drop.sql"/>
+				<file name="create.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<!-- test -->
+		<load-data
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			migratedir="${migrate}"
+			ddlInfofile="${ddl-info}"
+			applyenvtoversion="true"
+			classpathref="classpath"
+		/>
+		<!-- tearDown -->
+		<exec-sql
+			classpathref="classpath">
+			<sqlFileList dir="${sql}/testDumpData">
+				<file name="drop.sql"/>
+			</sqlFileList>
+		</exec-sql>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="condition">
+		<condition property="supportssequence">
+			<or>
+				<equals arg1="${rdbms}" arg2="db2"/>
+				<equals arg1="${rdbms}" arg2="h2"/>
+				<equals arg1="${rdbms}" arg2="hsql"/>
+				<equals arg1="${rdbms}" arg2="oracle"/>
+				<equals arg1="${rdbms}" arg2="postgre"/>
+			</or>
+		</condition>
+	</target>
+
+	<target name="clean">
+		<delete dir="${temp}"/>
+		<mkdir dir="${build}"/>
+		<mkdir dir="${testresult}"/>
+		<copy todir="${build}">
+			<fileset dir="common/resources">
+				<include name="**"/>
+			</fileset>
+			<fileset dir="${resources}">
+				<include name="**"/>
+			</fileset>
+		</copy>
+	</target>
+
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="s2jdbc-gen-it extension" default="testGenerateDdl" basedir=".">
+	
+	<property name="build" value="build"/>
+	<property name="resources" value="resources"/>
+	<property name="sql" value="sql"/>	
+	<property name="rootpackagename" value="example"/>
+	
+	<path id="classpath">
+		<pathelement location="${build}"/>
+		<pathelement location="../../s2jdbc-gen/build/classes"/>
+		<pathelement location="../../seasar2/build/classes"/>
+		<pathelement location="../../s2-tiger/build/classes"/>
+		<fileset dir="../lib"/>
+		<fileset dir="../../s2jdbc-gen/lib"/>
+		<fileset dir="../../seasar2/lib" excludes="**/*-sources.jar"/>
+		<fileset dir="../../s2-tiger/lib" excludes="**/*-sources.jar"/>
+	</path>
+
+	<taskdef resource="s2jdbc-gen-task.properties" classpathref="classpath"/>
+	
+	<target name="testGenerateDdl" depends="clean">
+		<!-- setUp -->
+		<javac 
+			destdir="${build}"
+			encoding="UTF-8"
+			fork="true"
+			debug="on"
+			classpathref="classpath">
+			<src path="../src/main/java"/>
+		</javac>
+		<!-- test -->
+		<gen-ddl 
+			classpathDir="${build}"
+			rootpackagename="${rootpackagename}"
+			genddllistenerclassname="org.seasar.extension.jdbc.gen.extension.svn.GenDdlSvn15Processor"
+			classpathref="classpath"
+		/>
+		<refresh projectname="s2jdbc-gen-it"/>
+	</target>
+
+	<target name="clean">
+		<delete dir="${build}"/>
+		<mkdir dir="${build}"/>
+		<concat destfile="db/migrate/0001/create/060-view/address_view.sql">create view ADDRESS_VIEW (CITY) as select CITY from ADDRESS;</concat>
+		<concat destfile="db/migrate/0001/create/070-role/role.sql">create role testrole;</concat>
+		<copy todir="${build}">
+			<fileset dir="${resources}">
+				<include name="**"/>
+			</fileset>
+		</copy>
+	</target>
+
+</project>
+<project name="s2jdbc-gen" default="dist" basedir=".">
+	<tstamp>
+		<format property="releaseDate" pattern="yyyy-MM-dd" locale="ja,JP"/>
+	</tstamp>
+	<property name="zipDir" value="target/site/download/${releaseDate}"/>
+
+	<target name="dist">
+		<ant antfile="../seasar2/build.xml" target="fix-site">
+			<property name="site" value="${basedir}/target/site"/>
+		</ant>
+		<mkdir dir="${zipDir}"/>
+		<zip zipfile="${zipDir}/S2JDBC-Gen-${ver}.zip">
+			<zipfileset prefix="s2jdbc-gen" dir=".">
+				<exclude name="**/build/**"/>
+				<exclude name="**/target/**"/>
+				<exclude name="**/site/**"/>
+				<exclude name="**/META-INF/maven/org.seasar.container/s2jdbc-gen/pom.properties"/>
+				<exclude name="build.xml"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/lib" dir="target">
+				<include name="s2jdbc-gen-${ver}.jar"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/libsrc" dir="target">
+				<include name="s2jdbc-gen-${ver}-sources.jar"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/libsrc" dir="target">
+				<include name="s2jdbc-gen-${ver}-sources.jar"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/resources" dir="src/main/resources/org/seasar/extension/jdbc/gen/internal/generator">
+				<include name="tempaltes/**"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/resources" dir="src/test/resources">
+				<include name="s2jdbc-gen-build.xml"/>
+			</zipfileset>
+			<zipfileset prefix="s2jdbc-gen/doc" dir="../seasar2/target/site/ja">
+				<include name="**/css/**"/>
+				<include name="**/images/**"/>
+				<include name="**/s2jdbc_gen/**"/>
+			</zipfileset>
+		</zip>
+	</target>
+</project>
+<project name="example-s2jdbc-gen" default="gen-ddl" basedir=".">
+
+  <property name="classpathdir" value="src/main/webapp/WEB-INF/classes"/>
+  <property name="rootpackagename" value="example"/>
+  <property name="entitypackagename" value="entity"/>
+  <property name="entityfilepattern" value="example/entity/**/*.java"/>
+  <property name="javafiledestdir" value="src/main/java"/>
+  <property name="testjavafiledestdir" value="src/test/java"/>
+  <property name="javafileencoding" value="UTF-8"/>
+  <property name="version" value="latest"/>
+  <property name="sqlfilepattern" value="META-INF/sql/**/*.sql"/>
+  <property name="applyenvtoversion" value="false"/>
+  <property name="uses2junit4" value="false"/>
+  <property name="env" value="ut"/>
+  <property name="jdbcmanagername" value="jdbcManager"/>
+  <condition property="vmarg.encoding" value="-Dfile.encoding=UTF-8" else="">
+    <isset property="eclipse.pdebuild.home"/>
+  </condition>
+
+  <path id="classpath">
+    <pathelement location="${classpathdir}"/>
+    <fileset dir="src/main/webapp/WEB-INF/lib">
+      <exclude name="src/main/webapp/WEB-INF/lib/sources/**"/>
+    </fileset>
+    <fileset dir="lib">
+      <exclude name="lib/sources/**"/>
+    </fileset>
+  </path>
+
+  <taskdef resource="s2jdbc-gen-task.properties" classpathref="classpath"/>
+
+  <target name="gen-entity">
+    <gen-entity
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entity>
+    <javac 
+      srcdir="${javafiledestdir}"
+      destdir="${classpathdir}"
+      encoding="${javafileencoding}"
+      fork="true"
+      debug="on"
+      classpathref="classpath">
+        <include name="${entityfilepattern}"/>
+    </javac>
+    <gen-names
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-names>
+    <gen-service
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-service>
+    <gen-sqlfileconstants
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfileconstants>
+    <gen-entitytest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entitytest>
+    <gen-servicetest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-servicetest>
+    <gen-sqlfiletest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfiletest>
+  </target>
+
+  <target name="gen-ddl">
+    <gen-ddl
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-ddl>
+    <gen-names
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-names>
+    <gen-service
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-service>
+    <gen-sqlfileconstants
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfileconstants>
+    <gen-entitytest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entitytest>
+    <gen-servicetest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-servicetest>
+    <gen-sqlfiletest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfiletest>
+  </target>
+
+  <target name="migrate">
+    <migrate
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      version="${version}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </migrate>
+    <refresh projectName="${projectname}"/>
+  </target>
+
+  <target name="rollback">
+    <migrate
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      version="previous"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </migrate>
+  </target>
+
+  <target name="dump">
+    <dump-data
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      entitypackagename="${entitypackagename}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </dump-data>
+  </target>
+
+</project><?xml version="1.0" encoding="UTF-8"?>
+<project name="s2jdbc-it" default="check-database" basedir=".">
+
+	<taskdef name="exec-sql" classname="org.seasar.extension.jdbc.it.util.ExecuteSqlTask" classpath="${classpath}"/>
+
+	<target name="setup-data" if="isTargetDatabase" depends="check-database">
+		<exec-sql 
+			haltOnError="false"
+			sqlFile="sql/drop_${database}.sql"/>
+		<exec-sql 
+			haltOnError="true"
+			sqlFile="sql/create_${database}.sql"/>
+	</target>
+
+	<target name="check-database">
+		<echo message="database=${database}"/>
+		<condition property="isTargetDatabase">
+			<or>
+				<equals arg1="${database}" arg2="db2"/>
+				<equals arg1="${database}" arg2="mssql2005"/>
+				<equals arg1="${database}" arg2="mysql"/>
+				<equals arg1="${database}" arg2="oracle"/>
+				<equals arg1="${database}" arg2="postgre"/>
+			</or>
+		</condition>
+	</target>
+
+</project>
+<project name="s2jdbc-tutorial" default="dist" basedir=".">
+	<target name="delete">
+		<delete>
+			<fileset dir="lib" includes="**/s2*.jar"/>
+		</delete>
+	</target>
+
+	<target name="copy">
+		<copy todir="lib" file="../seasar2/s2-framework/target/s2-framework-${ver}.jar"/>
+		<copy todir="lib" file="../seasar2/s2-extension/target/s2-extension-${ver}.jar"/>
+		<copy todir="lib" file="../s2-tiger/target/s2-tiger-${ver}.jar"/>
+		<copy todir="lib" file="../s2jdbc-gen/target/s2jdbc-gen-${ver}.jar"/>
+		<copy todir="lib/sources" file="../seasar2/s2-framework/target/s2-framework-${ver}-sources.jar"/>
+		<copy todir="lib/sources" file="../seasar2/s2-extension/target/s2-extension-${ver}-sources.jar"/>
+		<copy todir="lib/sources" file="../s2-tiger/target/s2-tiger-${ver}-sources.jar"/>		
+		<copy todir="lib/sources" file="../s2jdbc-gen/target/s2jdbc-gen-${ver}-sources.jar"/>		
+	</target>
+
+	<target name="dist" depends="delete, copy">
+		<mkdir dir="${zipDir}"/>
+		<zip zipfile="${zipDir}/S2JDBC-Tutorial-${ver}.zip">
+			<zipfileset prefix="s2jdbc-tutorial" dir=".">
+				<exclude name="**/build/**"/>
+				<exclude name="**/target/**"/>
+				<exclude name="**/site/**"/>
+				<exclude name="build.xml"/>
+			</zipfileset>
+		</zip>
+	</target>
+
+</project>
+<project name="example-s2jdbc-gen" default="gen-ddl" basedir=".">
+
+  <!--
+  <property name="classpathdir" value="src/main/webapp/WEB-INF/classes"/>
+  -->
+  <property name="classpathdir" value="build/classes"/>
+  <property name="rootpackagename" value="examples"/>
+  <property name="entitypackagename" value="entity"/>
+  <property name="entityfilepattern" value="examples/entity/**/*.java"/>
+  <property name="javafiledestdir" value="src/main/java"/>
+  <property name="testjavafiledestdir" value="src/test/java"/>
+  <property name="javafileencoding" value="UTF-8"/>
+  <property name="version" value="latest"/>
+  <property name="sqlfilepattern" value="META-INF/sql/**/*.sql"/>
+  <property name="applyenvtoversion" value="false"/>
+  <property name="uses2junit4" value="false"/>
+  <property name="env" value="ut"/>
+  <property name="jdbcmanagername" value="jdbcManager"/>
+  <condition property="vmarg.encoding" value="-Dfile.encoding=UTF-8" else="">
+    <isset property="eclipse.pdebuild.home"/>
+  </condition>
+
+
+  <path id="classpath">
+    <pathelement location="${classpathdir}"/>
+    <!--
+    <fileset dir="src/main/webapp/WEB-INF/lib">
+      <exclude name="src/main/webapp/WEB-INF/lib/sources/**"/>
+    </fileset>
+    -->
+    <fileset dir="lib">
+      <exclude name="lib/sources/**"/>
+    </fileset>
+  </path>
+
+  <taskdef resource="s2jdbc-gen-task.properties" classpathref="classpath"/>
+
+  <target name="gen-entity">
+    <gen-entity
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entity>
+    <javac 
+      srcdir="${javafiledestdir}"
+      destdir="${classpathdir}"
+      encoding="${javafileencoding}"
+      fork="true"
+      debug="on"
+      classpathref="classpath">
+        <include name="${entityfilepattern}"/>
+    </javac>
+    <gen-names
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-names>
+    <gen-service
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-service>
+    <gen-entitytest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entitytest>
+    <gen-servicetest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-servicetest>
+    <gen-sqlfiletest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfiletest>
+  </target>
+
+  <target name="gen-ddl">
+    <gen-ddl
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-ddl>
+    <gen-names
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-names>
+    <gen-service
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${javafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-service>
+    <gen-entitytest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-entitytest>
+    <gen-servicetest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-servicetest>
+    <gen-sqlfiletest
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      javafiledestdir="${testjavafiledestdir}"
+      javafileencoding="${javafileencoding}"
+      uses2junit4="${uses2junit4}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <sqlfileset dir="${classpathdir}">
+          <include name="${sqlfilepattern}" />
+        </sqlfileset>
+        <jvmarg value="${vmarg.encoding}"/>
+    </gen-sqlfiletest>
+  </target>
+
+  <target name="migrate">
+    <migrate
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      version="${version}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </migrate>
+    <refresh projectName="${projectname}"/>
+  </target>
+
+  <target name="rollback">
+    <migrate
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      entitypackagename="${entitypackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      version="previous"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </migrate>
+  </target>
+
+  <target name="dump">
+    <dump-data
+      classpathdir="${classpathdir}"
+      rootpackagename="${rootpackagename}"
+      applyenvtoversion="${applyenvtoversion}"
+      entitypackagename="${entitypackagename}"
+      env="${env}"
+      jdbcmanagername="${jdbcmanagername}"
+      classpathref="classpath">
+        <jvmarg value="${vmarg.encoding}"/>
+    </dump-data>
+  </target>
+
+</project><project name="seasar2" default="dist" basedir=".">
+	<tstamp>
+		<format property="releaseDate" pattern="yyyy-MM-dd" locale="ja,JP"/>
+	</tstamp>
+	<property name="newVersion" value="2.4.48-SNAPSHOT" />
+
+	<target name="update-pom">
+		<replaceregexp
+			match="(&lt;artifactId&gt;s2-container-project&lt;/artifactId&gt;\s*&lt;version&gt;)(?:[^&lt;]+)(&lt;/version&gt;)"
+			replace="\1${newVersion}\2" encoding="UTF-8">
+			<fileset dir="." includes="**/pom.xml" />
+			<fileset dir="../s2-tiger" includes="**/pom.xml" />
+			<fileset dir="../s2jdbc-it" includes="**/pom.xml" />
+			<fileset dir="../s2jdbc-tutorial" includes="**/pom.xml" />
+			<fileset dir="../s2jdbc-gen" includes="**/pom.xml" />
+			<fileset dir="../s2jdbc-gen-it" includes="**/pom.xml" />
+		</replaceregexp>
+	</target>
+
+	<target name="dist">
+		<antcall target="fix-site">
+			<param name="site" value="${basedir}/target/site"/>
+		</antcall>
+	</target>
+
+	<target name="make-reference">
+		<ant antfile="build.xml" dir="src/docbook" target="build" />
+		<mkdir dir="target/site/ja/reference" />
+		<copy todir="target/site/ja/reference">
+			<fileset dir="target/docbook/reference">
+				<exclude name="tmp/**" />
+			</fileset>
+		</copy>
+	</target>
+
+	<target name="fix-site">
+		<mkdir dir="${site}/en"/>
+		<move todir="${site}/en">
+			<fileset dir="${site}">
+				<exclude name="apidocs/**"/>
+				<exclude name="en/**"/>
+				<exclude name="ja/**"/>
+				<exclude name="zh/**"/>
+				<exclude name="index.html.en"/>
+				<exclude name="index.html.ja"/>
+			</fileset>
+		</move>
+		<move file="${site}/apidocs" todir="${site}/ja" failonerror="false"/>
+		<delete file="${site}/ja/index.html.en"/>
+		<delete file="${site}/ja/index.html.ja"/>
+	</target>
+</project>
+<project name="s2-dist" default="dist" basedir=".">
+	<tstamp>
+		<format property="releaseDate" pattern="yyyy-MM-dd" locale="ja,JP"/>
+	</tstamp>
+	<property name="zipDir" value="target/site/download/${releaseDate}"/>
+
+	<target name="dist">
+		<ant antfile="../build.xml" target="fix-site">
+			<property name="site" value="${basedir}/target/site"/>
+		</ant>
+		<mkdir dir="${zipDir}"/>
+		<zip zipfile="${zipDir}/S${ver}.zip">
+			<zipfileset prefix="seasar2" dir="..">
+				<exclude name="**/build/**"/>
+				<exclude name="**/target/**"/>
+				<exclude name="**/site/**"/>
+				<exclude name="dbf/**"/>
+				<exclude name="src/**"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/lib" dir="../s2-framework/target">
+				<include name="s2-framework-${ver}.jar"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/lib" dir="../s2-extension/target">
+				<include name="s2-extension-${ver}.jar"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/lib/sources" dir="../s2-framework/target">
+				<include name="s2-framework-${ver}-sources.jar"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/lib/sources" dir="../s2-extension/target">
+				<include name="s2-extension-${ver}-sources.jar"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/resources" dir="../s2-framework/src/test/resources">
+				<include name="convention.dicon"/>
+				<include name="creator.dicon"/>
+				<include name="customizer.dicon"/>
+				<include name="log4j.properties"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/resources" dir="../s2-extension/src/test/resources">
+				<include name="jdbc.dicon"/>
+				<include name="dbsession.dicon"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/doc" dir="../target/site">
+				<exclude name="**/download/**"/>
+				<exclude name="**/ja/benchmark/**"/>
+				<exclude name="**/ja/demo/**"/>
+				<exclude name="**/*.zip"/>
+			</zipfileset>
+			<zipfileset prefix="seasar2/doc/s2-framework" dir="../s2-framework/target/site"/>
+			<zipfileset prefix="seasar2/doc/s2-extension" dir="../s2-extension/target/site"/>
+		</zip>
+		<ant dir="../../s2jdbc-tutorial" antfile="build.xml" target="dist">
+			<property name="zipDir" value="../seasar2/s2-dist/${zipDir}"/>
+		</ant>
+	</target>
+</project>
+<project name="s2-extension" default="dist" basedir=".">
+	<target name="dist">
+		<ant antfile="../build.xml" target="fix-site">
+			<property name="site" value="${basedir}/target/site"/>
+		</ant>
+	</target>
+</project>
+<project name="s2-framework" default="dist" basedir=".">
+	<target name="dist">
+		<ant antfile="../build.xml" target="fix-site">
+			<property name="site" value="${basedir}/target/site"/>
+		</ant>
+	</target>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+
+<!--
+ Licensed to the Apache Software Foundation (ASF) under one
+ or more contributor license agreements.  See the NOTICE file
+ distributed with this work for additional information
+ regarding copyright ownership.  The ASF licenses this file
+ to you under the Apache License, Version 2.0 (the
+ "License"); you may not use this file except in compliance
+ with the License.  You may obtain a copy of the License at
+
+   http://www.apache.org/licenses/LICENSE-2.0
+
+ Unless required by applicable law or agreed to in writing,
+ software distributed under the License is distributed on an
+ "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY
+ KIND, either express or implied.  See the License for the
+ specific language governing permissions and limitations
+ under the License.
+-->
+
+<project name="seasar2-docbook" default="build" basedir=".">
+
+  <!-- Load our properties -->
+  <property file="project.properties"/>
+
+  <!-- ======================================================================== -->
+  <!-- ==                                                                    == -->
+  <!-- == Build all the Velocity Docbook Documentation                       == -->
+  <!-- ==                                                                    == -->
+  <!-- ======================================================================== -->
+  <target name="build" description="--> Build all documentation">
+    <!-- Build the Reference -->
+    <ant antfile="${dbf.basedir}/build-docbook.xml" target="all">
+      <property name="docbook.dir" value="reference"/>
+      <property name="docbook.file" value="s2reference"/>
+    </ant>
+  </target>
+
+  <target name="pdf" description="--> Build PDF documentation">
+    <!-- Build the Reference -->
+    <ant antfile="${dbf.basedir}/build-docbook.xml" target="pdf">
+      <property name="docbook.dir" value="reference"/>
+      <property name="docbook.file" value="s2reference"/>
+    </ant>
+  </target>
+
+  <target name="html" description="--> Build HTML documentation">
+    <!-- Build the Reference -->
+    <ant antfile="${dbf.basedir}/build-docbook.xml" target="html">
+      <property name="docbook.dir" value="reference"/>
+      <property name="docbook.file" value="s2reference"/>
+    </ant>
+  </target>
+
+  <target name="htmlsingle" description="--> Build HTML single documentation">
+    <!-- Build the Reference -->
+    <ant antfile="${dbf.basedir}/build-docbook.xml" target="htmlsingle">
+      <property name="docbook.dir" value="reference"/>
+      <property name="docbook.file" value="s2reference"/>
+    </ant>
+  </target>
+
+  <!-- ======================================================================== -->
+  <!-- ==                                                                    == -->
+  <!-- == Clean up the target directory                                      == -->
+  <!-- ==                                                                    == -->
+  <!-- ======================================================================== -->
+  <target name="clean"
+          description="--> Delete temporary and distribution directories for docs">
+    <ant antfile="${dbf.basedir}/build-docbook.xml" target="clean"/>
+  </target>
+</project>

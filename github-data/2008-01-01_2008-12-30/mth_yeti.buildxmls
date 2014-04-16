@@ -1,0 +1,199 @@
+<!-- ex: se sts=4 sw=4 expandtab: -->
+<project name="yeti" default="jar" basedir=".">
+
+<target name="prepare-build">
+    <property file="properties"/>
+    <property name="asm" value="${basedir}/asm-3.1-p1r.jar"/>
+    <property name="build"  value="${basedir}/.build"/>
+    <property name="jardir" value="${basedir}"/>
+    <property name="docdir" value="${build}/doc"/>
+    <available property="has.asm" file="${asm}"/>
+</target>
+
+<target name="fetch" depends="prepare-build" unless="has.asm">
+    <property name="asmt" value="${build}/asm-3.1-p1.jar"/>
+    <mkdir dir="${build}/util"/>
+    <get src="http://dot.planet.ee/yeti/asm-3.1-p1.jar"
+         dest="${asmt}" verbose="true"/>
+    <javac destdir="${build}/util" srcdir="${basedir}/util"
+           includes="Rename.java" encoding="UTF-8"
+           includeantruntime="false"/>
+    <java classname="yeti.lang.Rename" failonerror="true"
+          classpath="${build}/util">
+        <arg value="${asmt}"/>
+        <arg value="${asm}"/>
+    </java>
+</target>
+
+<target name="check-mouse" depends="prepare-build">
+    <property name="mouse" value="${basedir}/Mouse-1.6.jar"/>
+    <available property="has.mouse" file="${mouse}"/>
+</target>
+
+<target name="fetch-mouse" depends="check-mouse" unless="has.mouse">
+    <get src="http://dot.planet.ee/yeti/Mouse-1.6.jar"
+         dest="${mouse}" verbose="true"/>
+</target>
+
+<target name="lib" depends="fetch" unless="no.lib.build">
+    <mkdir dir="${build}/util"/>
+    <javac destdir="${build}/util" srcdir="${basedir}/util"
+           includes="SpecialLib.java" encoding="UTF-8" classpath="${asm}"
+           includeantruntime="false"/>
+    <java classname="yeti.lang.SpecialLib" failonerror="true"
+          classpath="${asm}:${build}/util">
+        <arg value="pre"/>
+        <arg value="${build}/lib"/>
+    </java>
+    <javac destdir="${build}/lib" srcdir="${basedir}/lib" debug="on"
+        encoding="UTF-8" source="1.4" target="1.4" debuglevel="source,lines"
+        includeantruntime="false"/>
+    <java classname="yeti.lang.SpecialLib" failonerror="true"
+          classpath="${asm}:${build}/util">
+        <arg value="tr"/>
+        <arg value="${build}/lib"/>
+    </java>
+</target>
+
+<target name="checklib">
+    <available property="no.lib.build" file="${build}/lib" type="dir"/>
+</target>
+
+<target name="checkmod">
+    <available property="no.modules.build" file="${build}/modules" type="dir"/>
+</target>
+
+<target name="compiler" depends="checklib,lib">
+    <mkdir dir="${build}/compiler"/>
+    <javac destdir="${build}/compiler" srcdir="${basedir}/c" debug="on"
+           encoding="UTF-8" source="1.4" target="1.4" debuglevel="source,lines"
+           includeantruntime="true">
+        <classpath>
+            <path location="${asm}"/>
+            <path location="${build}/lib"/>
+            <path location="${ant.home}/lib/ant.jar"/>
+        </classpath>
+    </javac>
+</target>
+
+<target name="taskdef">
+    <taskdef name="yetic" classname="yeti.lang.compiler.YetiBoot"
+        classpath="${asm}:${build}/lib:${build}/compiler"/>
+</target>
+
+<target name="modules" depends="prepare-build,taskdef"
+        unless="no.modules.build">
+    <yetic srcdir="${basedir}/modules" destdir="${build}/modules"
+           includes="*.yeti" preload="yeti/lang/std" icast="${icast}"/>
+</target>
+
+<target name="yeti" depends="compiler,checkmod,modules">
+    <yetic srcdir="${basedir}/c" destdir="${build}/compiler"
+           icast="${icast}">
+        <classpath>
+            <path location="${build}/std"/>
+            <path location="${build}/modules"/>
+        </classpath>
+    </yetic>
+    <copy file="${basedir}/util/doc.yeti" todir="${build}/compiler"/>
+</target>
+
+<target name="jar" depends="compiler,modules,yeti">
+    <condition property="jar-name" value="${jardir}/yeti.jar">
+        <not><isset property="jar-name"/></not>
+    </condition>
+    <jar jarfile="${jardir}/yeti-lib.jar" roundup="false">
+        <fileset dir="${build}/lib"/>
+        <fileset dir="${build}/modules"/>
+    </jar>
+    <jar jarfile="${jar-name}" keepcompression="true">
+        <manifest>
+            <attribute name="Main-Class" value="yeti.lang.compiler.yeti"/>
+        </manifest>
+        <zipfileset src="${jardir}/yeti-lib.jar"/>
+        <fileset dir="${build}/compiler"
+            excludes="yeti/lang/compiler/YetiBoot*.class,${jar-excludes}"/>
+        <zipfileset src="${asm}" excludes="yeti/renamed/asm3/signature/*"/>
+    </jar>
+</target>
+
+<target name="yeti-lib" depends="jar"/>
+
+<target name="test" depends="jar,doc">
+    <java classname="yeti.lang.compiler.yeti" classpath="${jar-name}">
+        <arg value="${basedir}/tests/test.yeti"/>
+    </java>
+</target>
+
+<target name="doc" depends="prepare-build">
+    <taskdef name="yeti" classname="yeti.lang.compiler.YetiTask"
+        classpath="${jardir}/yeti.jar"/>
+    <yeti docdir="${docdir}">
+        <src dir="${basedir}/modules"/>
+        <src dir="${basedir}/c" includes="*.yeti" excludes="yeti.yeti"/>
+    </yeti>
+</target>
+
+<target name="grammar" depends="fetch-mouse">
+    <mkdir dir="${build}/grammar/classes"/>
+    <java classname="mouse.Generate" classpath="${mouse}" failonerror="true">
+        <arg value="-G"/>
+        <arg value="${basedir}/util/grammar/yeti.peg"/>
+        <arg value="-p"/>
+        <arg value="yeti.lang.grammar"/>
+        <arg value="-D"/>
+        <arg value="${build}/grammar"/>
+        <arg value="-P"/>
+        <arg value="YetiPEG"/>
+    </java>
+    <javac destdir="${build}/grammar/classes" classpath="${mouse}"
+           encoding="UTF-8" includeantruntime="false">
+        <src path="${basedir}/util/grammar"/>
+        <src path="${build}/grammar"/>
+    </javac>
+    <jar jarfile="${jardir}/yeti-peg.jar" keepcompression="true">
+        <manifest>
+            <attribute name="Main-Class" value="yeti.lang.grammar.Parser"/>
+        </manifest>
+        <fileset dir="${build}/grammar/classes"/>
+        <zipfileset src="${mouse}" includes="mouse/runtime/*"/>
+    </jar>
+</target>
+
+<target name="noant" depends="prepare-build">
+    <property name="jar-name" value="${jardir}/yeti-noant.jar"/>
+    <property name="jar-excludes" value="yeti/lang/compiler/YetiTask.class"/>
+</target>
+
+<target name="clean" depends="prepare-build">
+    <delete dir="${build}"/>
+</target>
+
+<target name="rebuild" depends="clean,test"/>
+
+<target name="checkjar">
+    <available property="no.jar.build" file="${jardir}/yeti.jar"/>
+</target>
+
+</project>
+<!-- ex: se sts=4 sw=4 expandtab: -->
+<!-- ant -Dj2ee=j2ee.jar -->
+<project name="yeti" default="build" basedir=".">
+    <target name="build">
+        <property name="yeti" value="${basedir}/../../yeti.jar"/>
+        <property name="j2ee" value="j2ee.jar"/>
+        <taskdef name="yetic" classname="yeti.lang.compiler.YetiTask"
+                 classpath="${yeti}"/>
+        <yetic srcdir="${basedir}" destdir="${basedir}/target/WEB-INF/classes">
+            <classpath><path location="${j2ee}"/></classpath>
+        </yetic>
+        <echo file="${basedir}/target/index.do" message="dummy"/>
+        <war destfile="demo.war" webxml="web.xml" basedir="${basedir}/target">
+            <lib file="${yeti}"/>
+        </war>
+    </target>
+
+    <target name="clean">
+        <delete dir="target"/>
+    </target>
+</project>

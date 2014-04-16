@@ -1,0 +1,175 @@
+buildscript {
+    repositories {
+        mavenCentral()
+    }
+}
+
+project.ext {
+    asm = "org.ow2.asm:asm:4.0"
+    junit = "junit:junit:4.10"
+
+    sourceCompatibility = '1.6'
+    targetCompatibility = '1.6'
+}
+
+task wrapper(type: Wrapper) {
+	 gradleVersion = '1.3'
+}
+
+allprojects {
+    apply plugin: 'eclipse'
+    apply plugin: 'idea'
+    apply plugin: 'signing'
+
+    group = "org.gcontracts"
+    version = "1.2.12"
+
+    description = "GContracts provides Java annotations to support Programming by Contract for Groovy"
+}
+
+subprojects {
+  apply plugin: "groovy"
+  apply plugin: 'maven'
+
+  compileGroovy.options.fork = true
+  compileTestGroovy.options.fork = true
+
+  dependencies {
+	  groovy group: 'org.codehaus.groovy', name: 'groovy-all', version: '2.1.0'
+    compile asm
+  }
+
+  repositories {
+    mavenCentral()
+  }
+
+  // custom tasks for creating source/javadoc jars
+  task sourcesJar(type: Jar, dependsOn:classes) {
+     classifier = 'sources'
+     from sourceSets.main.allSource
+  }
+
+  task javadocJar(type: Jar, dependsOn:javadoc) {
+     classifier = 'javadoc'
+     from javadoc.destinationDir
+  }
+
+  // add javadoc/source jar the artifacts
+  artifacts {
+     archives sourcesJar
+     archives javadocJar
+  }
+
+  signing {
+    sign configurations.archives
+  }
+
+uploadArchives {
+  repositories.mavenDeployer {
+    configuration = configurations.archives
+
+    beforeDeployment { MavenDeployment deployment -> signPom(deployment) }
+
+    repository(url: "http://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+      authentication(userName: nexusUsername, password: nexusPassword)
+    }
+
+    pom.project {
+      name 'GContracts - Programming by Contract for Groovy'
+      packaging 'jar'
+      description 'GContracts provides annotations to implement interface contracts aka design by contract in Groovy classes.'
+      url 'http://github.com/andresteingress/gcontracts'
+      inceptionYear '2010'
+
+      scm {
+        url 'scm:git:file:///Users/andre/Development/gcontracts'
+        connection 'scm:git:file:///Users/andre/Development/gcontracts'
+      }
+
+      licenses {
+        license {
+          name 'BSD License'
+          comments """
+                /**
+                Copyright (c) 2012, Andre Steingress
+                All rights reserved.
+
+                Redistribution and use in source and binary forms, with or without modification, are permitted provided that the
+                following conditions are met:
+
+                1.) Redistributions of source code must retain the above copyright notice, this list of conditions and the following
+                disclaimer.
+                2.) Redistributions in binary form must reproduce the above copyright notice, this list of conditions and the following
+                disclaimer in the documentation and/or other materials provided with the distribution.
+                3.) Neither the name of Andre Steingress nor the names of its contributors may be used to endorse or
+                promote products derived from this software without specific prior written permission.
+
+                THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,
+                INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+                DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+                SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+                SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
+                WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+                USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+                **/
+          """
+          distribution 'repo'
+        }
+      }
+
+      developers {
+        developer {
+          id 'andre'
+          name 'Andre Steingress'
+          email 'me@andresteingress.com'
+          url 'http://www.gcontracts.org'
+          roles{
+            role 'Developer'
+          }
+          timezone '+1'
+        }
+      }
+    }
+  }
+ }  
+}
+project(":gcontracts-core") {
+  dependencies {
+    compile asm
+    testCompile junit
+    testCompile "org.spockframework:spock-core:0.7-groovy-2.0"
+    testCompile "org.apache.ivy:ivy:2.2.0"
+    testRuntime junit
+  }
+}
+
+test {
+  // exclude basic test case classes
+  excludes = ['org/gcontracts/tests/basic/**']
+}
+project(":gcontracts-doc") {
+    dependencies {
+        compile project(':gcontracts-core')
+
+        compile "org.apache.ant:ant:1.8.2"
+        testCompile junit
+        testRuntime "junit:junit:3.8.2"
+    }
+}project(":gcontracts-grails") {
+    def springVersion = "3.0.5.RELEASE"
+
+    dependencies {
+        compile project(':gcontracts-core')
+
+        testCompile "org.springframework:spring-context:$springVersion"
+        testCompile "org.springframework:spring-core:$springVersion"
+
+        testCompile junit
+        testRuntime "junit:junit:3.8.2"
+    }
+}
+
+test {
+    // exclude basic test case classes
+    excludes = ['org/gcontracts/grails/BaseTestClass*']
+}

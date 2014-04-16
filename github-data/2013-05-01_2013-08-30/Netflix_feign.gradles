@@ -1,0 +1,233 @@
+// Establish version and status
+ext.githubProjectName = rootProject.name // Change if github project name is not the same as the root project's name
+
+buildscript {
+    repositories {
+        mavenLocal()
+        mavenCentral()
+    }
+    apply from: file('gradle/buildscript.gradle'), to: buildscript 
+}
+
+allprojects {
+    repositories { 
+        mavenLocal()
+        mavenCentral()
+        maven { url 'https://oss.sonatype.org/content/repositories/releases/' }
+    }
+}
+
+apply from: file('gradle/convention.gradle')
+apply from: file('gradle/maven.gradle')
+apply from: file('gradle/check.gradle')
+apply from: file('gradle/license.gradle')
+apply from: file('gradle/release.gradle')
+apply plugin: 'idea'
+
+subprojects {
+    apply from: rootProject.file('dagger.gradle')
+    group = "com.netflix.${githubProjectName}" // TEMPLATE: Set to organization of project
+}
+
+project(':feign-core') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        testCompile 'com.google.guava:guava:14.0.1'
+        testCompile 'com.google.code.gson:gson:2.2.4'
+        testCompile 'com.fasterxml.jackson.core:jackson-databind:2.2.2'
+        testCompile 'org.testng:testng:6.8.5'
+        testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+    }
+}
+
+project(':feign-sax') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        testCompile 'com.google.guava:guava:14.0.1'
+        testCompile 'org.testng:testng:6.8.5'
+    }
+}
+
+project(':feign-gson') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        compile     'com.google.code.gson:gson:2.2.4'
+        testCompile 'org.testng:testng:6.8.5'
+    }
+}
+
+project(':feign-jackson') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        compile     'com.fasterxml.jackson.core:jackson-databind:2.2.2'
+        testCompile 'org.testng:testng:6.8.5'
+        testCompile 'com.google.guava:guava:14.0.1'
+    }
+}
+
+project(':feign-jaxrs') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        compile     'javax.ws.rs:jsr311-api:1.1.1'
+        testCompile project(':feign-gson')
+        testCompile 'com.google.guava:guava:14.0.1'
+        testCompile 'org.testng:testng:6.8.5'
+    }
+}
+
+project(':feign-ribbon') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        compile     'com.netflix.ribbon:ribbon-core:0.2.3'
+        testCompile 'org.testng:testng:6.8.5'
+        testCompile 'com.google.mockwebserver:mockwebserver:20130706'
+    }
+}
+
+project(':feign-slf4j') {
+    apply plugin: 'java'
+
+    test {
+        useTestNG()
+    }
+
+    dependencies {
+        compile     project(':feign-core')
+        compile     'org.slf4j:slf4j-api:1.7.5'
+        testCompile 'org.testng:testng:6.8.5'
+        testCompile 'org.slf4j:slf4j-simple:1.7.5'
+    }
+}
+apply plugin: 'java'
+
+dependencies {
+  compile  'com.netflix.feign:feign-core:5.0.0'
+  compile  'com.netflix.feign:feign-gson:5.0.0'
+  provided 'com.squareup.dagger:dagger-compiler:1.1.0'
+}
+
+// create a self-contained jar that is executable
+// the output is both a 'fat' project artifact and
+// a convenience file named "build/github"
+task fatJar(dependsOn: classes, type: Jar) { 
+  classifier 'fat'
+
+  doFirst {
+    // Delay evaluation until the compile configuration is ready
+    from {
+      configurations.compile.collect { zipTree(it) }
+    }
+  }
+
+  from (sourceSets*.output.classesDir) {
+  }
+
+  // really executable jar
+  // http://skife.org/java/unix/2011/06/20/really_executable_jars.html
+
+  manifest {
+    attributes 'Main-Class': 'feign.example.github.GitHubExample'
+  }
+
+  // for convenience, we make a file in the build dir named github with no extension
+  doLast {
+    def srcFile = new File("${buildDir}/libs/${archiveName}")
+    def shortcutFile = new File("${buildDir}/github")
+    shortcutFile.delete()
+    shortcutFile << "#!/usr/bin/env sh\n"
+    shortcutFile << 'exec java -jar $0 "$@"' + "\n"
+    shortcutFile << srcFile.bytes
+    shortcutFile.setExecutable(true, true)
+    srcFile.delete()
+    srcFile << shortcutFile.bytes   
+    srcFile.setExecutable(true, true)
+  }
+}
+
+artifacts {
+    archives fatJar
+}
+apply plugin: 'java'
+
+dependencies {
+  compile  'com.netflix.feign:feign-core:5.0.0'
+  compile  'com.netflix.feign:feign-gson:5.0.0'
+  provided 'com.squareup.dagger:dagger-compiler:1.1.0'
+}
+
+// create a self-contained jar that is executable
+// the output is both a 'fat' project artifact and
+// a convenience file named "build/github"
+task fatJar(dependsOn: classes, type: Jar) { 
+  classifier 'fat'
+
+  doFirst {
+    // Delay evaluation until the compile configuration is ready
+    from {
+      configurations.compile.collect { zipTree(it) }
+    }
+  }
+
+  from (sourceSets*.output.classesDir) {
+  }
+
+  // really executable jar
+  // http://skife.org/java/unix/2011/06/20/really_executable_jars.html
+
+  manifest {
+    attributes 'Main-Class': 'feign.example.wikipedia.WikipediaExample'
+  }
+
+  // for convenience, we make a file in the build dir named github with no extension
+  doLast {
+    def srcFile = new File("${buildDir}/libs/${archiveName}")
+    def shortcutFile = new File("${buildDir}/wikipedia")
+    shortcutFile.delete()
+    shortcutFile << "#!/usr/bin/env sh\n"
+    shortcutFile << 'exec java -jar $0 "$@"' + "\n"
+    shortcutFile << srcFile.bytes
+    shortcutFile.setExecutable(true, true)
+    srcFile.delete()
+    srcFile << shortcutFile.bytes   
+    srcFile.setExecutable(true, true)
+  }
+}
+
+artifacts {
+    archives fatJar
+}

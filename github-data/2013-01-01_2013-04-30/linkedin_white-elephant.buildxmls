@@ -1,0 +1,236 @@
+<project name="whiteelephant" basedir="." default="all"
+         xmlns:ivy="antlib:org.apache.ivy.ant"
+         xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+  <property name="version" value="0.0.1" />
+  <property name="name" value="white-elephant" />
+  <property name="jar.core.name" value="${name}-core-${version}.jar" />
+  <property name="jar.final.name" value="${name}-${version}.jar" />
+
+  <property name="ivy.jar.version" value="2.2.0" />
+  <property name="mvnrepo" value="http://repo2.maven.org/maven2"/>
+  <property name="ivy.jar.repo.url" value="${mvnrepo}/org/apache/ivy/ivy/${ivy.jar.version}/ivy-${ivy.jar.version}.jar"/>
+
+  <property name="build.dir" value="${basedir}/build" />
+  <property name="dist.dir" value="${basedir}/dist" />
+  <property name="lib.dir" value="${basedir}/lib" />
+  <property name="ivy.config.dir" value="${basedir}/config/ivy" />
+  <property name="ivy.xml.path" value="${ivy.config.dir}/ivy.xml" />
+  <property name="ivy.settings.xml.path" value="${ivy.config.dir}/ivysettings.xml" />
+  <property name="ivy.jar.dir" value="${lib.dir}/ivy" />
+  <property name="ivy.jar" value="${ivy.jar.dir}/ivy-${ivy.jar.version}.jar" />
+  <property name="lib.common.dir" value="${basedir}/lib/common" />
+  <property name="lib.hadoop.dir" value="${basedir}/lib/hadoop" />
+  <property name="lib.static.dir" value="${basedir}/lib/static" />
+  <property name="java.dir" value="${basedir}/src/java" />
+  <property name="avro.schemas.dir" value="${basedir}/src/avro_schemas" />
+  <property name="avro.gen.dir" value="${basedir}/src/avro_gen" />
+  <property name="classes.dir" value="${build.dir}/classes" />
+  <property name="report.dir" value="${basedir}/report" />
+  <property name="jar.core.path" value="${dist.dir}/${jar.core.name}"/>
+  <property name="jar.final.path" value="${dist.dir}/${jar.final.name}"/>
+  <property name="zip.path" value="${dist.dir}/${name}.zip"/>
+  <property name="job.dir" value="${dist.dir}/job"/>
+  <property name="bin.dir" value="${basedir}/bin"/>
+
+  <target name="all" depends="clean,init,jar"/>
+
+  <target name="ivy-jar-download" description="Download ivy jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${ivy.jar.repo.url}" dest="${ivy.jar}" usetimestamp="true"/>
+  </target>
+    
+  <target name="ivy-taskdef" depends="ivy-jar-download" description="install ivy">
+    <path id="ivy.lib.path">
+      <pathelement location="${ivy.jar}"/>
+    </path>
+    <taskdef resource="org/apache/ivy/ant/antlib.xml"
+             uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+  </target>
+  
+  <target name="ivy-resolve" depends="ivy-taskdef" description="retreive dependencies with ivy">
+    <ivy:settings file="${ivy.settings.xml.path}" />
+    <ivy:resolve file="${ivy.xml.path}" />
+    <ivy:retrieve pattern="${lib.dir}/[conf]/[artifact]-[type]-[revision].[ext]"/>
+  </target>
+
+  <path id="main-classpath">
+    <fileset dir="${lib.common.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <fileset dir="${lib.hadoop.dir}">
+      <include name="*.jar" />
+    </fileset>
+    <pathelement path="${classes.dir}" />
+  </path>  
+
+  <target name="init" depends="ivy-resolve"></target>
+
+  <target name="clean">
+    <delete dir="${lib.common.dir}" />
+    <delete dir="${lib.hadoop.dir}" />
+    <delete dir="${ivy.jar.dir}" />
+    <delete dir="${build.dir}" />
+    <delete dir="${report.dir}" />
+    <delete dir="${dist.dir}" />
+    <delete dir="${avro.gen.dir}" />
+  </target>
+
+  <target name="avro-schemas" depends="init" description="compile avro scemas">
+    <delete dir="${avro.gen.dir}" />
+    <taskdef name="avroschema" classname="org.apache.avro.compiler.specific.SchemaTask">
+      <classpath refid="main-classpath" />
+    </taskdef>
+    <avroschema destdir="${avro.gen.dir}">
+      <fileset dir="${avro.schemas.dir}" includes="**/*.avsc" />
+    </avroschema>
+  </target>
+
+  <target name="build" depends="init,avro-schemas" description="compile source code">
+    <delete dir="${classes.dir}"/>
+    <mkdir dir="${classes.dir}"/>
+    <javac fork="true" destdir="${classes.dir}" target="1.6" debug="true"
+          deprecation="true" failonerror="true">
+      <src path="${java.dir}"/>
+      <src path="${avro.gen.dir}"/>
+      <classpath refid="main-classpath"/>
+    </javac>
+  </target>
+
+  <target name="jar" depends="build">
+    <mkdir dir="${dist.dir}"/>
+    <delete dir="${jar.core.path}"/>
+    <jar jarfile="${jar.core.path}" filesetmanifest="merge">
+      <fileset dir="${classes.dir}" />
+      <manifest>
+        <attribute name="Main-Class"
+              value="com.linkedin.whiteelephant.ProcessLogs"/>
+      </manifest>
+    </jar>    
+  </target>
+
+  <target name="fatjar" depends="jar">
+    <mkdir dir="${dist.dir}"/>
+    <delete file="${jar.final.path}" />
+    <jar jarfile="${jar.final.path}" filesetmanifest="skip">
+      <zipfileset includes="**/*.class" src="${jar.core.path}"/>
+      <zipgroupfileset dir="${lib.common.dir}" includes="*.jar" />
+      <zipgroupfileset dir="${lib.static.dir}" includes="*.jar" />
+      <manifest>
+        <attribute name="Main-Class"
+              value="com.linkedin.whiteelephant.ProcessLogs"/>
+      </manifest>
+    </jar>
+  </target>
+
+  <target name="zip" depends="fatjar">
+    <fail unless="job.config.dir">You must define 'job.config.dir' with -Djob.config.dir=&lt;path-to-job-files&gt;</fail>
+    <mkdir dir="${dist.dir}"/>
+    <delete file="${zip.path}"/>
+    <zip destfile="${zip.path}">
+      <zipfileset dir="${bin.dir}" filemode="755" includes="*.*"/>
+      <zipfileset dir="${dist.dir}" includes="${jar.final.name}"/>
+      <zipfileset dir="${job.config.dir}" includes="*.*" />
+    </zip>
+  </target>
+</project><project name="white-elephant" basedir="." default="all"
+         xmlns:ivy="antlib:org.apache.ivy.ant"
+         xmlns:artifact="antlib:org.apache.maven.artifact.ant">
+
+  <property name="lib.dir" value="${basedir}/lib"/>
+
+  <property name="ivy.jar.version" value="2.2.0" />
+  <property name="mvnrepo" value="http://repo2.maven.org/maven2"/>
+  <property name="ivy.jar.repo.url" value="${mvnrepo}/org/apache/ivy/ivy/${ivy.jar.version}/ivy-${ivy.jar.version}.jar"/>
+
+  <property name="ivy.config.dir" value="${basedir}/config/ivy" />
+  <property name="ivy.xml.path" value="${ivy.config.dir}/ivy.xml" />
+  <property name="ivy.settings.xml.path" value="${ivy.config.dir}/ivysettings.xml" />
+  <property name="ivy.jar.dir" value="${lib.dir}/ivy" />
+  <property name="ivy.jar" value="${ivy.jar.dir}/ivy-${ivy.jar.version}.jar" />
+
+  <property name="classes.dir" value="${basedir}/lib/classes" />
+  <property name="jars.dir" value="${basedir}/lib/jars"/>
+  <property name="src.dir" value="${basedir}/src" />
+  <property name="java.dir" value="${src.dir}/java" />
+
+  <target name="clean">
+    <delete dir="${ivy.jar.dir}"/>
+    <delete dir="${jars.dir}"/>
+    <delete dir="${classes.dir}"/>
+    <delete dir="${basedir}/log"/>
+    <delete dir="${basedir}/tmp"/>
+    <delete dir="${basedir}/work"/>
+    <delete>
+      <fileset dir="${basedir}" includes="*.war"/>
+    </delete>
+  </target>
+
+  <target name="reset" depends="clean">
+    <delete dir="${basedir}/.rbenv"/>
+    <delete file="${basedir}/.ruby-version"/>
+    <delete file="${basedir}/.setup-success"/>
+  </target>
+
+  <target name="setup">
+    <exec executable="./setup.sh" failonerror="true" />
+  </target>
+
+  <target name="init" depends="setup, ivy-resolve">
+  </target>
+
+  <target name="all" depends="build,test-data"/>
+
+  <target name="ivy-jar-download" description="Download ivy jar">
+    <mkdir dir="${ivy.jar.dir}"/>
+    <get src="${ivy.jar.repo.url}" dest="${ivy.jar}" usetimestamp="true"/>
+  </target>
+    
+  <target name="ivy-taskdef" depends="ivy-jar-download" description="install ivy">
+    <path id="ivy.lib.path">
+      <pathelement location="${ivy.jar}"/>
+    </path>
+    <taskdef resource="org/apache/ivy/ant/antlib.xml"
+             uri="antlib:org.apache.ivy.ant" classpathref="ivy.lib.path"/>
+  </target>
+  
+  <target name="ivy-resolve" depends="ivy-taskdef" description="retreive dependencies with ivy">
+    <ivy:settings file="${ivy.settings.xml.path}" />
+    <ivy:resolve file="${ivy.xml.path}" />
+    <ivy:retrieve pattern="${jars.dir}/[artifact]-[type]-[revision].[ext]"/>
+  </target>
+
+  <macrodef name="replace-dir">
+    <attribute name="dir" />
+    <sequential>
+      <delete dir="@{dir}" />
+      <mkdir dir="@{dir}" />
+    </sequential>
+  </macrodef>
+
+  <target name="build" depends="init" description="Compile main source tree java files">
+    <replace-dir dir="${classes.dir}" />
+    <javac destdir="${classes.dir}" target="1.5" debug="true" deprecation="false" failonerror="true" includeantruntime="false">
+      <src path="${java.dir}" />
+    </javac>
+  </target>
+
+  <target name="war" depends="build">
+    <fail unless="config.path">You must define 'config.path' with -Dconfig.path=&lt;path-to-config&gt;</fail>
+    <delete file="config.yml"/>
+    <copy file="${config.path}" tofile="config.yml"/>
+    <exec executable=".rbenv/shims/warble" failonerror="true">
+    </exec>
+    <delete file="config.yml"/>
+  </target>
+
+  <target name="hadoop" description="builds the hadoop libraries">
+    <ant antfile="${basedir}/../hadoop/build.xml" dir="${basedir}/../hadoop" target="jar" inheritAll="false" inheritRefs="false" />
+  </target>
+
+  <target name="test-data" depends="init,hadoop" description="generates test data for development purposes">
+    <exec executable=".rbenv/shims/jruby" failonerror="true">
+      <arg value="test_data.rb"/>
+    </exec>
+  </target>
+</project>

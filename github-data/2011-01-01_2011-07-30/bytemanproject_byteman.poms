@@ -1,0 +1,2944 @@
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman</artifactId>
+    <packaging>jar</packaging>
+    <description>
+        The Byteman agent jar contains the implementation of the Byteman java agent, including
+        the bytecode transformer, rule parser, type checker and execution engine and the agent
+        listener.
+    </description>
+    <name>byteman-agent</name>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+    </parent>
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifestEntries>
+                            <Premain-Class>org.jboss.byteman.agent.Main</Premain-Class>
+                            <Agent-Class>org.jboss.byteman.agent.Main</Agent-Class>
+                            <Can-Redefine-Classes>true</Can-Redefine-Classes>
+                            <Can-Retransform-Classes>true</Can-Retransform-Classes>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>shade</goal>
+                        </goals>
+                        <configuration>
+                            <artifactSet>
+                                <includes>
+                                    <include>asm:asm-all</include>
+                                    <include>net.sf.squirrel-sql.thirdparty-non-maven:java-cup</include>
+                                </includes>
+                            </artifactSet>
+                            <filters>
+                                <filter>
+                                    <artifact>net.sf.squirrel-sql.thirdparty-non-maven:java-cup</artifact>
+                                    <includes>
+                                        <include>java_cup/runtime/**</include>
+                                    </includes>
+                                </filter>
+                                <filter>
+                                    <artifact>asm:asm-all</artifact>
+                                    <includes>
+                                        <include>org/objectweb/asm/**</include>
+                                    </includes>
+                                </filter>
+                            </filters>
+                            <relocations>
+                                <relocation>
+                                    <pattern>org.objectweb.asm</pattern>
+                                    <shadedPattern>org.jboss.byteman.objectweb.asm</shadedPattern>
+                                </relocation>
+                                <relocation>
+                                    <pattern>java_cup.runtime</pattern>
+                                    <shadedPattern>org.jboss.byteman.java_cup.runtime</shadedPattern>
+                                </relocation>
+                            </relocations>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <skipExec>true</skipExec>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <!--
+                    we have to do this the hard way by forking each test in a separate VM
+                    running the byteman agent and the appropriate script
+
+                    first we run each test interpreted. then we repeat them all setting
+                    -Dorg.jboss.byteman.compile.to.bytecode so we also test the rules when compiled
+                 -->
+                <executions>
+                    <!-- java language operations -->
+                    <execution>
+                      <id>javaops.TestArithmetic</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestArithmetic.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestArithmetic.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestArray</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestArray.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestArray.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestAssign</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestAssign.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestAssign.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestComparison</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestComparison.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestComparison.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestField</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestField.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestField.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestLogical</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestLogical.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestLogical.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestMethod</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestMethod.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestMethod.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestNew</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestNew.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestNew.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>javaops.TestClassLiteral</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/javaops/TestClassLiteral.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestClassLiteral.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- location clauses -->
+                    <execution>
+                      <id>location.TestAll</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestAll.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestAll.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestCall</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestCall.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestCall.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestEntry</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestEntry.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestEntry.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestExit</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestExit.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestExit.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestLine</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestLine.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestLine.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestReadWrite</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestReadWrite.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestReadWrite.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestReadWriteParams</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestReadWriteParams.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestReadWriteParams.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestSynch</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestSynch.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestSynch.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>location.TestThrow</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/location/TestThrow.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestThrow.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- builtin helper methods -->
+                    <execution>
+                      <id>helpertests.TestCallerMatches</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/helpertests/TestCallerMatches.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/helpertests/TestCallerMatches.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>helpertests.TestStackTrace</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/helpertests/TestStackTrace.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/helpertests/TestStackTrace.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- miscellaneous tests -->
+                    <execution>
+                      <id>misc.TestInterfaceInjection</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestInterfaceInjection.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestInterfaceInjection.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestInvokeParamBinding</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestInvokeParamBinding.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestInvokeParamBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestOverridingInjection</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestOverridingInjection.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestOverridingInjection.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestOverridingInterfaceInjection</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestOverridingInterfaceInjection.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestOverridingInterfaceInjection.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestParamBinding</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestParamBinding.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestParamBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestRecursiveTriggers</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestRecursiveTriggers.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestRecursiveTriggers.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestReturnBindingAssignment</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestReturnBindingAssignment.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestReturnBindingAssignment.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestReturnBinding</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestReturnBinding.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestReturnBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestThrowBinding</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestThrowBinding.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestThrowBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestTriggerClassMethodBinding</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestTriggerClassMethodBinding.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestTriggerClassMethodBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!--
+                    <execution>
+                      <id>misc.TestDowncast</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestDowncast.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestDowncast.btm</argLine>
+                      </configuration>
+                    </execution>
+                    -->
+                    <!-- bugfixes -->
+                    <execution>
+                      <id>bugfixes.TestEmptySignature</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestEmptySignature.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestEmptySignature.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestEnclosedSynchronizationPropagation</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestEnclosedSynchronizationPropagation.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestEnclosedSynchronizationPropagation.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestInterfaceHierarchy</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestInterfaceHierarchy.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestInterfaceHierarchy.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMethodActualAgainstFormal</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMethodActualAgainstFormal.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodActualAgainstFormal.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMethodClauseReturnType</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMethodClauseReturnType.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodClauseReturnType.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMethodParamAssign</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMethodParamAssign.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodParamAssign.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMethodParamName</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMethodParamName.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodParamName.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMultiMethodMatch</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMultiMethodMatch.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMultiMethodMatch.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestPromotePrimitiveToObject</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestPromotePrimitiveToObject.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestPromotePrimitiveToObject.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestStringAsCharSequence</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestStringAsCharSequence.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestStringAsCharSequence.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestThrowAction</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestThrowAction.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowAction.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestThrowError</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestThrowError.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowError.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestThrowRuleInjection</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestThrowRuleInjection.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowRuleInjection.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestWaitAfterSignalWakeMustMeet</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestWaitAfterSignalWakeMustMeet.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestWaitAfterSignalWakeMustMeet.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestThrowRuntimeException</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestThrowRuntimeException.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowRuntimeException.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestAfterCallAssign</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestAfterCallAssign.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestAfterCallAssign.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestAbstractInterfaceCall</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestAbstractInterfaceCall.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestAbstractInterfaceCall.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMaxStackComputation</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMaxStackComputation.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMaxStackComputation.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestBooleanComparisons</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestBooleanComparisons.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestBooleanComparisons.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestStackHeight</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestStackHeight.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestStackHeight.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestLocalUpdateType</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestLocalUpdateType.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestLocalUpdateType.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- dynamic rule submission
+                        n.b. submit test does not use a script on the command line
+                        instead it sets listener true and uplaods the rules from the test program
+                    -->
+                    <execution>
+                      <id>submit.TestSubmit</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/submit/TestSubmit.class</include>
+                         </includes>
+                         <argLine>-javaagent:${project.build.directory}/byteman-${project.version}.jar=listener:true</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- now the executions for the compiled rules -->
+                    <!-- java language operations compiled -->
+                    <execution>
+                        <id>javaops.TestArithmetic.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestArithmetic.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestArithmetic.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestArray.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestArray.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestArray.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestAssign.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestAssign.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestAssign.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestComparison.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestComparison.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestComparison.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestField.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestField.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestField.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestLogical.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestLogical.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestLogical.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestMethod.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestMethod.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestMethod.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestNew.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestNew.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestNew.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>javaops.TestClassLiteral.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/javaops/TestClassLiteral.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/javaops/TestClassLiteral.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <!-- location clauses compiled -->
+                    <execution>
+                        <id>location.TestAll.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestAll.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestAll.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestCall.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestCall.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestCall.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestEntry.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestEntry.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestEntry.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestExit.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestExit.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestExit.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestLine.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestLine.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestLine.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestReadWrite.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestReadWrite.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestReadWrite.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestReadWriteParams.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestReadWriteParams.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestReadWriteParams.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestSynch.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestSynch.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestSynch.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>location.TestThrow.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/location/TestThrow.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/location/TestThrow.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <!-- builtin methods compiled -->
+                    <execution>
+                        <id>helpertests.TestCallerMatches.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/helpertests/TestCallerMatches.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/helpertests/TestCallerMatches.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>helpertests.TestStackTrace.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/helpertests/TestStackTrace.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/helpertests/TestStackTrace.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <!-- miscellenaeous tests compiled -->
+                    <execution>
+                        <id>misc.TestInterfaceInjection.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestInterfaceInjection.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestInterfaceInjection.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestInvokeParamBinding.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestInvokeParamBinding.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestInvokeParamBinding.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestOverridingInjection.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestOverridingInjection.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestOverridingInjection.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestOverridingInterfaceInjection.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestOverridingInterfaceInjection.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestOverridingInterfaceInjection.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestParamBinding.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestParamBinding.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestParamBinding.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestRecursiveTriggers.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestRecursiveTriggers.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestRecursiveTriggers.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestReturnBindingAssignment.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestReturnBindingAssignment.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestReturnBindingAssignment.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestReturnBinding.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestReturnBinding.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestReturnBinding.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>misc.TestThrowBinding.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/misc/TestThrowBinding.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestThrowBinding.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestTriggerClassMethodBinding.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestTriggerClassMethodBinding.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestTriggerClassMethodBinding.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>misc.TestDowncast.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/misc/TestDowncast.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/misc/TestDowncast.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- bugfixes compiled -->
+                    <execution>
+                        <id>bugfixes.TestEmptySignature.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestEmptySignature.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestEmptySignature.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestEnclosedSynchronizationPropagation.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestEnclosedSynchronizationPropagation.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestEnclosedSynchronizationPropagation.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestInterfaceHierarchy.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestInterfaceHierarchy.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestInterfaceHierarchy.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestMethodActualAgainstFormal.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestMethodActualAgainstFormal.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodActualAgainstFormal.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestMethodClauseReturnType.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestMethodClauseReturnType.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodClauseReturnType.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestMethodParamAssign.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestMethodParamAssign.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodParamAssign.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestMethodParamName.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestMethodParamName.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMethodParamName.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestMultiMethodMatch.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestMultiMethodMatch.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMultiMethodMatch.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestPromotePrimitiveToObject.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestPromotePrimitiveToObject.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestPromotePrimitiveToObject.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestStringAsCharSequence.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestStringAsCharSequence.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestStringAsCharSequence.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestThrowAction.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestThrowAction.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowAction.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestThrowError.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestThrowError.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowError.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestThrowRuleInjection.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestThrowRuleInjection.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowRuleInjection.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>bugfixes.TestWaitAfterSignalWakeMustMeet.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/bugfixes/TestWaitAfterSignalWakeMustMeet.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestWaitAfterSignalWakeMustMeet.btm</argLine>
+                        </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestThrowRuntimeException.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestThrowRuntimeException.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestThrowRuntimeException.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestAfterCallAssign.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestAfterCallAssign.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestAfterCallAssign.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestAbstractInterfaceCall.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestAbstractInterfaceCall.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestAbstractInterfaceCall.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestMaxStackComputation.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestMaxStackComputation.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestMaxStackComputation.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestBooleanComparisons.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestBooleanComparisons.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestBooleanComparisons.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestStackHeight.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestStackHeight.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestStackHeight.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <execution>
+                      <id>bugfixes.TestLocalUpdateType.compiled</id>
+                      <phase>integration-test</phase>
+                      <goals>
+                        <goal>integration-test</goal>
+                        <goal>verify</goal>
+                      </goals>
+                      <configuration>
+                         <forkMode>once</forkMode>
+                         <includes>
+                           <include>org/jboss/byteman/tests/bugfixes/TestLocalUpdateType.class</include>
+                         </includes>
+                         <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=script:${project.build.testOutputDirectory}/scripts/bugfixes/TestLocalUpdateType.btm</argLine>
+                      </configuration>
+                    </execution>
+                    <!-- dynamic rule submission compiled
+                      submit test does not use a script on the command line
+                      instead it sets listener true and uplaods the rules from the test program
+                    -->
+                    <execution>
+                        <id>submit.TestSubmit.compiled</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                        <configuration>
+                            <forkMode>once</forkMode>
+                            <includes>
+                                <include>org/jboss/byteman/tests/submit/TestSubmit.class</include>
+                            </includes>
+                            <argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=listener:true</argLine>
+                        </configuration>
+                    </execution>
+					<!-- check rules -->
+					<execution>
+						<id>check.TestRuleCheck</id>
+                        <phase>integration-test</phase>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+						<configuration>
+                            <forkMode>once</forkMode>
+							<test>TestRuleCheck</test>
+                            <includes>
+                                <include>org/jboss/byteman/tests/check/TestRuleCheck.class</include>
+                            </includes>
+							<argLine>-Dorg.jboss.byteman.compile.to.bytecode -javaagent:${project.build.directory}/byteman-${project.version}.jar=listener:true</argLine>
+                        </configuration>
+					</execution>
+                </executions>
+            </plugin>
+            <!--
+                verify stage ensures each test generated a report file
+                this catches cases where the VMfails to start because the
+                agent fails to load or cannot read script files
+            -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-verifier-plugin</artifactId>
+                <configuration>
+                    <verificationFile>verification.xml</verificationFile>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>main</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <profiles>
+        <profile>
+            <id>parser</id>
+            <build>
+                <plugins>
+                    <plugin>
+                        <artifactId>maven-antrun-plugin</artifactId>
+                        <version>1.7</version>
+                        <executions>
+                            <execution>
+                                <phase>generate-sources</phase>
+                                <configuration>
+                                    <target>
+                                        <java classname="JFlex.Main">
+                                            <arg value="-q"/>
+                                            <arg value="${basedir}/grammar/flex/ECAToken.flex"/>
+                                            <arg value="-v"/>
+                                            <arg value="-d"/>
+                                            <arg value="${basedir}/src/main/java/org/jboss/byteman/rule/grammar"/>
+                                            <classpath refid="maven.compile.classpath"/>
+                                        </java>
+                                        <java classname="java_cup.Main">
+                                            <arg value="-package"/>
+                                            <arg value="org.jboss.byteman.rule.grammar"/>
+                                            <arg value="-parser" />
+                                            <arg value="ECAGrammarParser" />
+                                            <arg value="-nonterms"/>
+                                            <arg value="-destdir"/>
+                                            <arg value="${basedir}/src/main/java/org/jboss/byteman/rule/grammar"/>
+                                            <arg value="${basedir}/grammar/cup/ECAGrammar.cup"/>
+                                            <classpath refid="maven.compile.classpath"/>
+                                        </java>
+                                    </target>
+                                </configuration>
+                                <goals>
+                                    <goal>run</goal>
+                                </goals>
+                            </execution>
+                        </executions>
+                    </plugin>
+                </plugins>
+            </build>
+            <dependencies>
+                <dependency>
+                    <groupId>de.jflex</groupId>
+                    <artifactId>jflex</artifactId>
+                </dependency>
+            </dependencies>
+
+        </profile>
+    </profiles>
+    <dependencies>
+        <dependency>
+            <groupId>asm</groupId>
+            <artifactId>asm-all</artifactId>
+            <scope>compile</scope>
+        </dependency>
+        <dependency>
+            <groupId>net.sf.squirrel-sql.thirdparty-non-maven</groupId>
+            <artifactId>java-cup</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-submit</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-bmunit</artifactId>
+    <packaging>jar</packaging>
+    <description>
+        The Byteman bmunit jar provides integration of Byteman into TestNG and JUnit tests.
+    </description>
+    <name>byteman-bmunit</name>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <build>
+        <sourceDirectory>src</sourceDirectory>
+        <testSourceDirectory>test/src</testSourceDirectory>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <configuration>
+                    <includes>
+                        <include>test/NGUnitTest.class</include>
+                    </includes>
+                    <forkMode>always</forkMode>
+                    <!-- ensure we don't inherit a byteman jar form any 3env settings -->
+                    <argLine>-Dorg.jboss.byteman.home=""</argLine>
+                    <environmentVariables>
+                        <BYTEMAN_HOME></BYTEMAN_HOME>
+                    </environmentVariables>
+                    <!-- make sure maven puts the byteman jar in the classpath rather than in a manifest jar -->
+                    <useManifestOnlyJar>false</useManifestOnlyJar>
+                </configuration>
+            </plugin>
+        </plugins>
+    </build>
+    <dependencies>
+        <dependency>
+            <groupId>org.testng</groupId>
+            <artifactId>testng</artifactId>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+            <scope>compile</scope>
+            <optional>true</optional>
+        </dependency>
+        <!-- the bmunit code depends on the submit, install and agent jars
+        -->
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman</artifactId>
+        </dependency>
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman-submit</artifactId>
+        </dependency>
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman-install</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-dtest</artifactId>
+    <packaging>jar</packaging>
+    <description>
+        The Byteman dtest jar supports instrumentation of test code executed on remote server hosts
+        and validation of assertions describing the expected operation of the instrumented methods.
+    </description>
+    <name>byteman-dtest</name>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <build>
+        <sourceDirectory>src</sourceDirectory>
+    </build>
+    <dependencies>
+        <!-- the dtest code depends on the submit and agent jars
+        -->
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman</artifactId>
+        </dependency>
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman-submit</artifactId>
+        </dependency>
+        <!-- dtest reuses JUnit assertions -->
+        <dependency>
+            <groupId>junit</groupId>
+            <artifactId>junit</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>org.jboss.byteman.contrib.rulecheck-maven-plugin</groupId>
+  <artifactId>example</artifactId>
+  <version>1.0</version>
+
+  <description>A simple example showing the basic use case.</description>
+
+  <properties>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+  </properties>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-rulecheck-maven-plugin</artifactId>
+        <version>2.1.3</version>
+        <executions>
+          <execution>
+            <id>rulecheck-test</id>
+            <goals>
+              <goal>rulecheck</goal>
+            </goals>
+			<configuration>
+				<packages>
+					<package>org.jboss.byteman.tests.auxiliary</package>
+					<package>org.jboss.byteman.tests.bugfixes</package>
+				</packages>
+				<includes>
+                    <include>**/*.btm</include>
+                </includes>
+                <additionalClassPath>../../../agent/target/test-classes</additionalClassPath>
+				<failOnError>true</failOnError>
+                <verbose>true</verbose>
+			</configuration>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0" 
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+	<artifactId>byteman-rulecheck-maven-plugin</artifactId>
+	<packaging>maven-plugin</packaging>
+    <description>
+        The Byteman rulecheck plugin provides automation of offline parsing and typechecking.
+    </description>
+	<name>byteman-rulecheck maven plugin</name>
+	<parent>
+		<groupId>org.jboss.byteman</groupId>
+		<artifactId>byteman-root</artifactId>
+		<version>2.1.4.1</version>
+		<relativePath>../../pom.xml</relativePath>
+	</parent>
+
+	<properties>
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+	</properties>
+
+	<dependencies>
+		<dependency>
+			<groupId>org.jboss.byteman</groupId>
+			<artifactId>byteman</artifactId>
+            <!--
+			<version>2.1.3</version>
+            -->
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-core</artifactId>
+			<version>3.0.3</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-project</artifactId>
+			<version>2.0.6</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven</groupId>
+			<artifactId>maven-plugin-api</artifactId>
+			<version>3.0.5</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.maven.plugin-tools</groupId>
+			<artifactId>maven-plugin-annotations</artifactId>
+			<version>3.2</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.codehaus.plexus</groupId>
+			<artifactId>plexus-utils</artifactId>
+			<version>3.0.8</version>
+		</dependency>
+		<dependency>
+			<groupId>junit</groupId>
+			<artifactId>junit</artifactId>
+			<version>4.8.2</version>
+			<scope>test</scope>
+		</dependency>
+	</dependencies>
+
+	<build>
+		<plugins>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-plugin-plugin</artifactId>
+				<version>3.2</version>
+				<configuration>
+					<goalPrefix>rulecheck</goalPrefix>
+					<skipErrorNoDescriptorsFound>true</skipErrorNoDescriptorsFound>
+				</configuration>
+				<executions>
+					<execution>
+						<id>mojo-descriptor</id>
+						<goals>
+							<goal>descriptor</goal>
+						</goals>
+					</execution>
+					<execution>
+						<id>help-goal</id>
+						<goals>
+							<goal>helpmojo</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+		</plugins>
+	</build>
+	<profiles>
+		<profile>
+			<id>run-its</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-invoker-plugin</artifactId>
+						<version>1.7</version>
+						<configuration>
+							<debug>true</debug>
+							<cloneProjectsTo>${project.build.directory}/it</cloneProjectsTo>
+							<pomIncludes>
+								<pomInclude>*/pom.xml</pomInclude>
+							</pomIncludes>
+							<postBuildHookScript>verify</postBuildHookScript>
+							<localRepositoryPath>${project.build.directory}/local-repo</localRepositoryPath>
+							<settingsFile>src/it/settings.xml</settingsFile>
+							<goals>
+								<goal>clean</goal>
+								<goal>test</goal>
+							</goals>
+						</configuration>
+						<executions>
+							<execution>
+								<id>integration-test</id>
+								<goals>
+									<goal>install</goal>
+									<goal>integration-test</goal>
+									<goal>verify</goal>
+								</goals>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-download</artifactId>
+    <packaging>pom</packaging>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+    </parent>
+    <description>
+        The Byteman download includes the byteman agent, submit and install jars. the contributed
+        tool jars, the binary scripts used to drive byteman, the Byteman user guide plus the
+        sample jar and scripts which provide some simple examples of how to use Byteman.
+    </description>
+    <name>byteman-download</name>
+    <url>http://www.jboss.org/byteman</url>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>create-bin-zip</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <attach>true</attach>
+                            <descriptors>
+                                <descriptor>assembly-bin.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>create-full-zip</id>
+                        <phase>package</phase>
+                        <goals>
+                            <goal>single</goal>
+                        </goals>
+                        <configuration>
+                            <attach>true</attach>
+                            <descriptors>
+                                <descriptor>assembly-full.xml</descriptor>
+                            </descriptors>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+    <dependencies>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-submit</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-install</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-sample</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-bmunit</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-dtest</artifactId>
+	    <version>${project.version}</version>
+        </dependency>
+        <!-- javadoc jars -->
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-submit</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-install</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-sample</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-bmunit</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-dtest</artifactId>
+            <classifier>javadoc</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <!-- source jars -->
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-submit</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-install</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-sample</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-bmunit</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jboss.byteman</groupId>
+            <artifactId>byteman-dtest</artifactId>
+            <classifier>sources</classifier>
+	    <version>${project.version}</version>
+        </dependency>
+    </dependencies>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-install</artifactId>
+    <packaging>jar</packaging>
+    <description>
+        The Byteman install jar contains classes to install the Byteman agent into the current JVM
+        or a remote JVM
+    </description>
+    <name>byteman-install</name>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+    </parent>
+
+    <dependencies>
+        <!-- the install code uses the VM_Attach API which is available in the JDK tools jar
+             in Hotspot and OpenJDK
+        -->
+        <dependency>
+            <groupId>com.sun</groupId>
+            <artifactId>tools</artifactId>
+        </dependency>
+    </dependencies>
+
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source
+  ~ Copyright 2011, Red Hat and individual contributors as identified
+  ~ by the @authors tag. See the copyright.txt in the distribution for a
+  ~ full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  ~
+  ~ @authors Andrew Dinn
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>org.jboss.byteman</groupId>
+    <artifactId>byteman-root</artifactId>
+    <packaging>pom</packaging>
+    <description>
+        Byteman is a java agent-based bytecode injection tool. It can be used to inject Event Condition Action rules
+        into Java application and JVM runtime methods. Its primary purpose is to support execution tracing and fault
+        injection testing.
+    </description>
+    <version>2.1.4.1</version>
+    <name>byteman-root</name>
+    <url>http://www.jboss.org/byteman</url>
+
+    <issueManagement>
+        <system>JIRA</system>
+        <url>https://jira.jboss.org/jira/browse/BYTEMAN/</url>
+    </issueManagement>
+    <licenses>
+        <license>
+            <name>LGPL 2.1</name>
+            <url>http://www.gnu.org/licenses/lgpl-2.1.html</url>
+        </license>
+    </licenses>
+
+    <scm>
+        <connection>scm:git:git://github.com/adinn/byteman.git</connection>
+        <developerConnection>scm:git:git://github.com/adinn/byteman.git</developerConnection>
+        <url>http://fisheye.jboss.org/browse/byteman/</url>
+    </scm>
+
+    <developers>
+        <developer>
+            <id>adinn</id>
+            <name>Andrew Dinn</name>
+            <email>adinn@redhat.com</email>
+            <organization>JBoss</organization>
+            <organizationUrl>http://www.jboss.org/</organizationUrl>
+            <roles>
+                <role>project lead</role>
+            </roles>
+            <timezone>0</timezone>
+        </developer>
+        <developer>
+            <id>kabir.khan@jboss.com</id>
+            <name>Kabir Khan</name>
+            <email>kabir.khan@jboss.com</email>
+            <organization>JBoss</organization>
+            <organizationUrl>http://www.jboss.org/</organizationUrl>
+            <roles>
+                <role>contributing developer</role>
+            </roles>
+            <timezone>0</timezone>
+        </developer>
+    </developers>
+    <distributionManagement>
+        <repository>
+            <id>jboss-releases-repository</id>
+            <name>JBoss Release Repository</name>
+            <url>https://repository.jboss.org/nexus/service/local/staging/deploy/maven2/</url>
+        </repository>
+        <snapshotRepository>
+            <id>jboss-snapshots-repository</id>
+            <name>JBoss Snapshot Repository</name>
+            <url>https://repository.jboss.org/nexus/content/repositories/snapshots/</url>
+        </snapshotRepository>
+    </distributionManagement>
+
+    <properties>
+        <!-- actual path to tools.jar is defined in the profiles below -->
+        <tools.jar>/file-not-found/tools.jar</tools.jar>
+
+        <!-- Decouple file encoding of the platform encoding -->
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+        <!-- maven-release-plugin -->
+        <useReleaseProfile>false</useReleaseProfile>
+        <pushChanges>false</pushChanges>
+        <autoVersionSubmodules>true</autoVersionSubmodules>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+
+             <!-- Internal dependencies -->
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-submit</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-submit</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-submit</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-install</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-install</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-install</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-sample</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-sample</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-sample</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-bmunit</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-bmunit</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-bmunit</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-dtest</artifactId>
+                 <version>${project.version}</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-dtest</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>sources</classifier>
+             </dependency>
+             <dependency>
+                 <groupId>org.jboss.byteman</groupId>
+                 <artifactId>byteman-dtest</artifactId>
+                 <version>${project.version}</version>
+                 <classifier>javadoc</classifier>
+             </dependency>
+
+             <!-- External dependencies -->
+             <dependency>
+                 <groupId>net.sf.squirrel-sql.thirdparty-non-maven</groupId>
+                 <artifactId>java-cup</artifactId>
+                 <version>0.11a</version>
+             </dependency>
+            <dependency>
+                 <groupId>asm</groupId>
+                 <artifactId>asm-all</artifactId>
+                 <version>3.3.1</version>
+            </dependency>
+            <dependency>
+                 <groupId>de.jflex</groupId>
+                 <artifactId>jflex</artifactId>
+                 <version>1.4.3</version>
+            </dependency>
+             <dependency>
+                 <groupId>junit</groupId>
+                 <artifactId>junit</artifactId>
+                 <version>4.8.2</version>
+             </dependency>
+             <dependency>
+                 <groupId>org.testng</groupId>
+                 <artifactId>testng</artifactId>
+                 <version>5.14.6</version>
+             </dependency>
+             <dependency>
+                 <groupId>com.sun</groupId>
+                 <artifactId>tools</artifactId>
+                 <version>1.6</version>
+                 <scope>system</scope>
+                 <systemPath>${tools.jar}</systemPath>
+             </dependency>
+
+        </dependencies>
+    </dependencyManagement>
+
+    <build>
+        <pluginManagement>
+            <plugins>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-compiler-plugin</artifactId>
+                    <version>2.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-source-plugin</artifactId>
+                    <version>2.1.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-javadoc-plugin</artifactId>
+                    <version>2.5</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-surefire-plugin</artifactId>
+                    <version>2.4.3</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-assembly-plugin</artifactId>
+                    <version>2.2.1</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-shade-plugin</artifactId>
+                    <version>1.4</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-failsafe-plugin</artifactId>
+                    <version>2.9</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-verifier-plugin</artifactId>
+                    <version>1.0</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-jar-plugin</artifactId>
+                    <version>2.3</version>
+                </plugin>
+                <plugin>
+                    <artifactId>maven-antrun-plugin</artifactId>
+                    <version>1.6</version>
+                </plugin>
+                <plugin>
+                    <groupId>org.apache.maven.plugins</groupId>
+                    <artifactId>maven-release-plugin</artifactId>
+                    <version>2.1</version>
+                </plugin>
+            </plugins>
+        </pluginManagement>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <configuration>
+                    <source>1.6</source>
+                    <target>1.6</target>
+                </configuration>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-source-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>attach-sources</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-javadoc-plugin</artifactId>
+                <configuration>
+                  <attach>true</attach>
+                </configuration>
+                <executions>
+                    <execution>
+                        <id>javadoc-jar</id>
+                        <goals>
+                            <goal>jar</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+
+    <modules>
+        <module>submit</module>
+        <module>agent</module>
+        <module>install</module>
+        <module>contrib/bmunit</module>
+        <module>contrib/dtest</module>
+        <module>contrib/rulecheck-maven-plugin</module>
+        <module>sample</module>
+        <module>download</module>
+    </modules>
+
+    <profiles>
+      <!-- tools classes are needed by byteman -->
+      <profile>
+        <!-- normally tools jar is in ../lib/tools.jar -->
+        <id>default-toolsjar-profile</id>
+        <activation>
+          <file>
+            <exists>${java.home}/../lib/tools.jar</exists>
+          </file>
+        </activation>
+        <properties>
+          <tools.jar>${java.home}/../lib/tools.jar</tools.jar>
+        </properties>
+      </profile>
+      <profile>
+        <!-- on pre-jdk7 mac releases tools jar is in ../Classes/classes.jar -->
+        <id>mac-toolsjar-profile</id>
+        <activation>
+          <file>
+            <exists>${java.home}/../Classes/classes.jar</exists>
+          </file>
+        </activation>
+        <properties>
+          <tools.jar>${java.home}/../Classes/classes.jar</tools.jar>
+        </properties>
+      </profile>      <!-- We override the tools.jar property on mac osx -->
+      <!--
+	  new profile for releasing to maven central
+	  to do a release update the version number from a SNAPSHOT
+	  version to a full version and execute
+	  
+	    mvn -P centralRelease deploy
+
+	  you will need to have permission to upload the jars to
+	  the sonatype repo and to have configured the relevant gpg
+	  key settings in ~/.m2/settings.xml
+
+            <profile>
+              <id>centralRelease</id>
+              <properties>
+                  <gpg.passphrase>XXXXXXXXXX</gpg.passphrase>
+              </properties>
+            </profile>
+      -->
+      <profile>
+	<id>centralRelease</id>
+	<!-- obviously we need to use the Sonatype staging repo for upload -->
+	<distributionManagement>
+	  <repository>
+	    <id>sonatype-releases-repository</id>
+	    <name>Sonatype Releases Repository</name>
+	    <url>https://oss.sonatype.org/service/local/staging/deploy/maven2</url>
+	  </repository>
+	</distributionManagement>
+	<!-- we need to be able to sign the jars we install -->
+	<build>
+	  <plugins>
+	    <plugin>
+	      <groupId>org.apache.maven.plugins</groupId>
+	      <artifactId>maven-gpg-plugin</artifactId>
+	      <configuration>
+		<passphrase>${gpg.passphrase}</passphrase>
+		<useAgent>${gpg.useAgent}</useAgent>
+	      </configuration>
+	      <executions>
+		<execution>
+		  <id>sign-artifacts</id>
+		  <phase>verify</phase>
+		  <goals>
+		    <goal>sign</goal>
+		  </goals>
+		</execution>
+	      </executions>
+	    </plugin>
+	  </plugins>
+	</build>
+      </profile>
+    </profiles>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-sample</artifactId>
+    <packaging>jar</packaging>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+    </parent>
+    <description>
+        The Byteman sample jar contains some example helper classes and auxiliary classes used by the]
+        sample rule scripts contained in the distribution
+    </description>
+    <name>byteman-sample</name>
+    <url>http://www.jboss.org/byteman</url>
+    <build>
+        <sourceDirectory>src</sourceDirectory>
+    </build>
+    <dependencies>
+        <!-- the sample code depends on the agent jar
+        -->
+        <dependency>
+          <groupId>org.jboss.byteman</groupId>
+          <artifactId>byteman</artifactId>
+        </dependency>
+    </dependencies>
+</project>
+<!--
+  ~ JBoss, Home of Professional Open Source.
+  ~ Copyright 2011, Red Hat and individual contributors
+  ~ as indicated by the @author tags. See the copyright.txt file in the
+  ~ distribution for a full listing of individual contributors.
+  ~
+  ~ This is free software; you can redistribute it and/or modify it
+  ~ under the terms of the GNU Lesser General Public License as
+  ~ published by the Free Software Foundation; either version 2.1 of
+  ~ the License, or (at your option) any later version.
+  ~
+  ~ This software is distributed in the hope that it will be useful,
+  ~ but WITHOUT ANY WARRANTY; without even the implied warranty of
+  ~ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+  ~ Lesser General Public License for more details.
+  ~
+  ~ You should have received a copy of the GNU Lesser General Public
+  ~ License along with this software; if not, write to the Free
+  ~ Software Foundation, Inc., 51 Franklin St, Fifth Floor, Boston, MA
+  ~ 02110-1301 USA, or see the FSF site: http://www.fsf.org.
+  -->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <artifactId>byteman-submit</artifactId>
+    <packaging>jar</packaging>
+    <description>
+        The Byteman install jar contains classes whcih canbe used to install an agent into the
+        current JVM or into a remote JVM
+    </description>
+    <name>byteman-submit</name>
+    <parent>
+        <groupId>org.jboss.byteman</groupId>
+        <artifactId>byteman-root</artifactId>
+        <version>2.1.4.1</version>
+    </parent>
+</project>

@@ -1,0 +1,277 @@
+project.ext {
+	currentBranch = getCurrentBranch()
+    releaseBranch = "release-${versionNumber}"
+    workDirectory = createWorkDirectory()
+    project = 'thucydides'
+    artifacts = ['thucydides-report-resources','thucydides-core', 'thucydides-junit','maven-thucydides-plugin','thucydides-easyb-plugin', 'thucydides-extensions','thucydides-browsermob-plugin']
+    mavenRepo = "~/.m2/repository"
+}
+
+task createBranch {
+    executeOnShell "git checkout -b ${project.ext.releaseBranch}"
+}
+
+task setNewVersion {
+    dependsOn createBranch
+    executeOnShell "mvn versions:set -DnewVersion=${versionNumber}"
+}
+
+task buildArtifacts {
+    dependsOn setNewVersion
+    executeOnShell "mvn clean install -DskipTests"
+    executeOnShell "mvn compile test-compile javadoc:jar source:jar"
+}
+
+task deployArtifacts {
+	dependsOn buildArtifacts
+    def parentPomFile = findParentArtifact()
+    def jarFiles = findChildArtifacts()
+    def javadocFiles = findJavadocArtifacts()
+    def sourceJarFiles = findSourceArtifacts()
+
+    deployFile(parentPomFile, parentPomFile)
+
+    jarFiles.each { jarFile ->
+        def artifactName = new File(jarFile).name.replace(".jar","")
+        def pomFile = jarFile.replace(".jar",".pom")
+        def sourceFile = sourceJarFiles.find { it.contains(artifactName)}
+        def javadocFile = javadocFiles.find { it.contains(artifactName)}
+        deployFiles(pomFile, jarFile, sourceFile, javadocFile)
+    }
+}
+
+task deployCurrentBuildArtifacts {
+    def parentPomFile = findParentArtifact()
+    def jarFiles = findChildArtifacts()
+    def javadocFiles = findJavadocArtifacts()
+    def sourceJarFiles = findSourceArtifacts()
+
+    deployFile(parentPomFile, parentPomFile)
+
+    jarFiles.each { jarFile ->
+        def artifactName = new File(jarFile).name.replace(".jar","")
+        def pomFile = jarFile.replace(".jar",".pom")
+        def sourceFile = sourceJarFiles.find { it.contains(artifactName)}
+        def javadocFile = javadocFiles.find { it.contains(artifactName)}
+        deployFiles(pomFile, jarFile, sourceFile, javadocFile)
+    }
+}
+
+task pushNewBranch {
+    executeOnShell "git commit -a -m '[Release version ${versionNumber}]'"
+    executeOnShell "git push origin ${project.ext.releaseBranch}"
+}
+
+task checkoutOriginalBranch {
+    executeOnShell "git checkout ${project.ext.currentBranch}"
+}
+
+task release {
+	dependsOn deployArtifacts, pushNewBranch, checkoutOriginalBranch
+	println "RELEASING THUCYDIDES VERSION ${versionNumber}"
+}
+
+def deployFile(pomFilePath, artifactFilePath) {
+    deployFiles(pomFilePath, artifactFilePath, null, null)
+}
+
+def deployFiles(pomFilePath, artifactFilePath, sourceFile, javadocFile) {
+
+    println "Deploying $artifactFilePath"
+    def tempDirectory = project.ext.workDirectory
+    def toSonatypeStagingRepo = "-Durl=https://oss.sonatype.org/service/local/staging/deploy/maven2/ -DrepositoryId=sonatype-nexus-staging"
+
+    def pomFile = new File(pomFilePath)
+    def artifactFile = new File(artifactFilePath)
+    def tempPom = new File(tempDirectory, pomFile.getName())
+    def tempArtifact = new File(tempDirectory, artifactFile.getName())
+
+    executeOnShell "cp ${pomFilePath.trim()} ${tempDirectory.path}"
+    executeOnShell "cp ${artifactFilePath.trim()} ${tempDirectory.path}"
+
+    deployCmd = "mvn gpg:sign-and-deploy-file $toSonatypeStagingRepo -DpomFile=${tempPom.path} -Dfile=${tempArtifact.path}"
+    if (sourceFile) {
+        deployCmd += " -Dsources=$sourceFile"
+    }
+    if (javadocFile) {
+        deployCmd += " -Djavadoc=$javadocFile"
+    }
+    executeOnShell deployCmd
+
+}
+
+def getCurrentBranch() {
+	def branches = executeOnShell('git branch',true)
+	def branch = branches.readLines().find { it.startsWith('*') }
+	branch.stripIndent(2)
+}
+
+def findParentArtifact() {
+    def parentPom = executeOnShell "find ~/.m2/repository -name '*.pom' | grep ${project.ext.project}-${versionNumber}.pom"
+    parentPom.trim()
+}
+
+def findChildArtifacts() {
+    findJarsWithQualifier(versionNumber, "~/.m2/repository")
+}
+
+def findJavadocArtifacts() {
+    findJarsWithQualifier("javadoc")
+}
+
+def findSourceArtifacts() {
+    findJarsWithQualifier("sources")
+}
+
+def findJarsWithQualifier(qualifier) {
+    findJarsWithQualifier(qualifier,".")
+}
+
+def findJarsWithQualifier(qualifier, directory) {
+
+    def artifactPaths = []
+
+    project.ext.artifacts.each {
+        def jarFile = executeOnShell "find ${directory} -name '*.jar' | grep ${it} | grep ${qualifier}.jar"
+        if (jarFile) {
+            artifactPaths.add jarFile.trim()
+        }
+
+    }
+    return artifactPaths
+}
+def executeOnShell(String command) {
+    return executeOnShell(command, false)
+}
+
+def createWorkDirectory() {
+    File dir = File.createTempFile( 'artifacts', '.dir' )
+    dir.delete()
+    dir.mkdir()
+    return dir
+}
+
+private def executeOnShell(String command, boolean failOnError) {
+    println "EXECUTING $command"
+    def output = new StringBuffer();
+    def process = new ProcessBuilder(addShellPrefix(command))
+            .redirectErrorStream(true)
+            .start()
+    process.inputStream.eachLine {println it; output.append(it).append("\n")}
+    process.waitFor();
+    if (failOnError && process.exitValue() != 0) {
+        throw new GradleException("$command failed to execute")
+    }
+    return output.toString()
+}
+
+private def addShellPrefix(String command) {
+    commandArray = new String[3]
+    commandArray[0] = "sh"
+    commandArray[1] = "-c"
+    commandArray[2] = command
+    return commandArray
+}
+
+
+dependencies {
+    compile "org.seleniumhq.selenium:selenium-server:2.20.0"
+    compile "net.sf.opencsv:opencsv:2.0"
+    compile "commons-beanutils:commons-beanutils-core:1.8.3"
+    compile "com.google.guava:guava:r09"
+    compile "org.hamcrest:hamcrest-all:1.1"
+    compile "com.googlecode.lambdaj:lambdaj:2.3.1"
+    compile "com.thoughtworks.xstream:xstream:1.4.1"
+    compile "commons-collections:commons-collections:3.2.1"
+    compile "org.apache.commons:commons-lang3:3.0.1"
+    compile "net.sf.flexjson:flexjson:2.1"
+    compile "joda-time:joda-time:2.0"
+    compile "net.sourceforge.htmlunit:htmlunit:2.9"
+    compile "org.freemarker:freemarker:2.3.18"
+
+    compile project(":thucydides-report-resources")
+
+    testCompile project(":thucydides-sample-alternative-resources")
+    testCompile project(":thucydides-test-utils")
+}
+
+sourceSets {
+    integTest {
+        java.srcDirs 'src/integTests/java'
+        resources.srcDirs 'src/integTests/resources'
+        compileClasspath = sourceSets.main.output + sourceSets.test.output + configurations.testCompile
+        runtimeClasspath = classes + compileClasspath
+    }
+}
+
+test {
+    maxParallelForks = 2
+    exclude "**/integration/**"
+}
+
+task integTest(type: Test) {
+    maxParallelForks = 2
+    testClassesDir = sourceSets.integTest.classesDir
+    classpath = sourceSets.integTest.runtimeClasspath
+}
+
+check.dependsOn integTestapply plugin: 'groovy'
+
+
+repositories {
+    mavenCentral()
+    maven { url = "https://oss.sonatype.org/content/repositories/releases" }
+    maven { url = "https://oss.sonatype.org/content/repositories/snapshots" }
+    maven { url = "https://oss.sonatype.org/content/groups/public" }
+    maven { url = "http://wakaleo.artifactoryonline.com/wakaleo/libs-releases" }
+    maven { url = "http://wakaleo.artifactoryonline.com/wakaleo/libs-snapshots" }
+}
+
+dependencies {
+    compile gradleApi()
+    compile 'net.thucydides:thucydides-core:0.8.8'
+    groovy localGroovy()
+}
+
+dependencies {
+    compile "org.seleniumhq.selenium:selenium-server:2.20.0"
+    compile "net.sf.opencsv:opencsv:2.0"
+    compile "commons-beanutils:commons-beanutils-core:1.8.3"
+    compile "com.google.guava:guava:r09"
+    compile "org.hamcrest:hamcrest-all:1.1"
+    compile "com.googlecode.lambdaj:lambdaj:2.3.1"
+    compile "com.thoughtworks.xstream:xstream:1.4.1"
+    compile "commons-collections:commons-collections:3.2.1"
+    compile "org.apache.commons:commons-lang3:3.0.1"
+    compile "net.sf.flexjson:flexjson:2.1"
+    compile "joda-time:joda-time:2.0"
+    compile "net.sourceforge.htmlunit:htmlunit:2.9"
+    compile "org.freemarker:freemarker:2.3.18"
+
+    compile project(":thucydides-report-resources")
+
+    testCompile project(":thucydides-sample-alternative-resources")
+    testCompile project(":thucydides-test-utils")
+}
+
+sourceSets {
+    integTest {
+        java.srcDirs 'src/integTests/java'
+        resources.srcDirs 'src/integTests/resources'
+        compileClasspath = sourceSets.main.output + sourceSets.test.output + configurations.testCompile
+        runtimeClasspath = classes + compileClasspath
+    }
+}
+
+test {
+    maxParallelForks = 2
+    exclude "**/integration/**"
+}
+
+task integTest(type: Test) {
+    maxParallelForks = 2
+    testClassesDir = sourceSets.integTest.classesDir
+    classpath = sourceSets.integTest.runtimeClasspath
+}
+
+check.dependsOn integTest

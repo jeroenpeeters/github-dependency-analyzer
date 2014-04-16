@@ -1,0 +1,122 @@
+evaluationDependsOn(':app')
+
+apply plugin: 'java'
+
+dependencies {
+    compile project(':app')
+
+    testCompile 'junit:junit:4.+'
+    testCompile 'org.mockito:mockito-all:1.8.+'
+    testCompile 'org.robolectric:robolectric:2.2'
+
+    testCompile project(':app').android.applicationVariants.toList().first().javaCompile.classpath
+    testCompile project(':app').android.applicationVariants.toList().first().javaCompile.outputs.files
+    testCompile files(project(':app').plugins.findPlugin("android").runtimeJarList)
+}
+
+sourceSets {
+    test {
+        java.srcDirs = ['src/unit-tests/java']
+    }
+}
+
+tasks.withType(Test) {
+    scanForTestClasses = false
+    include "**/*Should.class"
+    include "**/*Test.class"
+    include "**/*Tests.class"
+}
+buildscript {
+    dependencies {
+        classpath 'com.android.tools.build:gradle:0.8.+'
+    }
+}
+
+apply plugin: 'android'
+
+dependencies {
+    compile project(":core")
+}
+
+android {
+    compileSdkVersion 19
+    buildToolsVersion "19.0.0"
+
+    defaultConfig {
+        minSdkVersion 14
+        targetSdkVersion 19
+
+        testInstrumentationRunner "com.google.android.apps.common.testing.testrunner.GoogleInstrumentationTestRunner"
+
+        buildConfigField "retrofit.client.Client", "HTTP_CLIENT", "new retrofit.client.UrlConnectionClient()"
+    }
+
+    deviceProvider new GenymotionDeviceProvider(project.plugins.findPlugin('android').getSdkParser())
+    testBuildType "mockServer"
+
+    buildTypes {
+        mockServer {
+            dependencies {
+                instrumentTestCompile "com.google.android:android-espresso-bundled:1.1.0-SNAPSHOT"
+            }
+
+            signingConfig signingConfigs.debug
+            buildConfigField "retrofit.client.Client", "HTTP_CLIENT", "new com.xrigau.droidcon.core.debug.MockClient()"
+        }
+    }
+}
+
+class GenymotionDeviceProvider extends com.android.builder.testing.ConnectedDeviceProvider {
+    GenymotionDeviceProvider(com.android.builder.SdkParser sdkParser) {
+        super(sdkParser)
+    }
+
+    public String getName() {
+        return "genymotion" // Run with 'gradle genymotionInstrumentTest'
+    }
+
+    public List<? extends com.android.builder.testing.api.DeviceConnector> getDevices() {
+        List localDevices = super.getDevices()
+        def matchingDevices = localDevices.grep {
+            it.getApiLevel() > 16 &&
+                    it.iDevice.getProperty("ro.product.manufacturer") == 'Genymotion'
+        }
+
+        if (matchingDevices.size() == 0) {
+            throw new IllegalArgumentException("Couldn't find any connected device that matches [${getName()}] provider.")
+        }
+        matchingDevices
+    }
+}
+// Top-level build file where you can add configuration options common to all sub-projects/modules.
+subprojects {
+    buildscript {
+        repositories {
+            mavenCentral()
+        }
+    }
+
+    repositories {
+        mavenCentral()
+        maven {
+            url "https://github.com/novoda/public-mvn-repo/raw/master/releases"
+        }
+    }
+}
+apply plugin: 'java'
+
+dependencies {
+    compile 'com.squareup.retrofit:retrofit:1.2.+'
+
+    testCompile 'junit:junit:4.+'
+    testCompile 'org.mockito:mockito-all:1.8.+'
+}
+
+sourceSets {
+    main {
+        java.srcDirs = ['src/main/java']
+    }
+    test {
+        java.srcDirs = ['src/unit-tests/java']
+    }
+}
