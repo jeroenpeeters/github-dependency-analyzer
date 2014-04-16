@@ -1,10 +1,10 @@
 Github Data
-===========
+-----------
 
 The folder *github-data* contains Java build file data mined from Github on 04-15-2014.
 
 Download Github Data
-====================
+--------------------
 
 The bash script *mine-data* downloads Java build files from Github for projects created withing a date range. The script takes two parameters:
 
@@ -20,6 +20,6 @@ The following is an example to download projects created in the year 2010.
 ```
 
 Build File Analyzer
-===================
+-------------------
 
 tbd....
