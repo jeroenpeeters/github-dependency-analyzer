@@ -1,10 +1,8 @@
-github-dependency-analyzer
-==========================
 
 This project contains a script to download Java build files (pom.xml, build.gradle, ivy.xml) from Github. Secondly it contains a Rascal application to analyze the downloaded data.
 
 Download Github Data
---------------------
+====================
 
 The bash script *mine-data* downloads Java build files from Github. The script takes two parameters:
 
@@ -20,6 +18,6 @@ The following is an example to download projects created in the year 2010.
 ```
 
 Build File Analyzer
--------------------
+===================
 
 tbd....
