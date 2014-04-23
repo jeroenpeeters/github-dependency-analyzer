@@ -3,8 +3,7 @@ module analyzer
 import Prelude;
 import IO;
 
-//loc datadir = |file:///home/jpeeters/Desktop/gitdata|;
-loc datadir = |file:///home/jpeeters/Desktop/gittest/data|;
+loc datadir = |file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/github-data|;
 
 alias CountingMap = map[str, int];
 
@@ -13,19 +12,67 @@ public void analyzer(){
 	iprintln(size(files));
 	
 	CountingMap cm = ();
+	set[str] pom_projects = {};
+	set[str] gradle_projects = {};
+	set[str] ivy_projects = {};
+	
 	for(file <- files){
-	    str content = readFile(file);
+		if(contains(file.path, "2013")){
+			continue;
+		}
+		str content = readFile(file);
 	    
-	    switch(file.extension){
-	    	case "poms": 		cm = addAll(cm, artifactsFromPom(content));
-	    	case "gradles":		cm = addAll(cm, artifactsFromGradle(content));
-	    	//case "buildxmls":	cm = addAll(cm, artifactsFromBuildXml(content));
-	    	case "ivys":		cm = addAll(cm, artifactsFromIvy(content));
-	    }
+		switch(file.extension){
+	    		case "poms": {
+	    			cm = addAll(cm, artifactsFromPom(content)); 
+	    			pom_projects += file.file;
+	    		}
+	    		case "gradles":{
+	    			cm = addAll(cm, artifactsFromGradle(content));
+	    			gradle_projects += file.file;
+	    		}
+	    		//case "buildxmls":	cm = addAll(cm, artifactsFromBuildXml(content));
+	    		case "ivys": {
+	    			cm = addAll(cm, artifactsFromIvy(content));
+	    			ivy_projects += file.file;
+	    		}
+	    	}
 	}
 	
-	iprintln(sort(toList(cm), sortOnSnd)[0..20]);
 	println(size(cm));
+	
+	cm = (k:cm[k] | k <- cm, !contains(k, "maven"), !contains(k, "gradle"), !contains(k, "ivy")); // remove all build-style dependencies
+	
+	sorted = sort(toList(cm), sortOnSnd);
+	iprintln(sorted);
+	//println(size(cm));
+	println("Analyzed projects: <size(pom_projects) + size(gradle_projects) + size(ivy_projects)>");
+	println("Pom projects: <size(pom_projects)>");
+	println("Gradle projects: <size(gradle_projects)>");
+	println("Ivy projects: <size(ivy_projects)>");
+	
+	makeFrequencyFile(sorted);
+	
+}
+
+private void makeFrequencyFile(list[tuple[str,int]] items){
+	str s = "project\tfrequency\n";
+	for(<k,n> <- items){
+		s += "<k>\t<n>\n";
+	}
+	writeFile(|file:///home/jpeeters/Desktop/frequency.tsv|, s);
+}
+
+private void makeWordCloudFile(list[tuple[str,int]] items){
+	str s = "";
+	for(<k,n> <- items){
+		int i = 0;
+		while( i < n/10){
+			s += k +" ";
+			i += 1;
+		}
+	}
+	writeFile(|file:///home/jpeeters/Desktop/wordCloud.txt|, s);
 }
 
 private CountingMap addAll(CountingMap cm, set[str] s){
