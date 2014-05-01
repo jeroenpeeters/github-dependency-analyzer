@@ -3,7 +3,7 @@ module analyzer
 import Prelude;
 import IO;
 
-//example: analyze(|file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/github-data|)
+//example: analyze(|file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/github-data|, |file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/results|)
 
 alias CountingMap = map[str, int];
 
@@ -40,14 +40,23 @@ public void analyze(loc datadir, loc resultdir){
 	cm = (k:cm[k] | k <- cm, !contains(k, "maven"), !contains(k, "gradle"), !contains(k, "ivy")); // remove all build-style dependencies
 	
 	sorted = sort(toList(cm), sortOnSnd);
-	iprintln(sorted);
+	//iprintln(sorted);
 	println("Analyzed projects: <size(pom_projects) + size(gradle_projects) + size(ivy_projects)>");
 	println("Pom projects: <size(pom_projects)>");
 	println("Gradle projects: <size(gradle_projects)>");
 	println("Ivy projects: <size(ivy_projects)>");
 	
 	makeFrequencyFile(resultdir + "/frequency.tsv", sorted);
-	
+}
+
+private void makeLatexTable(list[tuple[str,int]] items){
+	items = items[..100];
+	str s = "\\begin{tabular}{ | l | l | }\n    \\hline\n";
+	for(<k,n> <- items){
+		s += "    <k> & <n> \\\\ \\hline\n";
+	}
+	s += "\\end{tabular}";
+	println(s);
 }
 
 private void makeFrequencyFile(loc file, list[tuple[str,int]] items){
