@@ -5,15 +5,15 @@ import IO;
 
 //example: analyze(|file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/github-data|, |file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/results|)
 
-public data DependencyTool = maven() | gradle() | ivy();
+//public data DependencyTool = maven() | gradle() | ivy();
 public data DependencyScope = compileScope() | testScope();
-public data Dependency = dependency(str name, DependencyTool fromTool, DependencyScope scope);
+public data Dependency = dependency(str name, DependencyScope scope);
 
-public data AnalyzedFile = fileWithDependencies(loc path, set[Dependency] dependencies);
+public data AnalyzedFile = dependencyFile(loc path, set[Dependency] dependencies);
 
 public set[Dependency] compileScope(set[Dependency] dependencies) = filterOnScope(dependencies, compileScope());
 public set[Dependency] testScope(set[Dependency] dependencies) = filterOnScope(dependencies, testScope());
-private set[Dependency] filterOnScope(set[Dependency] dependencies, DependencyScope scope) = { d | d:dependency(_ , _, scope) <- dependencies };
+private set[Dependency] filterOnScope(set[Dependency] dependencies, DependencyScope scope) = { d | d:dependency(_, scope) <- dependencies };
 
 alias CountingMap = map[str, int];
 
@@ -31,12 +31,12 @@ public void analyze(loc datadir, loc resultdir){
 	//list[Dependency] deps = joinLists([dependencies(file.extension, file, readFile(file)) | file <- files ]);
 	
 	// find files that have no dependencies; dependencies is empty set
-	list[AnalyzedFile] fileWithoutDeps = [f | f:fileWithDependencies(_, {}) <- analyzedFiles];
+	list[AnalyzedFile] fileWithoutDeps = [f | f:dependencyFile(_, {}) <- analyzedFiles];
  	
  	// some stats about the analyzed files
 	println("fileWithoutDependencies:  <size(fileWithoutDeps)>");
 	
-	set[Dependency] allDeps 	= ({} | it + e | fileWithDependencies(_, e) <- analyzedFiles);
+	set[Dependency] allDeps 	= ({} | it + e | dependencyFile(_, e) <- analyzedFiles);
 	set[Dependency] compileDeps = compileScope(allDeps);
 	set[Dependency] testDeps 	= testScope(allDeps);
 	// some stats about all dependencies
@@ -44,17 +44,42 @@ public void analyze(loc datadir, loc resultdir){
 	println("Compile deps: <size(compileDeps)>");
 	println("Test deps   : <size(testDeps)>");
 	
+	map[Dependency, set[AnalyzedFile]] xmap = ();
+	for(f:dependencyFile(_, deps) <- analyzedFiles){
+		for(dep <- deps){
+			if( dep in xmap ){
+				xmap[dep] += f;
+			}else{
+				xmap[dep] = {f};
+			}
+		}
+	}
 	
+	lrel[Dependency, int] compileDepsCount = mysort ( {<dep, size(xmap[dep])> | dep:dependency(_, compileScope()) <- xmap} );
+	showFirstTen(compileDepsCount);
+	
+	lrel[Dependency, int] testDepsCount = mysort( {<dep, size(xmap[dep])> | dep:dependency(_, testScope()) <- xmap} );
+	showFirstTen(testDepsCount);
+	
+	
+	makeFrequencyFile(|file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/compileDepsFrequency.tsv|, compileDepsCount);
+	makeFrequencyFile(|file:///home/jpeeters/Documents/code/github/github-dependency-analyzer/testDepsFrequency.tsv|, testDepsCount);
+	
+	//println(size(xmap[dependency("junit:junit",testScope())]));
 }
+
+private	lrel[Dependency, int] mysort(rel[Dependency, int] depsCountMap) = sort(depsCountMap, sortOnSnd);
+
+private void showFirstTen(lrel[Dependency, int] depsCountMap) = println(depsCountMap[0..10]);
 
 private bool includeFile("trees") = false;
 private bool includeFile("nobuild") = false;
 private bool includeFile("buildxmls") = false;
 private bool includeFile(_) = true;
 
-private AnalyzedFile analyze("gradles", loc path, content) = fileWithDependencies(path, gradleDependencies(content));
-private AnalyzedFile analyze("poms", loc path, content) = fileWithDependencies(path, pomDependencies(content));
-private AnalyzedFile analyze("ivys", loc path, content) = fileWithDependencies(path, ivyDependencies(content));
+private AnalyzedFile analyze("gradles", loc path, content) = dependencyFile(path, gradleDependencies(content));
+private AnalyzedFile analyze("poms", loc path, content) = dependencyFile(path, pomDependencies(content));
+private AnalyzedFile analyze("ivys", loc path, content) = dependencyFile(path, ivyDependencies(content));
 
 private list[Dependency] joinLists(list[list[Dependency]] x) = ([] | it + e | e <- x);
 
@@ -65,16 +90,16 @@ private set[Dependency] ivyDependencies(str content) {
 		if (/conf=.+test/ := dep){
 			scope = testScope();
 		}
-		if (/name=\"<name:.+?>\"/ := dep && /org=\"<org:.+?>\"/ := dep){
-			deps += dependency("<org>:<name>", ivy(), scope);
+		if (/name=\"<name:.+?>\"/ := dep && /org=\"<org:.*?>\"/ := dep){
+			deps += dependency("<org>:<name>", scope);
 		}
 	}
 	return deps;
 }
 
 private set[Dependency] gradleDependencies(str content) =
-	{dependency("<groupId>:<artifactId>", gradle(), testScope()) | /testCompile.+"<groupId:[a-z][\w\-_\.]+>:?<artifactId:[a-z][\w\-_]+>/ := content} +
-	{dependency("<groupId>:<artifactId>", gradle(), compileScope()) | /(compile|runtime).+"<groupId:[a-z][\w\-_\.]+>:?<artifactId:[a-z][\w\-_]+>/ := content};
+	{dependency("<groupId>:<artifactId>", testScope()) | /testCompile.+"<groupId:[a-z][\w\-_\.]+>:?<artifactId:[a-z][\w\-_]+>/ := content} +
+	{dependency("<groupId>:<artifactId>", compileScope()) | /(compile|runtime).+"<groupId:[a-z][\w\-_\.]+>:?<artifactId:[a-z][\w\-_]+>/ := content};
 
 private set[Dependency] pomDependencies(str content) {
 	deps = {};
@@ -84,7 +109,7 @@ private set[Dependency] pomDependencies(str content) {
 			scope = testScope();
 		}
 		if (/\<artifactId\><artifactId:.+>\<\/artifactId\>/ := dep && /\<groupId\><groupId:.+>\<\/groupId\>/ := dep){
-			deps += dependency("<groupId>:<artifactId>", maven(), scope);
+			deps += dependency("<groupId>:<artifactId>", scope);
 		}
 	}
 	return deps;
@@ -103,23 +128,8 @@ private list[loc] crawl(loc dir){
  	return res;
 }
 
-private CountingMap addAll(CountingMap cm, set[str] items){
-	for(item <- items){
-		cm = add(cm, item);
-	}
-	return cm;
-}
-private CountingMap add(CountingMap cm, str item){
-	if(item in cm){
-		cm[item] += 1;
-	}else{
-		cm[item] = 1;
-	}
-	return cm;
-}
-
 // sort on second item in tuple
-private bool sortOnSnd(tuple[&A a, &B b] t1, tuple[&A a, &B b] t2) = t1.b > t2.b;
+private bool sortOnSnd(tuple[Dependency a, int b] t1, tuple[Dependency a, int b] t2) = t1.b > t2.b;
 
 
 private void makeLatexTable(list[tuple[str,int]] items){
@@ -132,10 +142,10 @@ private void makeLatexTable(list[tuple[str,int]] items){
 	println(s);
 }
 
-private void makeFrequencyFile(loc file, list[tuple[str,int]] items){
+private void makeFrequencyFile(loc file, lrel[Dependency, int] deps){
 	str s = "project\tfrequency\n";
-	for(<k,n> <- items){
-		s += "<k>\t<n>\n";
+	for(<dependency(name,_), count> <- deps){
+		s += "<name>\t<count>\n";
 	}
 	writeFile(file, s);
 }
