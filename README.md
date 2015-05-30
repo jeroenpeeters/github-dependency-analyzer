@@ -1,25 +1,33 @@
-Github Data
+Github Dependency Analyzer for Java
 -----------
 
-The folder *github-data* contains Java build file data mined from Github on 04-15-2014.
+This repository contains two tools for analyzing dependency data for Java projects. One tool deals with mining the data from Github. The other tool analyzes the downloaded dependency data and provides several statistics.
 
-Download Github Data
+The folder *github-data* contains Java build file data mined from Github on 05-30-2015.
+
+Github Miner
 --------------------
 
-The bash script *mine-data* downloads Java build files from Github for projects created withing a date range. The script takes two parameters:
+The bash script *github-miner.sh* downloads Java build files from Github for projects created withing a specified date range. The script takes three parameters:
 
-* A project creation date range
-* A Github username:password
-    
-The script is setup to download build files from projects that have at least one commit since 2013-01-01. This assures that we only take into account ***active*** projects.
-Github's search API is limited to thousand results per query. As a consequence one needs to accertain that less than thousand results are returned by adapting the date range.
+* A date range
+* Github username:password
+* Extra search parameters
 
-The following is an example to download projects created in the year 2010.
+Github's search API is limited to thousand results per query, therefore a large date range cannot be queried at once. Fortunately the script will automatically and dynamically partition the specified date range into sub-ranges in order to retrieve all data. Depending on the range this might take some time.
+
+The downloaded data is stored in *./data* (relative to where the script is being executed). If a project has multiple dependency files, they are combined in one single file (e.g. all pom.xml's are unified into a file called *{projectName}*.poms).
+
+The following is an example to download dependency data from Java projects created from 2007 until 20014 that have at least one commit since januari 2013. See https://developer.github.com/v3/search/#search-repositories for all possible search filters.
+
 ```bash
-./mine-data.sh "2010-01-01..2010-12-30" username:password | tee ./data/2010.log
+./mine-data.sh 20070101 20140101 username:password "pushed:>=2013-01-01+language:java" | tee ./mining.log
 ```
 
-Build File Analyzer
+Java Dependency Data Analyzer
 -------------------
 
-tbd....
+The dependency analyzer is written in [Rascal](http://www.rascal-mpl.org/).
+
+
+More coming soon...
