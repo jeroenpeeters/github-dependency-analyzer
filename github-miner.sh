@@ -35,20 +35,16 @@ export CURL_CMD
 
 function curl_do {
   local __url=$1
-  #echo "CURLCMD:: $CURL_CMD, $__url"
-  data=$($CURL_CMD $__url)
-  rateLimitRemaining=$(echo $data |  grep -P -o 'X-RateLimit-Remaining:\s?\K[0-9]+')
-  rateLimitReset=$(echo $data |  grep -P -o 'X-RateLimit-Reset:\s?\K[0-9]+')
-  secondsTillReset=$(($rateLimitReset-`date +%s`))
-
-  #echo "RateLimitInfo $rateLimitRemaining, $rateLimitReset, $secondsTillReset"
-  if [ $secondsTillReset -lt 1 ]; then
-    #echo "[RATE LIMIT]    Waiting $secondsTillReset seconds"
-    #echo "                -> $__url"
-    sleep "$secondsTillReset"
-    echo $(curl_do $__url)
-  fi
-  echo $data
+  local rateLimitRemaining=0
+  local data=""
+  while [ $rateLimitRemaining -lt 1 ]; do
+    data=$($CURL_CMD $__url)
+    rateLimitRemaining=$(echo "$data" |  grep -P -o 'X-RateLimit-Remaining:\s\K[0-9]+')
+    rateLimitReset=$(echo "$data" |  grep -P -o 'X-RateLimit-Reset:\s\K[0-9]+')
+    secondsTillReset=$(($rateLimitReset-`date +%s`))
+    if [ $rateLimitRemaining -lt 1 ]; then sleep "$secondsTillReset"; fi
+  done
+  echo "$data"
 }
 export -f curl_do
 
@@ -68,7 +64,6 @@ function download {
 
   for sha in ${__shas[@]}
   do
-    #echo "    $sha"
     curl --silent https://raw.githubusercontent.com/${__project}/${__branch}/${sha}  >> "${__to_file}"
   done
 }
@@ -91,12 +86,11 @@ function process {
   BRANCH="master"
   if fexists "./data/${FOLDER}/${NAME}**"
   then
-    echo "      -> Already downloaded, Skipping..."
+    echo "      -> Already downloaded, Skipping... ./data/${FOLDER}/${NAME}"
   else
     mkdir ./data/${FOLDER}/ > /dev/null
     DATA=$(curl_do ${__url}/git/refs/heads/master)
     NF=$(echo $DATA | grep -o "Not Found")
-    echo "refs data ::: $NF :::: -> $DATA"
     if [ "$NF" != "" ]; then
       DATA=$(curl_do ${__url}/git/refs/heads/trunk)
       NF=$(echo $DATA | grep -o "Not Found")
@@ -132,7 +126,6 @@ function process {
 export -f process
 
 function join { local IFS="$1"; shift; echo "$*"; }
-
 
 _interval=$((2629743*6)) #initial optimistic interval: one month*6
 _x=$DATE_S
